@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const { Pool } = require('pg');
+const webpush = require('web-push');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,10 +12,19 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    'mailto:brucerojasm15@gmail.com',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
+
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
 app.use(express.static(__dirname + '/public'));
 app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
 // Página mínima sin datos: si no llegó ?clave en la URL, intenta reinyectarla
 // desde localStorage (solo la que ya se guardó en un acceso válido previo)
@@ -65,6 +75,15 @@ async function ensureSchema() {
       fecha TIMESTAMP DEFAULT now()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      endpoint TEXT,
+      p256dh TEXT,
+      auth TEXT,
+      creado TIMESTAMP DEFAULT now()
+    )
+  `);
 }
 
 app.get('/', async (req, res) => {
@@ -72,10 +91,20 @@ app.get('/', async (req, res) => {
     const { rows } = await pool.query(
       'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE ORDER BY creado ASC'
     );
-    res.render('index', { pendientes: rows, error: null, clave: req.clave });
+    res.render('index', {
+      pendientes: rows,
+      error: null,
+      clave: req.clave,
+      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+    });
   } catch (err) {
     console.error('Error consultando pendientes:', err.message);
-    res.status(500).render('index', { pendientes: [], error: 'No se pudo leer la base de datos.', clave: req.clave });
+    res.status(500).render('index', {
+      pendientes: [],
+      error: 'No se pudo leer la base de datos.',
+      clave: req.clave,
+      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+    });
   }
 });
 
@@ -155,6 +184,55 @@ app.post('/pendientes/:id/reflexion', async (req, res) => {
     client.release();
   }
   res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+});
+
+app.post('/suscribir', async (req, res) => {
+  const { subscription } = req.body;
+  if (!subscription || !subscription.endpoint || !subscription.keys) {
+    return res.status(400).send('Suscripción inválida');
+  }
+  try {
+    const existente = await pool.query(
+      'SELECT id FROM push_subscriptions WHERE endpoint = $1',
+      [subscription.endpoint]
+    );
+    if (existente.rows.length === 0) {
+      await pool.query(
+        'INSERT INTO push_subscriptions (endpoint, p256dh, auth) VALUES ($1, $2, $3)',
+        [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]
+      );
+    }
+  } catch (err) {
+    console.error('Error guardando suscripcion:', err.message);
+    return res.status(500).send('No se pudo guardar la suscripción');
+  }
+  res.status(201).send('ok');
+});
+
+app.post('/notificar-prueba', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, endpoint, p256dh, auth FROM push_subscriptions');
+    const payload = JSON.stringify({ title: 'Bitácora', body: 'Hola desde tu bitácora' });
+
+    const resultados = await Promise.allSettled(
+      rows.map((s) =>
+        webpush
+          .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
+          .catch(async (err) => {
+            if (err.statusCode === 404 || err.statusCode === 410) {
+              await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [s.id]);
+            }
+            throw err;
+          })
+      )
+    );
+
+    const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
+    res.send(`Notificaciones enviadas: ${enviadas}/${rows.length}`);
+  } catch (err) {
+    console.error('Error enviando notificaciones:', err.message);
+    res.status(500).send('Error enviando notificaciones');
+  }
 });
 
 app.get('/ideas', async (req, res) => {

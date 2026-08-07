@@ -33,3 +33,20 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
+
+self.addEventListener('push', (event) => {
+  let datos = { title: 'Bitácora', body: 'Tienes una notificación' };
+  if (event.data) {
+    try {
+      datos = event.data.json();
+    } catch (e) {
+      datos.body = event.data.text();
+    }
+  }
+  event.waitUntil(
+    self.registration.showNotification(datos.title || 'Bitácora', {
+      body: datos.body || '',
+      icon: '/icons/icon-192.png',
+    })
+  );
+});

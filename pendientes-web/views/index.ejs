@@ -8,6 +8,8 @@
 <%- include('partials/nav', { clave }) %>
     <h1>📋 Pendientes</h1>
 
+    <button id="activar-notificaciones" type="button" class="secundario">🔔 Activar notificaciones</button>
+
     <form method="POST" action="/pendientes" class="nuevo">
       <input type="hidden" name="clave" value="<%= clave %>">
       <input type="text" name="texto" placeholder="Nuevo pendiente..." required>
@@ -66,6 +68,40 @@
   </main>
 
   <script>
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+    }
+
+    document.getElementById('activar-notificaciones')?.addEventListener('click', async () => {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          alert('Este navegador no soporta notificaciones push.');
+          return;
+        }
+        const permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') {
+          alert('No diste permiso para las notificaciones.');
+          return;
+        }
+        const registro = await navigator.serviceWorker.ready;
+        const suscripcion = await registro.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array('<%= vapidPublicKey %>'),
+        });
+        await fetch('/suscribir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clave: '<%= clave %>', subscription: suscripcion.toJSON() }),
+        });
+        alert('¡Notificaciones activadas!');
+      } catch (err) {
+        alert('No se pudo activar: ' + err.message);
+      }
+    });
+
     document.querySelectorAll('.completar-form').forEach((form) => {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();

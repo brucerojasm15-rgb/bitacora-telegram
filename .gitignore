@@ -1,0 +1,17 @@
+# Credenciales / variables de entorno
+.env
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Dependencias de Node
+node_modules/
+
+# Descargas incompletas del navegador
+*.crdownload
+
+# Archivos personales que no son parte de este repo
+/5080612601259035913.jpg
+/Mi_Asistente_2026.xlsx
+/\# CONTEXTO DEL PROYECTO SISTEMA DE.txt

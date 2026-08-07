@@ -1,0 +1,82 @@
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f5f5f7;
+  color: #1c1c1e;
+  margin: 0;
+  padding: 2rem;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.count {
+  color: #666;
+  margin-top: 0;
+}
+
+.nuevo {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.nuevo input[type="text"] {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.nuevo button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #1c1c1e;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.empty {
+  color: #666;
+}
+
+.error {
+  color: #b00020;
+  background: #fde8e8;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+th, td {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+th {
+  background: #ececef;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: #555;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}

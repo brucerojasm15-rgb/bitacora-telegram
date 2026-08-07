@@ -37,10 +37,25 @@
                 <td><%= p.texto %></td>
                 <td><%= new Date(p.creado).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
                 <td>
-                  <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form">
-                    <input type="hidden" name="clave" value="<%= clave %>">
-                    <button type="submit">✅ Completar</button>
-                  </form>
+                  <% if (p.necesita_reflexion) { %>
+                    <form method="POST" action="/pendientes/<%= p.id %>/reflexion" class="reflexion-form">
+                      <input type="hidden" name="clave" value="<%= clave %>">
+                      <label>¿Qué pasa?</label>
+                      <input type="text" name="respuesta" required>
+                      <button type="submit">Guardar</button>
+                    </form>
+                  <% } else { %>
+                    <div class="acciones">
+                      <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form">
+                        <input type="hidden" name="clave" value="<%= clave %>">
+                        <button type="submit">✅ Completar</button>
+                      </form>
+                      <form method="POST" action="/pendientes/<%= p.id %>/posponer" class="posponer-form">
+                        <input type="hidden" name="clave" value="<%= clave %>">
+                        <button type="submit">⏳ Posponer</button>
+                      </form>
+                    </div>
+                  <% } %>
                 </td>
               </tr>
             <% }) %>
@@ -68,6 +83,18 @@
           } else {
             document.getElementById('contador').textContent = `${tbody.children.length} pendiente(s)`;
           }
+        } catch (err) {
+          form.submit();
+        }
+      });
+    });
+
+    document.querySelectorAll('.posponer-form, .reflexion-form').forEach((form) => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await fetch(form.action, { method: 'POST', body: new FormData(form) });
+          window.location.reload();
         } catch (err) {
           form.submit();
         }

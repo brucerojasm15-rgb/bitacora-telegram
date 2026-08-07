@@ -61,6 +61,31 @@ h1 {
   cursor: pointer;
 }
 
+.acciones {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.reflexion-form {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.reflexion-form label {
+  font-size: 0.85rem;
+  color: #b00020;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.reflexion-form input[type="text"] {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
 .empty {
   color: #666;
 }

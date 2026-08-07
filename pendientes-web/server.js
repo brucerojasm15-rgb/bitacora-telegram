@@ -50,10 +50,27 @@ app.use((req, res, next) => {
   return res.status(403).end();
 });
 
+async function ensureSchema() {
+  await pool.query(`
+    ALTER TABLE pendientes
+      ADD COLUMN IF NOT EXISTS contador_posposiciones INT DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS necesita_reflexion BOOLEAN DEFAULT false
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reflexiones (
+      id SERIAL PRIMARY KEY,
+      pendiente_id INT REFERENCES pendientes(id),
+      pregunta TEXT,
+      respuesta TEXT,
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
+}
+
 app.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, texto, creado FROM pendientes WHERE hecho = FALSE ORDER BY creado ASC'
+      'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE ORDER BY creado ASC'
     );
     res.render('index', { pendientes: rows, error: null, clave: req.clave });
   } catch (err) {
@@ -91,6 +108,55 @@ app.post('/pendientes/:id/completar', async (req, res) => {
   res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
 });
 
+app.post('/pendientes/:id/posponer', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    await pool.query(
+      `UPDATE pendientes
+       SET contador_posposiciones = contador_posposiciones + 1,
+           necesita_reflexion = (contador_posposiciones + 1) >= 3
+       WHERE id = $1`,
+      [id]
+    );
+  } catch (err) {
+    console.error('Error posponiendo pendiente:', err.message);
+  }
+  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+});
+
+app.post('/pendientes/:id/reflexion', async (req, res) => {
+  const id = Number(req.params.id);
+  const respuesta = (req.body.respuesta || '').trim();
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  if (!respuesta) {
+    return res.status(400).send('La respuesta no puede estar vacía');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'INSERT INTO reflexiones (pendiente_id, pregunta, respuesta) VALUES ($1, $2, $3)',
+      [id, '¿Qué pasa?', respuesta]
+    );
+    await client.query(
+      'UPDATE pendientes SET contador_posposiciones = 0, necesita_reflexion = FALSE WHERE id = $1',
+      [id]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error guardando reflexion:', err.message);
+  } finally {
+    client.release();
+  }
+  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+});
+
 app.get('/ideas', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT id, fecha, idea, estado FROM ideas ORDER BY id DESC');
@@ -121,6 +187,10 @@ app.get('/hechos', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+ensureSchema()
+  .catch((err) => console.error('Error preparando el esquema:', err.message))
+  .finally(() => {
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    });
+  });

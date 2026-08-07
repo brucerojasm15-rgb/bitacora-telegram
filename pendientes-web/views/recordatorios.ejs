@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Recordatorios' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav', { clave }) %>
+    <h1>⏰ Recordatorios</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else if (recordatorios.length === 0) { %>
+      <p class="empty">No hay recordatorios todavía.</p>
+    <% } else { %>
+      <p class="count"><%= recordatorios.length %> recordatorio(s)</p>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Texto</th>
+            <th>Cuándo</th>
+            <th>Avisado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% recordatorios.forEach((r, idx) => { %>
+            <tr>
+              <td><%= idx + 1 %></td>
+              <td><%= r.texto %></td>
+              <td><%= new Date(r.cuando).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
+              <td><%= r.avisado ? 'Sí' : 'No' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts', { clave }) %>
+</body>
+</html>

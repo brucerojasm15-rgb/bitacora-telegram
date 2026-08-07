@@ -91,6 +91,36 @@ app.post('/pendientes/:id/completar', async (req, res) => {
   res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
 });
 
+app.get('/ideas', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, fecha, idea, estado FROM ideas ORDER BY id DESC');
+    res.render('ideas', { ideas: rows, error: null, clave: req.clave });
+  } catch (err) {
+    console.error('Error consultando ideas:', err.message);
+    res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', clave: req.clave });
+  }
+});
+
+app.get('/recordatorios', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, texto, cuando, avisado FROM recordatorios ORDER BY id DESC');
+    res.render('recordatorios', { recordatorios: rows, error: null, clave: req.clave });
+  } catch (err) {
+    console.error('Error consultando recordatorios:', err.message);
+    res.status(500).render('recordatorios', { recordatorios: [], error: 'No se pudo leer la base de datos.', clave: req.clave });
+  }
+});
+
+app.get('/hechos', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, texto, cuando FROM hechos ORDER BY id DESC');
+    res.render('hechos', { hechos: rows, error: null, clave: req.clave });
+  } catch (err) {
+    console.error('Error consultando hechos:', err.message);
+    res.status(500).render('hechos', { hechos: [], error: 'No se pudo leer la base de datos.', clave: req.clave });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });

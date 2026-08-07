@@ -1,21 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pendientes</title>
-  <link rel="stylesheet" href="/style.css">
-
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#1c1c1e">
-  <link rel="icon" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Pendientes">
+<%- include('partials/head', { titulo: 'Pendientes' }) %>
 </head>
 <body>
   <main>
+<%- include('partials/nav', { clave }) %>
     <h1>📋 Pendientes</h1>
 
     <form method="POST" action="/pendientes" class="nuevo">
@@ -24,48 +14,66 @@
       <button type="submit">Agregar</button>
     </form>
 
-    <% if (error) { %>
-      <p class="error"><%= error %></p>
-    <% } else if (pendientes.length === 0) { %>
-      <p class="empty">No hay pendientes. 🎉</p>
-    <% } else { %>
-      <p class="count"><%= pendientes.length %> pendiente(s)</p>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Actividad</th>
-            <th>Creado</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <% pendientes.forEach((p, i) => { %>
+    <div id="lista">
+      <% if (error) { %>
+        <p class="error"><%= error %></p>
+      <% } else if (pendientes.length === 0) { %>
+        <p class="empty">No hay pendientes. 🎉</p>
+      <% } else { %>
+        <p class="count" id="contador"><%= pendientes.length %> pendiente(s)</p>
+        <table id="tabla-pendientes">
+          <thead>
             <tr>
-              <td><%= i + 1 %></td>
-              <td><%= p.texto %></td>
-              <td><%= new Date(p.creado).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
-              <td>
-                <form method="POST" action="/pendientes/<%= p.id %>/completar">
-                  <input type="hidden" name="clave" value="<%= clave %>">
-                  <button type="submit">✅ Completar</button>
-                </form>
-              </td>
+              <th>#</th>
+              <th>Actividad</th>
+              <th>Creado</th>
+              <th></th>
             </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    <% } %>
+          </thead>
+          <tbody>
+            <% pendientes.forEach((p, i) => { %>
+              <tr>
+                <td><%= i + 1 %></td>
+                <td><%= p.texto %></td>
+                <td><%= new Date(p.creado).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
+                <td>
+                  <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form">
+                    <input type="hidden" name="clave" value="<%= clave %>">
+                    <button type="submit">✅ Completar</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
   </main>
 
   <script>
-    localStorage.setItem('clave', '<%= clave %>');
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    document.querySelectorAll('.completar-form').forEach((form) => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+          if (!res.ok) {
+            window.location.reload();
+            return;
+          }
+          const fila = form.closest('tr');
+          if (fila) fila.remove();
+          const tbody = document.querySelector('#tabla-pendientes tbody');
+          if (!tbody || tbody.children.length === 0) {
+            document.getElementById('lista').innerHTML = '<p class="empty">No hay pendientes. 🎉</p>';
+          } else {
+            document.getElementById('contador').textContent = `${tbody.children.length} pendiente(s)`;
+          }
+        } catch (err) {
+          form.submit();
+        }
       });
-    }
+    });
   </script>
+<%- include('partials/scripts', { clave }) %>
 </body>
 </html>

@@ -8,6 +8,7 @@
 <%- include('partials/nav', { clave }) %>
     <h1>⏰ Recordatorios</h1>
 
+<%- include('partials/filtro-rango', { clave, rango }) %>
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else if (recordatorios.length === 0) { %>

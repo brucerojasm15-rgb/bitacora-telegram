@@ -235,33 +235,124 @@ app.post('/notificar-prueba', async (req, res) => {
   }
 });
 
+const RANGOS_VALIDOS = ['7', '30', 'todo'];
+
+function whereRango(rango, columnaFecha) {
+  if (rango === '7') return `WHERE ${columnaFecha} >= NOW() - INTERVAL '7 days'`;
+  if (rango === '30') return `WHERE ${columnaFecha} >= NOW() - INTERVAL '30 days'`;
+  return '';
+}
+
 app.get('/ideas', async (req, res) => {
+  const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {
-    const { rows } = await pool.query('SELECT id, fecha, idea, estado FROM ideas ORDER BY id DESC');
-    res.render('ideas', { ideas: rows, error: null, clave: req.clave });
+    const { rows } = await pool.query(
+      `SELECT id, fecha, idea, estado FROM ideas ${whereRango(rango, 'fecha::timestamptz')} ORDER BY id DESC`
+    );
+    res.render('ideas', { ideas: rows, error: null, clave: req.clave, rango });
   } catch (err) {
     console.error('Error consultando ideas:', err.message);
-    res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', clave: req.clave });
+    res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', clave: req.clave, rango });
   }
 });
 
 app.get('/recordatorios', async (req, res) => {
+  const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {
-    const { rows } = await pool.query('SELECT id, texto, cuando, avisado FROM recordatorios ORDER BY id DESC');
-    res.render('recordatorios', { recordatorios: rows, error: null, clave: req.clave });
+    const { rows } = await pool.query(
+      `SELECT id, texto, cuando, avisado FROM recordatorios ${whereRango(rango, 'cuando')} ORDER BY id DESC`
+    );
+    res.render('recordatorios', { recordatorios: rows, error: null, clave: req.clave, rango });
   } catch (err) {
     console.error('Error consultando recordatorios:', err.message);
-    res.status(500).render('recordatorios', { recordatorios: [], error: 'No se pudo leer la base de datos.', clave: req.clave });
+    res.status(500).render('recordatorios', { recordatorios: [], error: 'No se pudo leer la base de datos.', clave: req.clave, rango });
   }
 });
 
 app.get('/hechos', async (req, res) => {
+  const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {
-    const { rows } = await pool.query('SELECT id, texto, cuando FROM hechos ORDER BY id DESC');
-    res.render('hechos', { hechos: rows, error: null, clave: req.clave });
+    const { rows } = await pool.query(
+      `SELECT id, texto, cuando FROM hechos ${whereRango(rango, 'cuando')} ORDER BY id DESC`
+    );
+    res.render('hechos', { hechos: rows, error: null, clave: req.clave, rango });
   } catch (err) {
     console.error('Error consultando hechos:', err.message);
-    res.status(500).render('hechos', { hechos: [], error: 'No se pudo leer la base de datos.', clave: req.clave });
+    res.status(500).render('hechos', { hechos: [], error: 'No se pudo leer la base de datos.', clave: req.clave, rango });
+  }
+});
+
+app.get('/pendientes/:id/editar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    const { rows } = await pool.query('SELECT id, texto FROM pendientes WHERE id = $1', [id]);
+    if (rows.length === 0) {
+      return res.status(404).send('Pendiente no encontrado');
+    }
+    res.render('editar', { pendiente: rows[0], clave: req.clave });
+  } catch (err) {
+    console.error('Error cargando pendiente para editar:', err.message);
+    res.status(500).send('No se pudo cargar el pendiente');
+  }
+});
+
+app.post('/pendientes/:id/editar', async (req, res) => {
+  const id = Number(req.params.id);
+  const texto = (req.body.texto || '').trim();
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  if (!texto) {
+    return res.status(400).send('El texto no puede estar vacío');
+  }
+  try {
+    await pool.query('UPDATE pendientes SET texto = $1 WHERE id = $2', [texto, id]);
+  } catch (err) {
+    console.error('Error actualizando pendiente:', err.message);
+  }
+  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+});
+
+app.get('/exportar', async (req, res) => {
+  let ExcelJS;
+  try {
+    ExcelJS = require('exceljs');
+  } catch (err) {
+    console.error('Error cargando exceljs:', err.message);
+    return res.status(500).send('Exportar no está disponible ahora mismo.');
+  }
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const tablas = [
+      { nombre: 'Pendientes', query: 'SELECT * FROM pendientes ORDER BY id' },
+      { nombre: 'Ideas', query: 'SELECT * FROM ideas ORDER BY id' },
+      { nombre: 'Recordatorios', query: 'SELECT * FROM recordatorios ORDER BY id' },
+      { nombre: 'Hechos', query: 'SELECT * FROM hechos ORDER BY id' },
+      { nombre: 'Reflexiones', query: 'SELECT * FROM reflexiones ORDER BY id' },
+    ];
+
+    for (const { nombre, query } of tablas) {
+      const { rows, fields } = await pool.query(query);
+      const hoja = workbook.addWorksheet(nombre);
+      hoja.columns = fields.map((f) => ({ header: f.name, key: f.name, width: 22 }));
+      rows.forEach((fila) => hoja.addRow(fila));
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="bitacora.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Error exportando a Excel:', err.message);
+    if (!res.headersSent) {
+      res.status(500).send('No se pudo generar el Excel');
+    } else {
+      res.end();
+    }
   }
 });
 

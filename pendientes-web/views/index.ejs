@@ -56,6 +56,7 @@
                         <input type="hidden" name="clave" value="<%= clave %>">
                         <button type="submit">⏳ Posponer</button>
                       </form>
+                      <a href="/pendientes/<%= p.id %>/editar?clave=<%= clave %>" class="btn-link">✏️ Editar</a>
                     </div>
                   <% } %>
                 </td>

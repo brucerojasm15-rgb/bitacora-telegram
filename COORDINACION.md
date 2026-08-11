@@ -76,7 +76,7 @@
 - Nota: `curl` está en el `deny` de `.claude/settings.json` del proyecto
   (compartido), así que las pruebas HTTP se hicieron con un script Node
   (`http` nativo) en vez de curl — no se intentó rodear la regla.
-- Commit: (ver hash abajo, agregado al hacer el commit).
+- Commit: a64d1fd.
 
 ### rama-integracion
 - Estado: —

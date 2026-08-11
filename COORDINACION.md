@@ -47,6 +47,53 @@
 - Pendientes/notas: si se crea, coordinar con rama-chat por la tabla `amistades`
   (ver nota arriba).
 
+### rama-notificaciones
+- Estado: en progreso
+- Tarea: notificaciones/marcar como leído en el chat (usar la columna `leido`
+  ya existente en la tabla `mensajes`).
+- Nota sobre el punto de partida: esta rama se creó desde `main` actualizado
+  (commit 9e07855), que todavía NO incluye el commit 084f810 de rama-amigos
+  (agrega las tareas de notificaciones/tema oscuro al backlog) ni el resto
+  de rama-amigos — esa rama sigue sin mergear a main. Tomé esta tarea
+  porque el usuario la señaló directamente a partir del backlog visible en
+  la rama-amigos ya commiteada (donde este archivo ya tenía esas líneas).
+  Por eso abajo, en "Backlog de tareas", vuelvo a agregar esas entradas
+  "desde cero" en la versión de este archivo de mi rama. Al mergear,
+  rama-integracion debe resolver el conflicto de COORDINACION.md contra la
+  versión de rama-amigos quedándose con la unión de ambas listas, sin
+  perder ninguna entrada ni duplicar el checkbox de la tarea de amigos.
+- Archivos tocados: pendientes-web/server.js (ruta GET /chat ahora marca
+  como leídos (`leido = true`) los mensajes del OTRO usuario justo después
+  de leerlos para la vista, sin tocar los mensajes propios; nueva ruta
+  GET /notificaciones que devuelve en JSON `{ noLeidos }`, el total de
+  mensajes sin leer del usuario logueado sumando todas sus amistades),
+  pendientes-web/views/chat.ejs (aviso "🔔 Tenías N mensajes sin leer" al
+  abrir una conversación con mensajes pendientes, distingue mensaje propio
+  vs ajeno, indicador ✓/✓✓ de "visto" en los mensajes propios),
+  pendientes-web/public/style.css (clases `.notificacion`, `.no-leido`,
+  `.visto` — estilos mínimos con las variables ya existentes, sin
+  rediseñar chat.ejs porque eso es la otra tarea pendiente del backlog).
+- Decisión de alcance: NO toqué views/partials/nav.ejs. Agregar ahí un
+  badge de notificaciones hubiera tocado un archivo que rama-amigos ya
+  modificó (agregó el link a /amigos) sin estar mergeado todavía. Preferí
+  exponer el conteo vía GET /notificaciones (JSON) para que quien integre
+  un badge visual (en nav o una futura lista de conversaciones) lo consuma
+  sin que yo tuviera que tocar ese archivo compartido sin coordinar antes.
+- Qué se verificó: `node --check server.js` sin errores. `chat.ejs` se
+  compiló con `ejs.compile()` sin errores de sintaxis, y se hizo un render
+  de prueba con datos simulados (sin DB) que confirmó que el aviso de "sin
+  leer", el punto de no-leído y el indicador de "visto" aparecen donde
+  corresponde según autor/estado `leido`.
+- ⚠️ Falta prueba contra la base de datos real: esta sesión corrió en un
+  worktree aislado sin `.env`/credenciales de la DB de Railway, así que no
+  se pudo levantar el servidor contra datos reales. Quien mergee o pruebe
+  en el navegador debería, con dos cuentas reales y una amistad existente:
+  1) que un usuario envíe un mensaje, 2) que el otro abra `/chat?amistad_id=X`
+  y confirmar en la DB que ese mensaje pasó a `leido = true`, 3) que
+  `GET /notificaciones` refleje el conteo correcto antes y después de leer,
+  4) confirmar que los mensajes propios no se marcan leídos por error.
+- Commit: (pendiente, se registra al terminar esta sesión).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -89,6 +136,13 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [ ] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
+  existente en tabla mensajes) — asignada a: rama-notificaciones (en progreso)
+- [ ] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
+  no tiene el estilo aplicado) — asignada a: sin asignar
+- [x] Sistema de amigos: agregar amigo, aceptar/rechazar solicitud, listar amigos
+  — tomada por rama-amigos (rama commiteada, todavía no mergeada a main; ver su
+  propia COORDINACION.md/sección para el detalle completo)
 
 ## Cómo agregar un trabajador nuevo (para el usuario)
 

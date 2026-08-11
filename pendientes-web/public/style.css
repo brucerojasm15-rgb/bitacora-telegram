@@ -364,6 +364,26 @@ h1 {
   border: 1px solid rgba(255, 107, 107, 0.25);
 }
 
+/* Notificaciones/lectura de chat: estilo mínimo, a la espera de la tarea
+   pendiente "aplicar tema visual oscuro a views/chat.ejs" que rediseñará
+   el resto de la vista. */
+.notificacion {
+  color: var(--accent);
+  background: var(--bg-elevated-2);
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.no-leido {
+  color: var(--accent);
+}
+
+.visto {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

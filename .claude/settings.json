@@ -1,9 +1,43 @@
 {
   "permissions": {
     "allow": [
-      "Bash(where *)",
-      "Bash(echo *)",
-      "Bash(node server.js)"
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git checkout -b*)",
+      "Bash(git checkout rama-*)",
+      "Bash(git stash*)",
+      "Bash(git restore*)",
+      "Bash(npm install*)",
+      "Bash(npm test*)",
+      "Bash(npm run*)",
+      "Bash(node server.js)",
+      "Edit",
+      "Write",
+      "Read"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git merge*)",
+      "Bash(git checkout main)",
+      "Bash(git rebase*)",
+      "Bash(git reset --hard*)",
+      "Bash(rm -rf*)",
+      "Bash(rm -r*)",
+      "Bash(DROP TABLE*)",
+      "Bash(DROP DATABASE*)",
+      "Bash(TRUNCATE*)",
+      "Bash(DELETE FROM*)",
+      "Bash(sudo*)",
+      "Bash(curl*)",
+      "Bash(wget*)",
+      "Bash(chmod*)",
+      "Bash(*ACCESS_KEY*)",
+      "Bash(*.env*)"
     ]
   }
 }

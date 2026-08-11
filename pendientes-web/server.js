@@ -191,6 +191,32 @@ async function ensureSchema() {
       creado TIMESTAMP DEFAULT now()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS amistades (
+      id SERIAL PRIMARY KEY,
+      usuario_a_id INT REFERENCES usuarios(id),
+      usuario_b_id INT REFERENCES usuarios(id),
+      UNIQUE (usuario_a_id, usuario_b_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mensajes (
+      id SERIAL PRIMARY KEY,
+      amistad_id INT REFERENCES amistades(id),
+      autor_id INT REFERENCES usuarios(id),
+      texto TEXT,
+      fecha TIMESTAMP DEFAULT now(),
+      leido BOOLEAN DEFAULT false
+    )
+  `);
+}
+
+async function usuarioPerteneceAmistad(usuarioId, amistadId) {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM amistades WHERE id = $1 AND (usuario_a_id = $2 OR usuario_b_id = $2)',
+    [amistadId, usuarioId]
+  );
+  return rows.length > 0;
 }
 
 app.get('/', async (req, res) => {
@@ -517,6 +543,55 @@ app.get('/exportar', async (req, res) => {
       res.end();
     }
   }
+});
+
+// Vista y rutas de chat. Todavía no está enlazada al menú de navegación
+// principal (partials/nav.ejs) ni depende de la tabla amistades, que se
+// construye en otra rama.
+app.get('/chat', async (req, res) => {
+  const amistadId = Number(req.query.amistad_id);
+  if (!Number.isInteger(amistadId)) {
+    return res.render('chat', { mensajes: [], amistadId: null, error: null });
+  }
+  try {
+    const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
+    if (!pertenece) {
+      return res.status(403).render('chat', { mensajes: [], amistadId: null, error: 'No tienes acceso a esta conversación.' });
+    }
+    const { rows } = await pool.query(
+      'SELECT id, amistad_id, autor_id, texto, fecha, leido FROM mensajes WHERE amistad_id = $1 ORDER BY fecha ASC',
+      [amistadId]
+    );
+    res.render('chat', { mensajes: rows, amistadId, error: null });
+  } catch (err) {
+    console.error('Error consultando mensajes:', err.message);
+    res.status(500).render('chat', { mensajes: [], amistadId, error: 'No se pudo leer la base de datos.' });
+  }
+});
+
+app.post('/mensajes', async (req, res) => {
+  const amistadId = Number(req.body.amistad_id);
+  const texto = (req.body.texto || '').trim();
+  if (!Number.isInteger(amistadId)) {
+    return res.status(400).send('amistad_id inválido');
+  }
+  if (!texto) {
+    return res.status(400).send('El texto no puede estar vacío');
+  }
+  try {
+    const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
+    if (!pertenece) {
+      return res.status(403).send('No tienes acceso a esta conversación.');
+    }
+    await pool.query(
+      'INSERT INTO mensajes (amistad_id, autor_id, texto, fecha, leido) VALUES ($1, $2, $3, now(), false)',
+      [amistadId, req.usuarioId, texto]
+    );
+  } catch (err) {
+    console.error('Error creando mensaje:', err.message);
+    return res.status(500).send('No se pudo enviar el mensaje.');
+  }
+  res.redirect('/chat?amistad_id=' + amistadId);
 });
 
 ensureSchema()

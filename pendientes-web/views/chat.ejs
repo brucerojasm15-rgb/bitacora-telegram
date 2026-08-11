@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Chat' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1>💬 Chat</h1>
+
+    <% if (!amistadId) { %>
+      <p class="empty">Indica una amistad con <code>?amistad_id=</code> para ver la conversación.</p>
+    <% } else { %>
+      <form method="GET" action="/chat" class="filtro-rango">
+        <input type="number" name="amistad_id" value="<%= amistadId %>" min="1" required>
+        <button type="submit">Ver</button>
+      </form>
+
+      <% if (error) { %>
+        <p class="error"><%= error %></p>
+      <% } else if (mensajes.length === 0) { %>
+        <p class="empty">Todavía no hay mensajes en esta conversación.</p>
+      <% } else { %>
+        <ul class="chat-mensajes">
+          <% mensajes.forEach((m) => { %>
+            <li>
+              <span class="autor">Usuario <%= m.autor_id %></span>
+              <span class="texto"><%= m.texto %></span>
+              <span class="fecha"><%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></span>
+              <% if (!m.leido) { %><span class="no-leido">●</span><% } %>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+
+      <form method="POST" action="/mensajes" class="nuevo">
+        <input type="hidden" name="amistad_id" value="<%= amistadId %>">
+        <input type="text" name="texto" placeholder="Escribe un mensaje..." required>
+        <button type="submit">Enviar</button>
+      </form>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

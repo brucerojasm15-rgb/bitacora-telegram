@@ -48,7 +48,8 @@
   (ver nota arriba).
 
 ### rama-notificaciones
-- Estado: en progreso
+- Estado: commiteada, prueba end-to-end contra la DB real completada y en verde,
+  lista para revisión de rama-integracion.
 - Tarea: notificaciones/marcar como leído en el chat (usar la columna `leido`
   ya existente en la tabla `mensajes`).
 - Nota sobre el punto de partida: esta rama se creó desde `main` actualizado
@@ -84,15 +85,42 @@
   de prueba con datos simulados (sin DB) que confirmó que el aviso de "sin
   leer", el punto de no-leído y el indicador de "visto" aparecen donde
   corresponde según autor/estado `leido`.
-- ⚠️ Falta prueba contra la base de datos real: esta sesión corrió en un
-  worktree aislado sin `.env`/credenciales de la DB de Railway, así que no
-  se pudo levantar el servidor contra datos reales. Quien mergee o pruebe
-  en el navegador debería, con dos cuentas reales y una amistad existente:
-  1) que un usuario envíe un mensaje, 2) que el otro abra `/chat?amistad_id=X`
-  y confirmar en la DB que ese mensaje pasó a `leido = true`, 3) que
-  `GET /notificaciones` refleje el conteo correcto antes y después de leer,
-  4) confirmar que los mensajes propios no se marcan leídos por error.
-- Commit: 05758c1.
+- ✅ Prueba end-to-end contra la DB real de Railway (misma que usan las
+  demás ramas), ya completada: se creó `.env` local en el worktree con las
+  mismas credenciales que usa el resto del equipo, se instalaron
+  dependencias (`npm install`), se levantó `server.js` local, y se corrió
+  un script desechable que:
+  1) creó dos usuarios de prueba (`prueba_notif_a`, `prueba_notif_b`) y una
+     fila en `amistades` entre ambos,
+  2) logueó a los dos por sesión real (`POST /login`),
+  3) A envió 3 mensajes a B (`POST /mensajes`) — confirmado en DB:
+     `leido = false` en los 3, y `GET /notificaciones` de B devolvió
+     `{"noLeidos":3}`,
+  4) B abrió `/chat?amistad_id=X` — el HTML mostró el banner
+     "🔔 Tenías 3 mensajes sin leer", y en DB los 3 mensajes pasaron a
+     `leido = true` inmediatamente,
+  5) `GET /notificaciones` de B después de abrir el chat devolvió
+     `{"noLeidos":0}`,
+  6) A abrió su propio chat y vio el indicador "✓✓" (visto) en sus
+     mensajes propios — confirma que no se rompe nada cuando el emisor
+     revisita el chat,
+  7) flujo inverso: B respondió un mensaje, `GET /notificaciones` de A
+     subió a `1` antes de abrir el chat y bajó a `0` justo después de
+     abrir `/chat?amistad_id=X` como A,
+  8) limpieza: se borraron los mensajes, la amistad y los dos usuarios de
+     prueba al final del script — confirmado con una consulta posterior
+     que ya no quedan filas de `prueba_notif_a`/`prueba_notif_b` en
+     `usuarios`. El archivo `.env` local, `node_modules/` y el script de
+     prueba nunca se comitearon (los dos primeros ya estaban en
+     `.gitignore`; el script se borró al terminar) — `git status` quedó
+     limpio antes del commit.
+  Resultado: **todos los checks en verde** (contador de no-leídos sube al
+  llegar un mensaje, baja a 0 al abrir el chat que lo contiene, DB refleja
+  `leido=true` solo en los mensajes del otro usuario, indicador de "visto"
+  funciona en ambos sentidos).
+- Commit: 05758c1 (funcionalidad) y 1ed64b9 (registro de hash) — este
+  commit de actualización de COORDINACION.md con el resultado de la
+  prueba end-to-end queda registrado abajo tras el push.
 
 ### rama-integracion
 - Estado: —

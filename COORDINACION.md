@@ -47,6 +47,37 @@
 - Pendientes/notas: si se crea, coordinar con rama-chat por la tabla `amistades`
   (ver nota arriba).
 
+### rama-registro
+- Estado: commiteada, lista para merge
+- Tarea: registro público de usuarios (`/registro`) + protección básica contra
+  fuerza bruta en `/login` y `/registro`. Requisito para poder lanzar la app al
+  público (antes los usuarios solo se creaban insertando filas a mano en la DB).
+- Archivos tocados: server.js (rutas GET/POST /registro, `crearPinHash`,
+  middleware `limitarIntentos` aplicado a POST /login y POST /registro,
+  regex de validación de usuario/PIN, permite /registro sin sesión), 
+  views/registro.ejs (nuevo), views/login.ejs (link a /registro).
+- Creada desde origin/main (sin rama-amigos todavía mergeada), para no
+  depender de que rama-amigos se mergee primero. Cuando se mergee rama-amigos,
+  revisar que el middleware de sesión siga dejando pasar `/login`, `/registro`
+  Y cualquier ruta nueva sin sesión que agregue esa rama.
+- Rate limiting: en memoria por IP, 8 intentos / 15 min por ruta (`login` y
+  `registro` cuentan por separado). Limitación conocida: si la app corre en
+  más de una instancia el límite no se comparte entre instancias (documentado
+  en el propio código); suficiente para el tamaño actual de la app.
+- Qué se verificó (contra la DB real de Railway, servidor local): `node --check`
+  sin errores. Con un script de prueba (no curl, ver nota abajo): registro de
+  usuario nuevo → 302 + cookie de sesión; usuario duplicado → error correcto
+  sin crear fila; PIN y confirmación no coinciden → error correcto; 10
+  intentos seguidos → el 9no/10mo devuelven 429 (rate limit funciona); login
+  con el usuario recién creado con PIN correcto → 302 + cookie, PIN incorrecto
+  → error sin dar pistas de cuál campo falló; `/` sin sesión → redirige a
+  `/login`. Confirmado en la DB que `pin_hash` se guarda como `salt:hash` (no
+  texto plano). Usuarios de prueba borrados de la DB real al terminar.
+- Nota: `curl` está en el `deny` de `.claude/settings.json` del proyecto
+  (compartido), así que las pruebas HTTP se hicieron con un script Node
+  (`http` nativo) en vez de curl — no se intentó rodear la regla.
+- Commit: (ver hash abajo, agregado al hacer el commit).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -89,6 +120,11 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [x] Registro público de usuarios + rate limiting básico en login/registro — tomada por rama-registro
+- [ ] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
+  existente en tabla mensajes) — asignada a: sin asignar
+- [ ] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
+  no tiene el estilo aplicado) — asignada a: sin asignar
 
 ## Cómo agregar un trabajador nuevo (para el usuario)
 

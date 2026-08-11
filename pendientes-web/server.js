@@ -85,11 +85,11 @@ app.use((req, res, next) => {
 });
 ============================================================ */
 
-// Middleware de autenticación por sesión (Paso 3). Deja pasar /login sin
-// exigir sesión (si no, nadie podría loguearse); todo lo demás requiere
-// una sesión activa o redirige/rechaza.
+// Middleware de autenticación por sesión (Paso 3). Deja pasar /login y
+// /registro sin exigir sesión (si no, nadie podría loguearse ni crear
+// cuenta); todo lo demás requiere una sesión activa o redirige/rechaza.
 app.use((req, res, next) => {
-  if (req.path === '/login') return next();
+  if (req.path === '/login' || req.path === '/registro') return next();
   if (req.session && req.session.usuario_id) {
     req.usuarioId = req.session.usuario_id;
     return next();
@@ -99,6 +99,38 @@ app.use((req, res, next) => {
   }
   return res.status(401).end();
 });
+
+// Límite de intentos por IP (fuerza bruta en /login y /registro). En memoria:
+// suficiente para una sola instancia; si la app crece a múltiples instancias
+// habría que moverlo a la DB o a algo compartido como Redis.
+const intentosPorIp = new Map();
+const LIMITE_INTENTOS = 8;
+const VENTANA_INTENTOS_MS = 15 * 60 * 1000;
+
+function limitarIntentos(prefijo) {
+  return (req, res, next) => {
+    const clave = `${prefijo}:${req.ip}`;
+    const ahora = Date.now();
+    const entrada = intentosPorIp.get(clave);
+    if (!entrada || ahora > entrada.resetAt) {
+      intentosPorIp.set(clave, { count: 1, resetAt: ahora + VENTANA_INTENTOS_MS });
+      return next();
+    }
+    if (entrada.count >= LIMITE_INTENTOS) {
+      const esperaMin = Math.ceil((entrada.resetAt - ahora) / 60000);
+      return res.status(429).send(`Demasiados intentos. Espera ${esperaMin} minuto(s) e intenta de nuevo.`);
+    }
+    entrada.count += 1;
+    return next();
+  };
+}
+
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [clave, entrada] of intentosPorIp) {
+    if (ahora > entrada.resetAt) intentosPorIp.delete(clave);
+  }
+}, 60 * 60 * 1000).unref();
 
 function verificarPin(pin, pinHashGuardado) {
   const partes = (pinHashGuardado || '').split(':');
@@ -110,6 +142,15 @@ function verificarPin(pin, pinHashGuardado) {
   return hashGuardado.length === hashIntento.length && crypto.timingSafeEqual(hashGuardado, hashIntento);
 }
 
+function crearPinHash(pin) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(pin, salt, 64);
+  return `${salt.toString('hex')}:${hash.toString('hex')}`;
+}
+
+const NOMBRE_USUARIO_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
+const PIN_REGEX = /^\d{4,6}$/;
+
 app.get('/login', (req, res) => {
   if (req.session && req.session.usuario_id) {
     return res.redirect('/');
@@ -117,7 +158,7 @@ app.get('/login', (req, res) => {
   res.render('login', { error: null });
 });
 
-app.post('/login', async (req, res) => {
+app.post('/login', limitarIntentos('login'), async (req, res) => {
   const nombreUsuario = (req.body.nombre_usuario || '').trim();
   const pin = req.body.pin || '';
   if (!nombreUsuario || !pin) {
@@ -143,6 +184,49 @@ app.post('/logout', (req, res) => {
     if (err) console.error('Error cerrando sesion:', err.message);
     res.redirect('/login');
   });
+});
+
+app.get('/registro', (req, res) => {
+  if (req.session && req.session.usuario_id) {
+    return res.redirect('/');
+  }
+  res.render('registro', { error: null, nombreUsuario: '' });
+});
+
+app.post('/registro', limitarIntentos('registro'), async (req, res) => {
+  const nombreUsuario = (req.body.nombre_usuario || '').trim();
+  const pin = req.body.pin || '';
+  const confirmarPin = req.body.confirmar_pin || '';
+
+  if (!NOMBRE_USUARIO_REGEX.test(nombreUsuario)) {
+    return res.render('registro', {
+      error: 'El usuario debe tener entre 3 y 20 caracteres (letras, números o _).',
+      nombreUsuario,
+    });
+  }
+  if (!PIN_REGEX.test(pin)) {
+    return res.render('registro', { error: 'El PIN debe ser numérico, de 4 a 6 dígitos.', nombreUsuario });
+  }
+  if (pin !== confirmarPin) {
+    return res.render('registro', { error: 'El PIN y su confirmación no coinciden.', nombreUsuario });
+  }
+
+  try {
+    const pinHash = crearPinHash(pin);
+    const { rows } = await pool.query(
+      'INSERT INTO usuarios (nombre_usuario, pin_hash) VALUES ($1, $2) RETURNING id',
+      [nombreUsuario, pinHash]
+    );
+    req.session.usuario_id = rows[0].id;
+    req.session.nombre_usuario = nombreUsuario;
+    res.redirect('/');
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.render('registro', { error: 'Ese nombre de usuario ya está en uso.', nombreUsuario });
+    }
+    console.error('Error en registro:', err.message);
+    res.status(500).render('registro', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario });
+  }
 });
 
 async function ensureSchema() {

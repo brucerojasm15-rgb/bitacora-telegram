@@ -92,7 +92,7 @@
   y confirmar en la DB que ese mensaje pasó a `leido = true`, 3) que
   `GET /notificaciones` refleje el conteo correcto antes y después de leer,
   4) confirmar que los mensajes propios no se marcan leídos por error.
-- Commit: (pendiente, se registra al terminar esta sesión).
+- Commit: 05758c1.
 
 ### rama-integracion
 - Estado: —

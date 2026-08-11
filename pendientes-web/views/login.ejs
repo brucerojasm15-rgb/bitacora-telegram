@@ -12,7 +12,7 @@
     <% } %>
 
     <form method="POST" action="/login" class="login-form">
-      <input type="text" name="nombre_usuario" placeholder="Usuario" required autofocus>
+      <input type="text" name="nombre_usuario" placeholder="Usuario" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required autofocus>
       <input type="password" name="pin" placeholder="PIN" inputmode="numeric" required>
       <button type="submit">Entrar</button>
     </form>

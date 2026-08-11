@@ -118,7 +118,7 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
-  const nombreUsuario = (req.body.nombre_usuario || '').trim();
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
   const pin = req.body.pin || '';
   if (!nombreUsuario || !pin) {
     return res.render('login', { error: 'Completa usuario y PIN.' });

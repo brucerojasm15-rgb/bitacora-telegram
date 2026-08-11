@@ -63,3 +63,43 @@
   (rama-visual no lo había tocado). Probado localmente tras el merge: login, 403 sin
   membresía en amistad_id, envío de mensaje real con membresía válida, y 403 sigue
   bloqueando después. Commit de merge f248c9c, pusheado.
+
+## Onboarding para una sesión nueva (nuevo "trabajador")
+
+Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
+
+1. Lee este archivo completo antes de escribir código.
+2. Corre `git log --oneline -10` y `git branch -a` para ver el estado real.
+3. Busca tu tarea en la sección "Backlog de tareas" de abajo. Si el usuario ya te dio
+   una tarea directamente en el chat, usa esa en vez del backlog.
+4. Crea tu rama desde `main` actualizado: `git checkout -b rama-<nombre-corto>`.
+5. Agrega tu sección en "Estado de ramas" con tu tarea y estado "en progreso" ANTES
+   de escribir código.
+6. Mueve tu tarea del backlog a "en progreso" (o táchala con ~~texto~~) para que
+   nadie más la tome por error.
+7. No toques archivos fuera de tu tarea. Si necesitas tocar algo que otra rama ya
+   está usando, avisa aquí y espera confirmación del usuario antes de seguir.
+8. Al terminar, actualiza tu sección con qué hiciste, archivos tocados, hash del
+   commit, y cualquier hueco o pendiente que quede.
+9. No mergees a main tú mismo — eso lo hace rama-integracion, o el usuario lo pide
+   explícitamente.
+
+## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
+
+Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
+
+- [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+
+## Cómo agregar un trabajador nuevo (para el usuario)
+
+1. Escribe la tarea nueva en "Backlog de tareas" arriba (o pídele a cualquier sesión
+   activa que la agregue).
+2. Abre una terminal nueva en la carpeta del repo y corre `claude`.
+3. Pégale este mensaje:
+   ```
+   Eres una nueva sesión de Claude Code en el repo pendientes-web. Lee
+   COORDINACION.md completo, toma la tarea del backlog que dice "[describe la
+   tarea]", créate tu rama, y sigue el protocolo de onboarding del archivo.
+   ```
+4. Esa sesión se pone al día sola — no necesitas explicarle el contexto del
+   proyecto a mano.

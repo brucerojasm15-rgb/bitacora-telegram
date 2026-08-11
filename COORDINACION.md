@@ -57,5 +57,6 @@
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
-- [pendiente] merge de rama-visual (6e3328f) → main
+- 2026-08-11 — merge de rama-visual (6e3328f) → main: sin conflictos, probado
+  localmente (login + / + style.css sirviendo bien), commit de merge 1707a86, pusheado.
 - [pendiente] merge de rama-chat → main

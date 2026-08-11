@@ -76,7 +76,12 @@
 - Nota: `curl` está en el `deny` de `.claude/settings.json` del proyecto
   (compartido), así que las pruebas HTTP se hicieron con un script Node
   (`http` nativo) en vez de curl — no se intentó rodear la regla.
-- Commit: a64d1fd.
+- Commit: a64d1fd, f5e0235, y un tercero que normaliza `nombre_usuario` a
+  minúsculas en `/registro` (consistente con el hotfix de `/login` ya en
+  main) — se agrega también `autocapitalize="none"` en `registro.ejs`.
+  Probado: registrar con "Prueba1234" y loguear con "prueba1234" en
+  minúsculas funciona (302); usuario de prueba borrado de la DB real al
+  terminar.
 
 ### rama-integracion
 - Estado: —

@@ -194,7 +194,7 @@ app.get('/registro', (req, res) => {
 });
 
 app.post('/registro', limitarIntentos('registro'), async (req, res) => {
-  const nombreUsuario = (req.body.nombre_usuario || '').trim();
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
   const pin = req.body.pin || '';
   const confirmarPin = req.body.confirmar_pin || '';
 

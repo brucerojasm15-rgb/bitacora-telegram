@@ -5,10 +5,10 @@
 </head>
 <body>
   <main>
-<%- include('partials/nav', { clave }) %>
+<%- include('partials/nav') %>
     <h1>✅ Hechos</h1>
 
-<%- include('partials/filtro-rango', { clave, rango }) %>
+<%- include('partials/filtro-rango', { rango }) %>
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else if (hechos.length === 0) { %>
@@ -36,6 +36,6 @@
     <% } %>
   </main>
 
-<%- include('partials/scripts', { clave }) %>
+<%- include('partials/scripts') %>
 </body>
 </html>

@@ -5,19 +5,18 @@
 </head>
 <body>
   <main>
-<%- include('partials/nav', { clave }) %>
+<%- include('partials/nav') %>
     <h1>✏️ Editar pendiente</h1>
 
     <form method="POST" action="/pendientes/<%= pendiente.id %>/editar" class="editar-form">
-      <input type="hidden" name="clave" value="<%= clave %>">
       <textarea name="texto" rows="6" required><%= pendiente.texto %></textarea>
       <div class="acciones-form">
         <button type="submit">Guardar</button>
-        <a href="/?clave=<%= clave %>" class="btn-link">Cancelar</a>
+        <a href="/" class="btn-link">Cancelar</a>
       </div>
     </form>
   </main>
 
-<%- include('partials/scripts', { clave }) %>
+<%- include('partials/scripts') %>
 </body>
 </html>

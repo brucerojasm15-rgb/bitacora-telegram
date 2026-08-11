@@ -5,13 +5,12 @@
 </head>
 <body>
   <main>
-<%- include('partials/nav', { clave }) %>
+<%- include('partials/nav') %>
     <h1>📋 Pendientes</h1>
 
     <button id="activar-notificaciones" type="button" class="secundario">🔔 Activar notificaciones</button>
 
     <form method="POST" action="/pendientes" class="nuevo">
-      <input type="hidden" name="clave" value="<%= clave %>">
       <input type="text" name="texto" id="nuevo-pendiente" placeholder="Nuevo pendiente..." required>
       <button type="submit">Agregar</button>
     </form>
@@ -41,7 +40,6 @@
                 <td>
                   <% if (p.necesita_reflexion) { %>
                     <form method="POST" action="/pendientes/<%= p.id %>/reflexion" class="reflexion-form">
-                      <input type="hidden" name="clave" value="<%= clave %>">
                       <label>¿Qué pasa?</label>
                       <input type="text" name="respuesta" required>
                       <button type="submit">Guardar</button>
@@ -49,14 +47,12 @@
                   <% } else { %>
                     <div class="acciones">
                       <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form">
-                        <input type="hidden" name="clave" value="<%= clave %>">
                         <button type="submit">✅ Completar</button>
                       </form>
                       <form method="POST" action="/pendientes/<%= p.id %>/posponer" class="posponer-form">
-                        <input type="hidden" name="clave" value="<%= clave %>">
                         <button type="submit">⏳ Posponer</button>
                       </form>
-                      <a href="/pendientes/<%= p.id %>/editar?clave=<%= clave %>" class="btn-link">✏️ Editar</a>
+                      <a href="/pendientes/<%= p.id %>/editar" class="btn-link">✏️ Editar</a>
                     </div>
                   <% } %>
                 </td>
@@ -99,7 +95,7 @@
         await fetch('/suscribir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clave: '<%= clave %>', subscription: suscripcion.toJSON() }),
+          body: JSON.stringify({ subscription: suscripcion.toJSON() }),
         });
         alert('¡Notificaciones activadas!');
       } catch (err) {
@@ -142,6 +138,6 @@
       });
     });
   </script>
-<%- include('partials/scripts', { clave }) %>
+<%- include('partials/scripts') %>
 </body>
 </html>

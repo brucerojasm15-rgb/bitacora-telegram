@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where *)",
+      "Bash(echo *)",
+      "Bash(node server.js)"
+    ]
+  }
+}

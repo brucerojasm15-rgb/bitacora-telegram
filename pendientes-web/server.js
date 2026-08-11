@@ -1,6 +1,9 @@
 require('dotenv').config();
 
+const crypto = require('crypto');
 const express = require('express');
+const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const { Pool } = require('pg');
 const webpush = require('web-push');
 const cron = require('node-cron');
@@ -23,13 +26,33 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
+app.set('trust proxy', 1); // Railway hace proxy/TLS-termination; necesario para cookies "secure"
 app.use(express.static(__dirname + '/public'));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// Página mínima sin datos: si no llegó ?clave en la URL, intenta reinyectarla
-// desde localStorage (solo la que ya se guardó en un acceso válido previo)
-// antes de rendirse con un 403 en blanco.
+app.use(
+  session({
+    store: new pgSession({ pool, tableName: 'session', createTableIfMissing: true }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: 'auto',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 dias
+    },
+  })
+);
+
+/* ============================================================
+   PASO 1 (ACCESS_KEY por query string) — DESACTIVADO, Paso 3 lo
+   reemplaza por sesiones con login real. Se deja comentado (no
+   borrado) para poder revertir rápido si algo falla con sesiones.
+   Para revertir: comenta el middleware de sesión de abajo y
+   descomenta este bloque completo.
+
 const REINYECTAR_CLAVE_HTML = `<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"><title>Pendientes</title></head>
@@ -60,12 +83,92 @@ app.use((req, res, next) => {
   }
   return res.status(403).end();
 });
+============================================================ */
+
+// Middleware de autenticación por sesión (Paso 3). Deja pasar /login sin
+// exigir sesión (si no, nadie podría loguearse); todo lo demás requiere
+// una sesión activa o redirige/rechaza.
+app.use((req, res, next) => {
+  if (req.path === '/login') return next();
+  if (req.session && req.session.usuario_id) {
+    req.usuarioId = req.session.usuario_id;
+    return next();
+  }
+  if (req.method === 'GET') {
+    return res.redirect('/login');
+  }
+  return res.status(401).end();
+});
+
+function verificarPin(pin, pinHashGuardado) {
+  const partes = (pinHashGuardado || '').split(':');
+  if (partes.length !== 2) return false;
+  const [saltHex, hashHex] = partes;
+  const salt = Buffer.from(saltHex, 'hex');
+  const hashGuardado = Buffer.from(hashHex, 'hex');
+  const hashIntento = crypto.scryptSync(pin, salt, hashGuardado.length);
+  return hashGuardado.length === hashIntento.length && crypto.timingSafeEqual(hashGuardado, hashIntento);
+}
+
+app.get('/login', (req, res) => {
+  if (req.session && req.session.usuario_id) {
+    return res.redirect('/');
+  }
+  res.render('login', { error: null });
+});
+
+app.post('/login', async (req, res) => {
+  const nombreUsuario = (req.body.nombre_usuario || '').trim();
+  const pin = req.body.pin || '';
+  if (!nombreUsuario || !pin) {
+    return res.render('login', { error: 'Completa usuario y PIN.' });
+  }
+  try {
+    const { rows } = await pool.query('SELECT id, pin_hash FROM usuarios WHERE nombre_usuario = $1', [nombreUsuario]);
+    const usuario = rows[0];
+    if (!usuario || !verificarPin(pin, usuario.pin_hash)) {
+      return res.render('login', { error: 'Usuario o PIN incorrecto.' });
+    }
+    req.session.usuario_id = usuario.id;
+    req.session.nombre_usuario = nombreUsuario;
+    res.redirect('/');
+  } catch (err) {
+    console.error('Error en login:', err.message);
+    res.status(500).render('login', { error: 'Error del servidor, intenta de nuevo.' });
+  }
+});
+
+app.post('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) console.error('Error cerrando sesion:', err.message);
+    res.redirect('/login');
+  });
+});
 
 async function ensureSchema() {
+  // usuarios debe existir antes que cualquier ALTER TABLE que la referencie.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      nombre_usuario TEXT UNIQUE,
+      pin_hash TEXT,
+      creado TIMESTAMP DEFAULT now()
+    )
+  `);
   await pool.query(`
     ALTER TABLE pendientes
       ADD COLUMN IF NOT EXISTS contador_posposiciones INT DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS necesita_reflexion BOOLEAN DEFAULT false
+      ADD COLUMN IF NOT EXISTS necesita_reflexion BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+  `);
+  await pool.query(`
+    ALTER TABLE ideas ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+  `);
+  await pool.query(`
+    ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+  `);
+  await pool.query(`
+    ALTER TABLE hechos ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS reflexiones (
@@ -75,6 +178,9 @@ async function ensureSchema() {
       respuesta TEXT,
       fecha TIMESTAMP DEFAULT now()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE reflexiones ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -90,12 +196,12 @@ async function ensureSchema() {
 app.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE ORDER BY creado ASC'
+      'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE AND usuario_id = $1 ORDER BY creado ASC',
+      [req.usuarioId]
     );
     res.render('index', {
       pendientes: rows,
       error: null,
-      clave: req.clave,
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
     });
   } catch (err) {
@@ -103,7 +209,6 @@ app.get('/', async (req, res) => {
     res.status(500).render('index', {
       pendientes: [],
       error: 'No se pudo leer la base de datos.',
-      clave: req.clave,
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
     });
   }
@@ -116,13 +221,13 @@ app.post('/pendientes', async (req, res) => {
   }
   try {
     await pool.query(
-      'INSERT INTO pendientes (texto, creado, hecho) VALUES ($1, now(), FALSE)',
-      [texto]
+      'INSERT INTO pendientes (texto, creado, hecho, usuario_id) VALUES ($1, now(), FALSE, $2)',
+      [texto, req.usuarioId]
     );
   } catch (err) {
     console.error('Error creando pendiente:', err.message);
   }
-  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+  res.redirect('/');
 });
 
 app.post('/pendientes/:id/completar', async (req, res) => {
@@ -131,11 +236,11 @@ app.post('/pendientes/:id/completar', async (req, res) => {
     return res.status(400).send('id inválido');
   }
   try {
-    await pool.query('UPDATE pendientes SET hecho = TRUE WHERE id = $1', [id]);
+    await pool.query('UPDATE pendientes SET hecho = TRUE WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
   } catch (err) {
     console.error('Error marcando pendiente como hecho:', err.message);
   }
-  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+  res.redirect('/');
 });
 
 app.post('/pendientes/:id/posponer', async (req, res) => {
@@ -148,13 +253,13 @@ app.post('/pendientes/:id/posponer', async (req, res) => {
       `UPDATE pendientes
        SET contador_posposiciones = contador_posposiciones + 1,
            necesita_reflexion = (contador_posposiciones + 1) >= 3
-       WHERE id = $1`,
-      [id]
+       WHERE id = $1 AND usuario_id = $2`,
+      [id, req.usuarioId]
     );
   } catch (err) {
     console.error('Error posponiendo pendiente:', err.message);
   }
-  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+  res.redirect('/');
 });
 
 app.post('/pendientes/:id/reflexion', async (req, res) => {
@@ -170,12 +275,12 @@ app.post('/pendientes/:id/reflexion', async (req, res) => {
   try {
     await client.query('BEGIN');
     await client.query(
-      'INSERT INTO reflexiones (pendiente_id, pregunta, respuesta) VALUES ($1, $2, $3)',
-      [id, '¿Qué pasa?', respuesta]
+      'INSERT INTO reflexiones (pendiente_id, pregunta, respuesta, usuario_id) VALUES ($1, $2, $3, $4)',
+      [id, '¿Qué pasa?', respuesta, req.usuarioId]
     );
     await client.query(
-      'UPDATE pendientes SET contador_posposiciones = 0, necesita_reflexion = FALSE WHERE id = $1',
-      [id]
+      'UPDATE pendientes SET contador_posposiciones = 0, necesita_reflexion = FALSE WHERE id = $1 AND usuario_id = $2',
+      [id, req.usuarioId]
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -184,7 +289,7 @@ app.post('/pendientes/:id/reflexion', async (req, res) => {
   } finally {
     client.release();
   }
-  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+  res.redirect('/');
 });
 
 app.post('/suscribir', async (req, res) => {
@@ -232,7 +337,6 @@ async function enviarPushATodos(payloadObjeto) {
 }
 
 function payloadRecordatorioDiario() {
-  const clave = process.env.ACCESS_KEY || '';
   return {
     title: 'Bitácora',
     body: 'No has registrado nada hecho hoy — ¿qué avanzaste?',
@@ -241,10 +345,10 @@ function payloadRecordatorioDiario() {
       { action: 'agregar', title: 'Agregar pendiente' },
     ],
     data: {
-      defaultUrl: `/?clave=${clave}`,
+      defaultUrl: '/',
       urls: {
-        abrir: `/?clave=${clave}`,
-        agregar: `/?clave=${clave}#nuevo-pendiente`,
+        abrir: '/',
+        agregar: '/#nuevo-pendiente',
       },
     },
   };
@@ -294,8 +398,8 @@ app.post('/notificar-prueba', async (req, res) => {
 const RANGOS_VALIDOS = ['7', '30', 'todo'];
 
 function whereRango(rango, columnaFecha) {
-  if (rango === '7') return `WHERE ${columnaFecha} >= NOW() - INTERVAL '7 days'`;
-  if (rango === '30') return `WHERE ${columnaFecha} >= NOW() - INTERVAL '30 days'`;
+  if (rango === '7') return `AND ${columnaFecha} >= NOW() - INTERVAL '7 days'`;
+  if (rango === '30') return `AND ${columnaFecha} >= NOW() - INTERVAL '30 days'`;
   return '';
 }
 
@@ -303,12 +407,13 @@ app.get('/ideas', async (req, res) => {
   const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {
     const { rows } = await pool.query(
-      `SELECT id, fecha, idea, estado FROM ideas ${whereRango(rango, 'fecha::timestamptz')} ORDER BY id DESC`
+      `SELECT id, fecha, idea, estado FROM ideas WHERE usuario_id = $1 ${whereRango(rango, 'fecha::timestamptz')} ORDER BY id DESC`,
+      [req.usuarioId]
     );
-    res.render('ideas', { ideas: rows, error: null, clave: req.clave, rango });
+    res.render('ideas', { ideas: rows, error: null, rango });
   } catch (err) {
     console.error('Error consultando ideas:', err.message);
-    res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', clave: req.clave, rango });
+    res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', rango });
   }
 });
 
@@ -316,12 +421,13 @@ app.get('/recordatorios', async (req, res) => {
   const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {
     const { rows } = await pool.query(
-      `SELECT id, texto, cuando, avisado FROM recordatorios ${whereRango(rango, 'cuando')} ORDER BY id DESC`
+      `SELECT id, texto, cuando, avisado FROM recordatorios WHERE usuario_id = $1 ${whereRango(rango, 'cuando')} ORDER BY id DESC`,
+      [req.usuarioId]
     );
-    res.render('recordatorios', { recordatorios: rows, error: null, clave: req.clave, rango });
+    res.render('recordatorios', { recordatorios: rows, error: null, rango });
   } catch (err) {
     console.error('Error consultando recordatorios:', err.message);
-    res.status(500).render('recordatorios', { recordatorios: [], error: 'No se pudo leer la base de datos.', clave: req.clave, rango });
+    res.status(500).render('recordatorios', { recordatorios: [], error: 'No se pudo leer la base de datos.', rango });
   }
 });
 
@@ -329,12 +435,13 @@ app.get('/hechos', async (req, res) => {
   const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {
     const { rows } = await pool.query(
-      `SELECT id, texto, cuando FROM hechos ${whereRango(rango, 'cuando')} ORDER BY id DESC`
+      `SELECT id, texto, cuando FROM hechos WHERE usuario_id = $1 ${whereRango(rango, 'cuando')} ORDER BY id DESC`,
+      [req.usuarioId]
     );
-    res.render('hechos', { hechos: rows, error: null, clave: req.clave, rango });
+    res.render('hechos', { hechos: rows, error: null, rango });
   } catch (err) {
     console.error('Error consultando hechos:', err.message);
-    res.status(500).render('hechos', { hechos: [], error: 'No se pudo leer la base de datos.', clave: req.clave, rango });
+    res.status(500).render('hechos', { hechos: [], error: 'No se pudo leer la base de datos.', rango });
   }
 });
 
@@ -344,11 +451,11 @@ app.get('/pendientes/:id/editar', async (req, res) => {
     return res.status(400).send('id inválido');
   }
   try {
-    const { rows } = await pool.query('SELECT id, texto FROM pendientes WHERE id = $1', [id]);
+    const { rows } = await pool.query('SELECT id, texto FROM pendientes WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
     if (rows.length === 0) {
       return res.status(404).send('Pendiente no encontrado');
     }
-    res.render('editar', { pendiente: rows[0], clave: req.clave });
+    res.render('editar', { pendiente: rows[0] });
   } catch (err) {
     console.error('Error cargando pendiente para editar:', err.message);
     res.status(500).send('No se pudo cargar el pendiente');
@@ -365,11 +472,11 @@ app.post('/pendientes/:id/editar', async (req, res) => {
     return res.status(400).send('El texto no puede estar vacío');
   }
   try {
-    await pool.query('UPDATE pendientes SET texto = $1 WHERE id = $2', [texto, id]);
+    await pool.query('UPDATE pendientes SET texto = $1 WHERE id = $2 AND usuario_id = $3', [texto, id, req.usuarioId]);
   } catch (err) {
     console.error('Error actualizando pendiente:', err.message);
   }
-  res.redirect(`/?clave=${encodeURIComponent(req.clave)}`);
+  res.redirect('/');
 });
 
 app.get('/exportar', async (req, res) => {
@@ -384,15 +491,15 @@ app.get('/exportar', async (req, res) => {
   try {
     const workbook = new ExcelJS.Workbook();
     const tablas = [
-      { nombre: 'Pendientes', query: 'SELECT * FROM pendientes ORDER BY id' },
-      { nombre: 'Ideas', query: 'SELECT * FROM ideas ORDER BY id' },
-      { nombre: 'Recordatorios', query: 'SELECT * FROM recordatorios ORDER BY id' },
-      { nombre: 'Hechos', query: 'SELECT * FROM hechos ORDER BY id' },
-      { nombre: 'Reflexiones', query: 'SELECT * FROM reflexiones ORDER BY id' },
+      { nombre: 'Pendientes', query: 'SELECT * FROM pendientes WHERE usuario_id = $1 ORDER BY id' },
+      { nombre: 'Ideas', query: 'SELECT * FROM ideas WHERE usuario_id = $1 ORDER BY id' },
+      { nombre: 'Recordatorios', query: 'SELECT * FROM recordatorios WHERE usuario_id = $1 ORDER BY id' },
+      { nombre: 'Hechos', query: 'SELECT * FROM hechos WHERE usuario_id = $1 ORDER BY id' },
+      { nombre: 'Reflexiones', query: 'SELECT * FROM reflexiones WHERE usuario_id = $1 ORDER BY id' },
     ];
 
     for (const { nombre, query } of tablas) {
-      const { rows, fields } = await pool.query(query);
+      const { rows, fields } = await pool.query(query, [req.usuarioId]);
       const hoja = workbook.addWorksheet(nombre);
       hoja.columns = fields.map((f) => ({ header: f.name, key: f.name, width: 22 }));
       rows.forEach((fila) => hoja.addRow(fila));

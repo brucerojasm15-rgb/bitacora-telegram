@@ -1,7 +1,10 @@
   <nav class="nav">
-    <a href="/?clave=<%= clave %>">Pendientes</a>
-    <a href="/ideas?clave=<%= clave %>">Ideas</a>
-    <a href="/recordatorios?clave=<%= clave %>">Recordatorios</a>
-    <a href="/hechos?clave=<%= clave %>">Hechos</a>
-    <a href="/exportar?clave=<%= clave %>">📥 Exportar</a>
+    <a href="/">Pendientes</a>
+    <a href="/ideas">Ideas</a>
+    <a href="/recordatorios">Recordatorios</a>
+    <a href="/hechos">Hechos</a>
+    <a href="/exportar">📥 Exportar</a>
+    <form method="POST" action="/logout" class="logout-form">
+      <button type="submit">Cerrar sesión</button>
+    </form>
   </nav>

@@ -1,6 +1,6 @@
   <div class="filtro">
     <label for="rango">Rango:</label>
-    <select id="rango" onchange="window.location.href = '?rango=' + this.value + '&clave=<%= clave %>'">
+    <select id="rango" onchange="window.location.href = '?rango=' + this.value">
       <option value="7" <%= rango === '7' ? 'selected' : '' %>>Últimos 7 días</option>
       <option value="30" <%= rango === '30' ? 'selected' : '' %>>Últimos 30 días</option>
       <option value="todo" <%= rango === 'todo' ? 'selected' : '' %>>Todo</option>

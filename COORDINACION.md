@@ -118,9 +118,8 @@
   llegar un mensaje, baja a 0 al abrir el chat que lo contiene, DB refleja
   `leido=true` solo en los mensajes del otro usuario, indicador de "visto"
   funciona en ambos sentidos).
-- Commit: 05758c1 (funcionalidad) y 1ed64b9 (registro de hash) — este
-  commit de actualización de COORDINACION.md con el resultado de la
-  prueba end-to-end queda registrado abajo tras el push.
+- Commit: 05758c1 (funcionalidad), 1ed64b9 (registro de hash inicial) y
+  2001c94 (documentación de la prueba end-to-end contra DB real).
 
 ### rama-integracion
 - Estado: —

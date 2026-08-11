@@ -47,6 +47,31 @@
 - Pendientes/notas: si se crea, coordinar con rama-chat por la tabla `amistades`
   (ver nota arriba).
 
+### rama-fix-login-mayusculas
+- Estado: commiteada, lista para merge — HOTFIX urgente, reportado por el usuario
+  en vivo (no podía entrar como "Bruce" en producción).
+- Tarea: el login comparaba `nombre_usuario` sensible a mayúsculas/minúsculas.
+  El teclado del celular autocapitaliza la primera letra del campo, así que
+  cualquier usuario que loguee desde el celular con autocapitalización activada
+  (el caso normal) fallaría al loguearse aunque su usuario y PIN sean correctos.
+  Confirmado contra la DB real: usuario "bruce"/PIN "2006" coincidía
+  perfectamente, pero "Bruce" (con B mayúscula) fallaba.
+- Fix: en `/login`, `nombreUsuario` ahora se normaliza con `.toLowerCase()`
+  antes de la consulta y de guardar en la sesión. Se verificó que no rompe a
+  ningún usuario existente (solo hay 1 usuario en la DB real, "bruce", ya en
+  minúsculas). También se agregó `autocapitalize="none" autocorrect="off"
+  spellcheck="false" autocomplete="username"` al input de usuario en
+  `login.ejs` para que el teclado del celular deje de autocapitalizar.
+- Archivos tocados: server.js (ruta POST /login), views/login.ejs.
+- Creada desde origin/main. Nota para quien mergee rama-registro después: esa
+  rama también debería normalizar a minúsculas en /registro (y en
+  /amigos/solicitar de rama-amigos) para mantener la consistencia — no se tocó
+  ninguna de esas dos ramas desde aquí para no invadir su alcance.
+- Qué se verificó: contra la DB real de Railway, servidor local, login con
+  "Bruce", "BRUCE", "bruce", "BrUcE" y PIN 2006 → los 4 dan 302 (login exitoso).
+- Pide confirmación al usuario antes de mergear a main (el merge está bloqueado
+  por permisos del proyecto de todas formas).
+
 ### rama-notificaciones
 - Estado: commiteada, prueba end-to-end contra la DB real completada y en verde,
   lista para revisión de rama-integracion.
@@ -163,13 +188,10 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
-- [ ] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
-  existente en tabla mensajes) — asignada a: rama-notificaciones (en progreso)
+- [x] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
+  existente en tabla mensajes) — tomada por rama-notificaciones
 - [ ] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
   no tiene el estilo aplicado) — asignada a: sin asignar
-- [x] Sistema de amigos: agregar amigo, aceptar/rechazar solicitud, listar amigos
-  — tomada por rama-amigos (rama commiteada, todavía no mergeada a main; ver su
-  propia COORDINACION.md/sección para el detalle completo)
 
 ## Cómo agregar un trabajador nuevo (para el usuario)
 

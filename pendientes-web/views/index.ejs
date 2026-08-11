@@ -103,23 +103,34 @@
       }
     });
 
+    function quitarFila(fila) {
+      const tbody = document.querySelector('#tabla-pendientes tbody');
+      if (fila) fila.remove();
+      if (!tbody || tbody.children.length === 0) {
+        document.getElementById('lista').innerHTML = '<p class="empty">No hay pendientes. 🎉</p>';
+      } else {
+        document.getElementById('contador').textContent = `${tbody.children.length} pendiente(s)`;
+      }
+    }
+
     document.querySelectorAll('.completar-form').forEach((form) => {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const fila = form.closest('tr');
         try {
           const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
           if (!res.ok) {
             window.location.reload();
             return;
           }
-          const fila = form.closest('tr');
-          if (fila) fila.remove();
-          const tbody = document.querySelector('#tabla-pendientes tbody');
-          if (!tbody || tbody.children.length === 0) {
-            document.getElementById('lista').innerHTML = '<p class="empty">No hay pendientes. 🎉</p>';
-          } else {
-            document.getElementById('contador').textContent = `${tbody.children.length} pendiente(s)`;
-          }
+          if (!fila) return;
+          const celdaAcciones = fila.querySelector('td:last-child');
+          if (celdaAcciones) celdaAcciones.innerHTML = '<span class="check-confirm">✔</span>';
+          fila.classList.add('fila-completada');
+          setTimeout(() => {
+            fila.classList.add('fila-saliendo');
+            setTimeout(() => quitarFila(fila), 350);
+          }, 500);
         } catch (err) {
           form.submit();
         }
@@ -129,9 +140,12 @@
     document.querySelectorAll('.posponer-form, .reflexion-form').forEach((form) => {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const fila = form.closest('tr');
+        if (fila) fila.classList.add('fila-posponiendo');
         try {
           await fetch(form.action, { method: 'POST', body: new FormData(form) });
-          window.location.reload();
+          if (fila) fila.classList.add('fila-saliendo');
+          setTimeout(() => window.location.reload(), 280);
         } catch (err) {
           form.submit();
         }

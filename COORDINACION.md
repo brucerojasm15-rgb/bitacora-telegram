@@ -23,7 +23,7 @@
 ### rama-chat
 - Estado: commit hecho, lista para merge
 - Archivos tocados: server.js (tabla mensajes, tabla amistades, helper usuarioPerteneceAmistad, rutas GET /chat y POST /mensajes), views/chat.ejs (nuevo)
-- Último commit: (pendiente de confirmar hash)
+- Último commit: 90f06ad
 - Pendientes/notas: se cerró un hueco de seguridad IDOR — ambas rutas ahora verifican
   que el usuario logueado pertenezca a la amistad_id antes de leer/escribir mensajes.
   Probado: bloquea con 403 sin membresía, permite con membresía real.
@@ -59,4 +59,7 @@
 
 - 2026-08-11 — merge de rama-visual (6e3328f) → main: sin conflictos, probado
   localmente (login + / + style.css sirviendo bien), commit de merge 1707a86, pusheado.
-- [pendiente] merge de rama-chat → main
+- 2026-08-11 — merge de rama-chat (90f06ad) → main: sin conflictos con server.js
+  (rama-visual no lo había tocado). Probado localmente tras el merge: login, 403 sin
+  membresía en amistad_id, envío de mensaje real con membresía válida, y 403 sigue
+  bloqueando después. Commit de merge f248c9c, pusheado.

@@ -12,7 +12,7 @@
 
     <form method="POST" action="/pendientes" class="nuevo">
       <input type="hidden" name="clave" value="<%= clave %>">
-      <input type="text" name="texto" placeholder="Nuevo pendiente..." required>
+      <input type="text" name="texto" id="nuevo-pendiente" placeholder="Nuevo pendiente..." required>
       <button type="submit">Agregar</button>
     </form>
 
@@ -69,6 +69,10 @@
   </main>
 
   <script>
+    if (window.location.hash === '#nuevo-pendiente') {
+      document.getElementById('nuevo-pendiente')?.focus();
+    }
+
     function urlBase64ToUint8Array(base64String) {
       const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
       const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

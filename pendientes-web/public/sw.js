@@ -47,6 +47,26 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(datos.title || 'Bitácora', {
       body: datos.body || '',
       icon: '/icons/icon-192.png',
+      actions: datos.actions || [],
+      data: datos.data || {},
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const datos = event.notification.data || {};
+  const url = (event.action && datos.urls && datos.urls[event.action]) || datos.defaultUrl || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ventanas) => {
+      for (const ventana of ventanas) {
+        if (ventana.url.startsWith(self.location.origin) && 'focus' in ventana) {
+          if ('navigate' in ventana) ventana.navigate(url);
+          return ventana.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });

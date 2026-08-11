@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const webpush = require('web-push');
+const cron = require('node-cron');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -209,26 +210,81 @@ app.post('/suscribir', async (req, res) => {
   res.status(201).send('ok');
 });
 
+async function enviarPushATodos(payloadObjeto) {
+  const { rows } = await pool.query('SELECT id, endpoint, p256dh, auth FROM push_subscriptions');
+  const payload = JSON.stringify(payloadObjeto);
+
+  const resultados = await Promise.allSettled(
+    rows.map((s) =>
+      webpush
+        .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
+        .catch(async (err) => {
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [s.id]);
+          }
+          throw err;
+        })
+    )
+  );
+
+  const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
+  return { enviadas, total: rows.length };
+}
+
+function payloadRecordatorioDiario() {
+  const clave = process.env.ACCESS_KEY || '';
+  return {
+    title: 'Bitácora',
+    body: 'No has registrado nada hecho hoy — ¿qué avanzaste?',
+    actions: [
+      { action: 'abrir', title: 'Abrir' },
+      { action: 'agregar', title: 'Agregar pendiente' },
+    ],
+    data: {
+      defaultUrl: `/?clave=${clave}`,
+      urls: {
+        abrir: `/?clave=${clave}`,
+        agregar: `/?clave=${clave}#nuevo-pendiente`,
+      },
+    },
+  };
+}
+
+async function revisarYNotificarSiNoHayHechosHoy() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT COUNT(*) FROM hechos
+      WHERE cuando >= date_trunc('day', now() AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima'
+    `);
+    const cantidadHoy = parseInt(rows[0].count, 10);
+    if (cantidadHoy > 0) {
+      console.log(`[cron] Ya hay ${cantidadHoy} hecho(s) hoy, no se notifica.`);
+      return;
+    }
+    const { enviadas, total } = await enviarPushATodos(payloadRecordatorioDiario());
+    console.log(`[cron] Sin hechos hoy: notificacion enviada a ${enviadas}/${total} suscripcion(es).`);
+  } catch (err) {
+    console.error('[cron] Error en el job de notificacion diaria:', err.message);
+  }
+}
+
+function cronDesdeHora(horaStr) {
+  const partes = (horaStr || '20:00').split(':');
+  const hora = parseInt(partes[0], 10);
+  const minuto = parseInt(partes[1], 10);
+  const horaValida = Number.isInteger(hora) && hora >= 0 && hora <= 23 ? hora : 20;
+  const minutoValido = Number.isInteger(minuto) && minuto >= 0 && minuto <= 59 ? minuto : 0;
+  return `${minutoValido} ${horaValida} * * *`;
+}
+
+cron.schedule(cronDesdeHora(process.env.HORA_NOTIFICACION), revisarYNotificarSiNoHayHechosHoy, {
+  timezone: 'America/Lima',
+});
+
 app.post('/notificar-prueba', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, endpoint, p256dh, auth FROM push_subscriptions');
-    const payload = JSON.stringify({ title: 'Bitácora', body: 'Hola desde tu bitácora' });
-
-    const resultados = await Promise.allSettled(
-      rows.map((s) =>
-        webpush
-          .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
-          .catch(async (err) => {
-            if (err.statusCode === 404 || err.statusCode === 410) {
-              await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [s.id]);
-            }
-            throw err;
-          })
-      )
-    );
-
-    const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
-    res.send(`Notificaciones enviadas: ${enviadas}/${rows.length}`);
+    const { enviadas, total } = await enviarPushATodos({ title: 'Bitácora', body: 'Hola desde tu bitácora' });
+    res.send(`Notificaciones enviadas: ${enviadas}/${total}`);
   } catch (err) {
     console.error('Error enviando notificaciones:', err.message);
     res.status(500).send('Error enviando notificaciones');

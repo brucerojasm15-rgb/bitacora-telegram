@@ -72,6 +72,44 @@
 - Pide confirmación al usuario antes de mergear a main (el merge está bloqueado
   por permisos del proyecto de todas formas).
 
+### rama-notificaciones (reconstruida como rama-notificaciones-integrada)
+- Estado: commiteada, lista para merge.
+- Tarea: notificaciones/marcar como leído en el chat (usar la columna `leido`
+  ya existente en la tabla `mensajes`). Trabajo original hecho en
+  `rama-notificaciones` (commits 05758c1, 1ed64b9, 2001c94) por otra sesión,
+  con prueba end-to-end completa contra la DB real ya documentada ahí.
+- Por qué existe esta rama con otro nombre: al abrir el PR de
+  `rama-notificaciones` contra `main`, GitHub lo marcó como CONFLICTING.
+  El conflicto real era solo en `COORDINACION.md`: tanto esta rama como
+  `rama-fix-login-mayusculas` agregan su propia sección nueva justo antes de
+  "### rama-integracion" — dos inserciones distintas en el mismo punto del
+  archivo, algo que un merge de 3 vías basado en líneas no puede resolver
+  solo aunque el contenido final no sea realmente incompatible. Se confirmó
+  con una simulación de merge de 3 vías (`diff3`) fuera de git que el único
+  archivo con conflicto real era `COORDINACION.md`; `server.js`, `chat.ejs`,
+  `style.css` y `login.ejs` mergeaban limpio. Como este proyecto tiene
+  bloqueado `git merge`/`git checkout main` por permisos (a propósito, ver
+  `.claude/settings.json`), no había forma de resolver el conflicto con un
+  merge de git local. Se optó por crear esta rama nueva directamente desde
+  `origin/main` actualizado y reaplicar a mano los mismos cambios de código
+  de `rama-notificaciones` (verificados línea por línea contra el diff
+  original), en vez de forzar un permiso nuevo.
+- Archivos tocados (idénticos a rama-notificaciones original): server.js
+  (GET /chat marca como leídos los mensajes del otro usuario, nueva ruta
+  GET /notificaciones), views/chat.ejs (banner de no leídos, indicador
+  ✓/✓✓), public/style.css (clases .notificacion, .no-leido, .visto).
+- Qué se verificó: `node --check server.js` sin errores. Prueba end-to-end
+  repetida contra la DB real de Railway con 2 usuarios de prueba nuevos: 3
+  mensajes de A a B → `GET /notificaciones` de B da `{"noLeidos":3}` → B abre
+  el chat → aparece el banner "sin leer" y el indicador ✓✓ NO aparece para B
+  (son mensajes ajenos) → `GET /notificaciones` de B baja a `{"noLeidos":0}`
+  → confirmado en DB que los 3 mensajes quedaron `leido=true` → A ve sus
+  propios mensajes con ✓✓. Usuarios/mensajes/amistad de prueba borrados al
+  terminar.
+- rama-notificaciones (la original) queda sin mergear — su contenido ya vive
+  en esta rama nueva. No se borró el branch remoto por si el usuario quiere
+  revisarlo, pero no hace falta abrir PR desde ahí.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -114,6 +152,10 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [x] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
+  existente en tabla mensajes) — tomada por rama-notificaciones
+- [ ] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
+  no tiene el estilo aplicado) — asignada a: sin asignar
 
 ## Cómo agregar un trabajador nuevo (para el usuario)
 

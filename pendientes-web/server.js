@@ -551,21 +551,53 @@ app.get('/exportar', async (req, res) => {
 app.get('/chat', async (req, res) => {
   const amistadId = Number(req.query.amistad_id);
   if (!Number.isInteger(amistadId)) {
-    return res.render('chat', { mensajes: [], amistadId: null, error: null });
+    return res.render('chat', { mensajes: [], amistadId: null, error: null, usuarioId: req.usuarioId });
   }
   try {
     const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
     if (!pertenece) {
-      return res.status(403).render('chat', { mensajes: [], amistadId: null, error: 'No tienes acceso a esta conversación.' });
+      return res.status(403).render('chat', { mensajes: [], amistadId: null, error: 'No tienes acceso a esta conversación.', usuarioId: req.usuarioId });
     }
     const { rows } = await pool.query(
       'SELECT id, amistad_id, autor_id, texto, fecha, leido FROM mensajes WHERE amistad_id = $1 ORDER BY fecha ASC',
       [amistadId]
     );
-    res.render('chat', { mensajes: rows, amistadId, error: null });
+    // Se capturan los mensajes ANTES de marcarlos como leídos, para que la
+    // vista todavía pueda mostrar cuáles llegaron sin leer en esta apertura
+    // del chat. Solo se marcan los mensajes del OTRO usuario: los propios no
+    // se tocan (su estado `leido` indica si el otro ya los vio).
+    await pool.query(
+      'UPDATE mensajes SET leido = true WHERE amistad_id = $1 AND autor_id != $2 AND leido = false',
+      [amistadId, req.usuarioId]
+    );
+    res.render('chat', { mensajes: rows, amistadId, error: null, usuarioId: req.usuarioId });
   } catch (err) {
     console.error('Error consultando mensajes:', err.message);
-    res.status(500).render('chat', { mensajes: [], amistadId, error: 'No se pudo leer la base de datos.' });
+    res.status(500).render('chat', { mensajes: [], amistadId, error: 'No se pudo leer la base de datos.', usuarioId: req.usuarioId });
+  }
+});
+
+// Notificaciones: cuántos mensajes sin leer tiene el usuario logueado en
+// total, sumando todas las conversaciones (amistades) a las que pertenece.
+// Pensado para que otras vistas (ej. una futura lista de conversaciones o
+// el menú de navegación) puedan mostrar un contador sin tener que abrir
+// cada chat. No depende de columnas que agregue rama-amigos (`estado`),
+// solo de las que ya existen en main.
+app.get('/notificaciones', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS no_leidos
+       FROM mensajes m
+       JOIN amistades a ON a.id = m.amistad_id
+       WHERE (a.usuario_a_id = $1 OR a.usuario_b_id = $1)
+         AND m.autor_id != $1
+         AND m.leido = false`,
+      [req.usuarioId]
+    );
+    res.json({ noLeidos: rows[0].no_leidos });
+  } catch (err) {
+    console.error('Error consultando notificaciones:', err.message);
+    res.status(500).json({ error: 'No se pudo consultar notificaciones.' });
   }
 });
 

@@ -40,16 +40,14 @@
   check verde al completar y resalte ámbar al posponer, respeta prefers-reduced-motion.
   No tocó server.js ni lógica de sesión/login/usuarios.
 
-### rama-amigos
-- Estado: no existe todavía (mencionada como posible rama futura)
-- Archivos tocados: —
-- Último commit: —
-- Pendientes/notas: si se crea, coordinar con rama-chat por la tabla `amistades`
-  (ver nota arriba).
+### rama-amigos (entrada histórica — ver sección completa más abajo)
+- Ver "rama-amigos (reconstruida como rama-amigos-integrada)" más abajo:
+  ya se creó, se implementó y se mergeó a main.
 
 ### rama-fix-login-mayusculas
-- Estado: commiteada, lista para merge — HOTFIX urgente, reportado por el usuario
-  en vivo (no podía entrar como "Bruce" en producción).
+- Estado: ✅ MERGEADA a main (commit de merge 780bd7f, desplegado y verificado
+  en producción). HOTFIX urgente, reportado por el usuario en vivo (no podía
+  entrar como "Bruce" en producción).
 - Tarea: el login comparaba `nombre_usuario` sensible a mayúsculas/minúsculas.
   El teclado del celular autocapitaliza la primera letra del campo, así que
   cualquier usuario que loguee desde el celular con autocapitalización activada
@@ -73,7 +71,8 @@
   por permisos del proyecto de todas formas).
 
 ### rama-notificaciones (reconstruida como rama-notificaciones-integrada)
-- Estado: commiteada, lista para merge.
+- Estado: ✅ MERGEADA a main como rama-notificaciones-integrada (PR #3,
+  commit de merge b06b36e). PR #2, el original, se cerró sin mergear.
 - Tarea: notificaciones/marcar como leído en el chat (usar la columna `leido`
   ya existente en la tabla `mensajes`). Trabajo original hecho en
   `rama-notificaciones` (commits 05758c1, 1ed64b9, 2001c94) por otra sesión,
@@ -111,7 +110,8 @@
   revisarlo, pero no hace falta abrir PR desde ahí.
 
 ### rama-registro (reconstruida como rama-registro-integrada)
-- Estado: commiteada, lista para merge.
+- Estado: ✅ MERGEADA a main como rama-registro-integrada (PR #5, commit de
+  merge 6e3dd8b). PR #4, el original, se cerró sin mergear.
 - Tarea: registro público de usuarios (`/registro`) + rate limiting en
   `/login` y `/registro`. Trabajo original hecho en `rama-registro`
   (commits a64d1fd, f5e0235, f903792).
@@ -137,8 +137,9 @@
   esta rama nueva.
 
 ### rama-amigos (reconstruida como rama-amigos-integrada)
-- Estado: commiteada, lista para merge — la última de las tres ramas
-  pendientes, ya integrada con rama-notificaciones y rama-registro en main.
+- Estado: ✅ MERGEADA a main como rama-amigos-integrada (PR #6, commit de
+  merge 10c9a7e) — la última de las tres ramas pendientes, ya integrada con
+  rama-notificaciones y rama-registro en main.
 - Tarea: sistema de amigos — agregar amigo, aceptar/rechazar solicitud,
   listar amigos. Trabajo original en `rama-amigos` (commits 125507f,
   d8ee391, 57b08fd, 8653d66, a1aba4b).
@@ -183,6 +184,31 @@
   (rama-visual no lo había tocado). Probado localmente tras el merge: login, 403 sin
   membresía en amistad_id, envío de mensaje real con membresía válida, y 403 sigue
   bloqueando después. Commit de merge f248c9c, pusheado.
+- 2026-08-11 — merge de rama-fix-login-mayusculas (85b5d83) → main vía PR #1: sin
+  conflictos. Desplegado en Railway y verificado en producción: login con
+  "Bruce"/"BRUCE"/"bruce" (mayúsculas mixtas) funciona. Commit de merge 780bd7f.
+- 2026-08-11 — merge de rama-notificaciones-integrada (05b4c10) → main vía PR #3:
+  el PR original de rama-notificaciones (#2) quedó CONFLICTING solo por
+  COORDINACION.md (dos ramas insertando su sección en el mismo punto del
+  archivo — confirmado con diff3 que no había conflicto de código real). Se
+  reconstruyó la rama desde main actualizado reaplicando el mismo código, se
+  reprobó end-to-end contra la DB real, y se mergeó limpio. PR #2 cerrado sin
+  mergear. Commit de merge b06b36e.
+- 2026-08-11 — merge de rama-registro-integrada (138d9ae) → main vía PR #5: el
+  PR original de rama-registro (#4) quedó CONFLICTING con un conflicto de
+  código real (la misma línea de POST /login tocada por el hotfix y por esta
+  rama). Se reconstruyó la rama desde main actualizado combinando ambos
+  cambios a mano (`limitarIntentos('login')` + `.toLowerCase()`), se reprobó
+  contra la DB real, y se mergeó limpio. PR #4 cerrado sin mergear. Commit de
+  merge 6e3dd8b.
+- 2026-08-11 — merge de rama-amigos-integrada (44dcd24) → main vía PR #6: el
+  PR original de rama-amigos quedó CONFLICTING solo por COORDINACION.md
+  (mismo patrón que rama-notificaciones). Se verificó antes de aplicar el
+  ALTER TABLE que `amistades` estaba vacía en la DB real (0 filas). Se
+  reconstruyó la rama desde main actualizado reaplicando el mismo código, se
+  reprobó end-to-end contra la DB real (incluida la integración con
+  GET /notificaciones ya mergeada), y se mergeó limpio. Commit de merge
+  10c9a7e.
 
 ## Onboarding para una sesión nueva (nuevo "trabajador")
 

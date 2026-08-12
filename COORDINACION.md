@@ -580,7 +580,7 @@
   posterior a rama-estadisticas (PR #15). Confirmado con sesión real: GET
   autenticado a `/estadisticas` → 404. Pendiente de que alguien la
   reconstruya.
-- Commit: (ver historial de merges abajo tras mergear).
+- Commit: 9d0e2ad. Mergeada a main vía PR #27 (ver Historial de merges abajo).
 
 ### rama-integracion
 - Estado: —
@@ -655,6 +655,12 @@
   el último ítem del backlog original (código de recuperación de PIN).
   Probado end-to-end contra la DB real antes de abrir el PR (ver su sección
   arriba). Commit de merge 00ad9ce.
+- 2026-08-12 — merge de rama-eliminar-pendientes (9d0e2ad) → main vía PR
+  #27: sin conflictos (mergeStateStatus CLEAN), CI (`verificar`) en verde.
+  Botón "Eliminar" con borrado lógico (columna `eliminado`), cierra la
+  decisión pendiente anotada en la sección de rama-historial-ediciones.
+  Probado end-to-end contra la DB real antes de abrir el PR (ver su sección
+  arriba). Commit de merge 8894d7b.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 
@@ -744,6 +750,14 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [ ] BUG: `GET /estadisticas` no existe en `server.js` (404 confirmado en
+  producción y local) aunque `views/estadisticas.ejs` y el link de nav
+  siguen ahí — se perdió en algún merge/reconstrucción posterior a
+  rama-estadisticas (PR #15). Hay que revisar el historial de esa rama y
+  reconstruir la ruta (helpers `formatearDiaLima`/`diaAnterior`/
+  `calcularRacha`, constante `VENCIDO_DIAS`, la ruta en sí) — detectado y
+  documentado por rama-eliminar-pendientes, no corregido ahí para no salirse
+  de su propio alcance. — asignada a: sin asignar
 - [x] Registro público de usuarios + rate limiting básico en login/registro — tomada por rama-registro
 - [x] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
   existente en tabla mensajes) — tomada por rama-notificaciones

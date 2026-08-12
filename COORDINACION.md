@@ -608,7 +608,7 @@
   de hace 9 días pero con `eliminado = TRUE` NO aparece como vencido, y uno
   completado hoy pero eliminado NO cuenta para la racha — confirma que el
   ajuste funciona. Usuario y pendientes de prueba borrados al terminar.
-- Commit: (ver historial de merges abajo tras mergear).
+- Commit: 60e35bd. Mergeada a main vía PR #29 (ver Historial de merges abajo).
 
 ### rama-integracion
 - Estado: —
@@ -689,6 +689,12 @@
   decisión pendiente anotada en la sección de rama-historial-ediciones.
   Probado end-to-end contra la DB real antes de abrir el PR (ver su sección
   arriba). Commit de merge 8894d7b.
+- 2026-08-12 — merge de rama-fix-estadisticas (60e35bd) → main vía PR #29:
+  sin conflictos (mergeStateStatus CLEAN), CI (`verificar`) en verde.
+  Reconstruye `GET /estadisticas`, que se había perdido en un merge
+  anterior — bug detectado y documentado por rama-eliminar-pendientes.
+  Probado end-to-end contra la DB real con fechas controladas por SQL
+  antes de abrir el PR (ver su sección arriba). Commit de merge 656e096.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 
@@ -778,14 +784,10 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
-- [ ] BUG: `GET /estadisticas` no existe en `server.js` (404 confirmado en
+- [x] BUG: `GET /estadisticas` no existe en `server.js` (404 confirmado en
   producción y local) aunque `views/estadisticas.ejs` y el link de nav
   siguen ahí — se perdió en algún merge/reconstrucción posterior a
-  rama-estadisticas (PR #15). Hay que revisar el historial de esa rama y
-  reconstruir la ruta (helpers `formatearDiaLima`/`diaAnterior`/
-  `calcularRacha`, constante `VENCIDO_DIAS`, la ruta en sí) — detectado y
-  documentado por rama-eliminar-pendientes, no corregido ahí para no salirse
-  de su propio alcance. — asignada a: sin asignar
+  rama-estadisticas (PR #15). — tomada por rama-fix-estadisticas
 - [x] Registro público de usuarios + rate limiting básico en login/registro — tomada por rama-registro
 - [x] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
   existente en tabla mensajes) — tomada por rama-notificaciones

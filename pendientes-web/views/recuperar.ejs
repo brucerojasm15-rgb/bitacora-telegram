@@ -14,6 +14,7 @@
     <form method="POST" action="/recuperar" class="login-form">
       <input type="text" name="nombre_usuario" placeholder="Usuario" value="<%= nombreUsuario %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required autofocus>
       <input type="text" name="codigo" placeholder="Código de recuperación" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" required>
+      <input type="password" name="pin_actual" placeholder="PIN actual" inputmode="numeric" pattern="\d{4,6}" required>
       <input type="password" name="pin" placeholder="PIN nuevo (4 a 6 dígitos)" inputmode="numeric" pattern="\d{4,6}" required>
       <input type="password" name="confirmar_pin" placeholder="Repite el PIN nuevo" inputmode="numeric" pattern="\d{4,6}" required>
       <button type="submit">Fijar PIN nuevo</button>

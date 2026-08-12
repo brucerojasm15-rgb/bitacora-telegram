@@ -611,19 +611,48 @@
 - Commit: 60e35bd. Mergeada a main vía PR #29 (ver Historial de merges abajo).
 
 ### rama-fix-recuperar-pin
-- Estado: 🔧 en progreso.
-- Tarea: tarea 1 de la ronda "2026-08-12 — roadmap grande" (backlog, arriba)
-  — `/recuperar` hoy solo pide `nombre_usuario` + código; hay que exigir
-  también el PIN actual, verificándolo contra `pin_hash` con la
-  `verificarPin()` ya existente, además del código contra
-  `codigo_recuperacion_hash`. Si cualquiera de los dos falla, mismo error
-  genérico ("Usuario o código incorrecto").
-- Archivos que voy a tocar: `pendientes-web/server.js` (ruta `POST
-  /recuperar` únicamente — no toco `/login`, `/registro` ni
-  `limitarIntentos`), `pendientes-web/views/recuperar.ejs` (agregar el
-  campo del PIN actual al formulario).
-- Próxima actualización: al terminar, con el detalle de qué cambió, cómo se
-  probó, y el hash del commit.
+- Estado: ✅ commiteada, lista para merge.
+- Tarea: tarea 1 (SEGURIDAD, bloqueante) de la ronda "2026-08-12 — roadmap
+  grande" — `/recuperar` exigía solo `nombre_usuario` + código; cualquiera
+  con el código podía resetear el PIN de otra cuenta sin saber su PIN
+  actual (hueco documentado en la sección de rama-recuperacion-pin).
+- Cambios en `server.js` (`POST /recuperar` únicamente, no se tocó
+  `/login`, `/registro` ni `limitarIntentos`):
+  - Nuevo campo `pinActual = req.body.pin_actual`, agregado a la validación
+    de "campos completos" junto a `nombreUsuario`/`codigo`.
+  - El `SELECT` ahora trae también `pin_hash` (antes solo traía
+    `codigo_recuperacion_hash`).
+  - La condición de éxito ahora exige `verificarPin(codigo,
+    codigo_recuperacion_hash) Y verificarPin(pinActual, pin_hash)` — si
+    CUALQUIERA de los dos falla, se devuelve el mismo mensaje genérico que
+    ya existía ("Usuario o código incorrecto"), sin cambiar el texto, para
+    no revelar cuál de los dos factores falló.
+  - El resto de la ruta (generar PIN nuevo, rotar el código de
+    recuperación, mostrarlo una vez) no se tocó.
+- Vista: `views/recuperar.ejs` — un input más (`pin_actual`, mismo patrón
+  `type="password" inputmode="numeric" pattern="\d{4,6}"` que el resto de
+  los campos de PIN), ubicado entre el código y el PIN nuevo.
+- Qué se verificó: `npm run ci` sin errores. Contra la DB real de Railway
+  (servidor local puerto 3109, usuario descartable `test_fix_recup`,
+  creado y borrado en la prueba) — los 3 casos exactos que pedía la tarea,
+  más algunos extra:
+  1. Código correcto + PIN actual incorrecto → falla con el mensaje
+     genérico; se confirmó además que el PIN NO cambió (login con el PIN
+     original siguió funcionando después del intento fallido).
+  2. Código incorrecto + PIN actual correcto → falla con el mismo mensaje
+     genérico.
+  3. Sin el campo `pin_actual` en el body (simula un formulario viejo/
+     incompleto) → rechazado por la validación de campos completos, no
+     llega ni a intentar verificar nada.
+  4. Ambos correctos → funciona igual que antes: 200, PIN actualizado,
+     código de recuperación rotado y mostrado una vez. Confirmado con
+     login: el PIN nuevo entra (302), el PIN viejo ya no (mensaje de
+     error).
+  Usuario de prueba borrado de la DB real al terminar.
+- Esto desbloquea la tarea 2 (registro público) del mismo roadmap, que
+  tenía como condición explícita no desplegarse hasta que este fix
+  estuviera "probado y confirmado".
+- Commit: (ver historial de merges abajo tras mergear).
 
 ### rama-integracion
 - Estado: —

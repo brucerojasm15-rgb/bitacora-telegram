@@ -244,7 +244,8 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS contador_posposiciones INT DEFAULT 0,
       ADD COLUMN IF NOT EXISTS necesita_reflexion BOOLEAN DEFAULT false,
       ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id),
-      ADD COLUMN IF NOT EXISTS categoria TEXT
+      ADD COLUMN IF NOT EXISTS categoria TEXT,
+      ADD COLUMN IF NOT EXISTS asignado_a INT REFERENCES usuarios(id)
   `);
   await pool.query(`
     ALTER TABLE ideas ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
@@ -317,6 +318,19 @@ async function ensureSchema() {
 // como sin categoría en vez de fallar.
 const CATEGORIAS_VALIDAS = ['personal', 'trabajo', 'fundo', 'salud', 'otro'];
 
+// rama-tareas-compartidas: confirma amistad directa aceptada entre dos
+// usuarios (no requiere amistad_id, a diferencia de usuarioPerteneceAmistad
+// que valida contra una fila específica de amistades).
+async function usuariosSonAmigos(usuarioIdA, usuarioIdB) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM amistades
+     WHERE estado = 'aceptada'
+       AND ((usuario_a_id = $1 AND usuario_b_id = $2) OR (usuario_a_id = $2 AND usuario_b_id = $1))`,
+    [usuarioIdA, usuarioIdB]
+  );
+  return rows.length > 0;
+}
+
 async function usuarioPerteneceAmistad(usuarioId, amistadId) {
   const { rows } = await pool.query(
     "SELECT 1 FROM amistades WHERE id = $1 AND estado = 'aceptada' AND (usuario_a_id = $2 OR usuario_b_id = $2)",
@@ -329,17 +343,24 @@ app.get('/', async (req, res) => {
   const categoriaFiltro = CATEGORIAS_VALIDAS.includes(req.query.categoria) ? req.query.categoria : null;
   const q = (req.query.q || '').trim();
   try {
+    // rama-tareas-compartidas: además de los propios, trae los pendientes
+    // que un amigo le asignó (asignado_a = usuarioId). Se trae el nombre de
+    // quien lo creó para mostrar "Asignado por @fulano" en esos casos.
     const params = [req.usuarioId];
-    let consulta = 'SELECT id, texto, creado, necesita_reflexion, categoria FROM pendientes WHERE hecho = FALSE AND usuario_id = $1';
+    let consulta = `SELECT p.id, p.texto, p.creado, p.necesita_reflexion, p.categoria, p.usuario_id, p.asignado_a,
+              uc.nombre_usuario AS creador_nombre
+       FROM pendientes p
+       LEFT JOIN usuarios uc ON uc.id = p.usuario_id
+       WHERE p.hecho = FALSE AND (p.usuario_id = $1 OR p.asignado_a = $1)`;
     if (categoriaFiltro) {
       params.push(categoriaFiltro);
-      consulta += ` AND categoria = $${params.length}`;
+      consulta += ` AND p.categoria = $${params.length}`;
     }
     if (q) {
       params.push(`%${q}%`);
-      consulta += ` AND texto ILIKE $${params.length}`;
+      consulta += ` AND p.texto ILIKE $${params.length}`;
     }
-    consulta += ' ORDER BY creado ASC';
+    consulta += ' ORDER BY p.creado ASC';
     const { rows } = await pool.query(consulta, params);
     res.render('index', {
       pendientes: rows,
@@ -348,6 +369,7 @@ app.get('/', async (req, res) => {
       categorias: CATEGORIAS_VALIDAS,
       categoriaFiltro,
       q,
+      usuarioId: req.usuarioId,
     });
   } catch (err) {
     console.error('Error consultando pendientes:', err.message);
@@ -358,6 +380,7 @@ app.get('/', async (req, res) => {
       categorias: CATEGORIAS_VALIDAS,
       categoriaFiltro,
       q,
+      usuarioId: req.usuarioId,
     });
   }
 });
@@ -600,11 +623,27 @@ app.get('/pendientes/:id/editar', async (req, res) => {
     return res.status(400).send('id inválido');
   }
   try {
-    const { rows } = await pool.query('SELECT id, texto, categoria FROM pendientes WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+    // rama-tareas-compartidas: además del texto/categoría, trae a quién está
+    // asignado (si aplica). Solo el dueño puede editar o reasignar.
+    const { rows } = await pool.query(
+      `SELECT p.id, p.texto, p.categoria, p.asignado_a, ua.nombre_usuario AS asignado_a_nombre
+       FROM pendientes p
+       LEFT JOIN usuarios ua ON ua.id = p.asignado_a
+       WHERE p.id = $1 AND p.usuario_id = $2`,
+      [id, req.usuarioId]
+    );
     if (rows.length === 0) {
       return res.status(404).send('Pendiente no encontrado');
     }
-    res.render('editar', { pendiente: rows[0], categorias: CATEGORIAS_VALIDAS });
+    const { rows: amigos } = await pool.query(
+      `SELECT u.id, u.nombre_usuario
+       FROM amistades a
+       JOIN usuarios u ON u.id = CASE WHEN a.usuario_a_id = $1 THEN a.usuario_b_id ELSE a.usuario_a_id END
+       WHERE a.estado = 'aceptada' AND (a.usuario_a_id = $1 OR a.usuario_b_id = $1)
+       ORDER BY u.nombre_usuario ASC`,
+      [req.usuarioId]
+    );
+    res.render('editar', { pendiente: rows[0], categorias: CATEGORIAS_VALIDAS, amigos });
   } catch (err) {
     console.error('Error cargando pendiente para editar:', err.message);
     res.status(500).send('No se pudo cargar el pendiente');
@@ -646,6 +685,51 @@ app.post('/pendientes/:id/editar', async (req, res) => {
     client.release();
   }
   res.redirect('/');
+});
+
+app.post('/pendientes/:id/asignar', async (req, res) => {
+  const id = Number(req.params.id);
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    const { rows: propios } = await pool.query(
+      'SELECT id FROM pendientes WHERE id = $1 AND usuario_id = $2',
+      [id, req.usuarioId]
+    );
+    if (propios.length === 0) {
+      return res.status(404).send('Pendiente no encontrado');
+    }
+
+    if (!nombreUsuario) {
+      // Selector vacío = quitar la asignación actual.
+      await pool.query('UPDATE pendientes SET asignado_a = NULL WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+      return res.redirect('/pendientes/' + id + '/editar');
+    }
+
+    const { rows: destinatarioRows } = await pool.query(
+      'SELECT id FROM usuarios WHERE nombre_usuario = $1',
+      [nombreUsuario]
+    );
+    const destinatario = destinatarioRows[0];
+    if (!destinatario) {
+      return res.status(400).send('No existe ningún usuario con ese nombre.');
+    }
+    if (destinatario.id === req.usuarioId) {
+      return res.status(400).send('No puedes asignarte un pendiente a ti mismo.');
+    }
+    const sonAmigos = await usuariosSonAmigos(req.usuarioId, destinatario.id);
+    if (!sonAmigos) {
+      return res.status(403).send('Solo puedes asignar pendientes a un amigo (amistad aceptada).');
+    }
+
+    await pool.query('UPDATE pendientes SET asignado_a = $1 WHERE id = $2 AND usuario_id = $3', [destinatario.id, id, req.usuarioId]);
+  } catch (err) {
+    console.error('Error asignando pendiente:', err.message);
+    return res.status(500).send('No se pudo asignar el pendiente.');
+  }
+  res.redirect('/pendientes/' + id + '/editar');
 });
 
 app.get('/exportar', async (req, res) => {

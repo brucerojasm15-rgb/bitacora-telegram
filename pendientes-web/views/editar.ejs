@@ -22,6 +22,17 @@
         <a href="/" class="btn-link">Cancelar</a>
       </div>
     </form>
+
+    <form method="POST" action="/pendientes/<%= pendiente.id %>/asignar" class="asignar-form">
+      <label for="nombre_usuario">Asignar a un amigo</label>
+      <select name="nombre_usuario" id="nombre_usuario">
+        <option value="">Sin asignar</option>
+        <% amigos.forEach((a) => { %>
+          <option value="<%= a.nombre_usuario %>" <%= pendiente.asignado_a === a.id ? 'selected' : '' %>>@<%= a.nombre_usuario %></option>
+        <% }) %>
+      </select>
+      <button type="submit">Guardar asignación</button>
+    </form>
   </main>
 
 <%- include('partials/scripts') %>

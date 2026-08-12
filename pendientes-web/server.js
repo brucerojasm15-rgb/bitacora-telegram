@@ -300,6 +300,14 @@ async function ensureSchema() {
       leido BOOLEAN DEFAULT false
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS historial_ediciones (
+      id SERIAL PRIMARY KEY,
+      pendiente_id INT REFERENCES pendientes(id),
+      texto_anterior TEXT,
+      editado TIMESTAMP DEFAULT now()
+    )
+  `);
 }
 
 async function usuarioPerteneceAmistad(usuarioId, amistadId) {
@@ -588,10 +596,26 @@ app.post('/pendientes/:id/editar', async (req, res) => {
   if (!texto) {
     return res.status(400).send('El texto no puede estar vacío');
   }
+  const client = await pool.connect();
   try {
-    await pool.query('UPDATE pendientes SET texto = $1 WHERE id = $2 AND usuario_id = $3', [texto, id, req.usuarioId]);
+    await client.query('BEGIN');
+    const actual = await client.query(
+      'SELECT texto FROM pendientes WHERE id = $1 AND usuario_id = $2',
+      [id, req.usuarioId]
+    );
+    if (actual.rows.length > 0) {
+      await client.query(
+        'INSERT INTO historial_ediciones (pendiente_id, texto_anterior) VALUES ($1, $2)',
+        [id, actual.rows[0].texto]
+      );
+      await client.query('UPDATE pendientes SET texto = $1 WHERE id = $2 AND usuario_id = $3', [texto, id, req.usuarioId]);
+    }
+    await client.query('COMMIT');
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error actualizando pendiente:', err.message);
+  } finally {
+    client.release();
   }
   res.redirect('/');
 });

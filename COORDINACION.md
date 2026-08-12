@@ -287,7 +287,7 @@
   usuario de prueba borrados, 0 filas restantes).
 - No toqué `historial_ediciones` (rama-historial-ediciones) ni las rutas
   /amigos, /chat, /notificaciones — solo pendientes.
-- Commit: (ver hash abajo en el mensaje final al usuario / `git log`).
+- Commit: 5920efd.
 
 ### rama-integracion
 - Estado: —

@@ -691,7 +691,10 @@
   misma IP, se rechaza con el mensaje del límite nuevo y NO crea la cuenta
   (confirmado que no quedó una 6ta fila en `usuarios`). Los 5 usuarios de
   prueba se borraron de la DB real al terminar.
-- Commit: (ver historial de merges abajo tras mergear).
+- Commit: a7d868e. Mergeada a main vía PR #34 (ver Historial de merges
+  abajo). Verificado en producción con 1 registro de prueba real (no se
+  agotó el cupo completo de 5/hora a propósito, para no bloquear registros
+  reales desde el mismo IP compartido durante la hora siguiente).
 
 ### rama-integracion
 - Estado: —
@@ -785,6 +788,12 @@
   Desbloquea la tarea 2 (registro público) del mismo roadmap. Probado
   end-to-end contra la DB real antes de abrir el PR (ver su sección
   arriba). Commit de merge 0fd4410.
+- 2026-08-12 — merge de rama-limite-registro (a7d868e) → main vía PR #34:
+  sin conflictos (mergeStateStatus CLEAN), CI (`verificar`) en verde. Tarea
+  2 del roadmap 2026-08-12: límite de 5 cuentas nuevas exitosas por IP/hora,
+  independiente del límite de intentos ya existente. Probado end-to-end
+  contra la DB real antes de abrir el PR (ver su sección arriba) y
+  verificado en producción. Commit de merge 752a1cd.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 
@@ -1004,7 +1013,7 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   — Depende de: nada. Bloquea: tarea 2 (no deploy de registro público sin
   esto confirmado).
 
-- [ ] **2. Confirmar/ajustar registro público + límite por IP/hora.** Nota
+- [x] **2. Confirmar/ajustar registro público + límite por IP/hora.** Nota
   importante para quien tome esto: `POST /registro` **ya existe y ya es
   público** (sin invitación, sin sesión previa — ver el middleware de
   autenticación en `server.js`), y ya pasa por `limitarIntentos('registro')`

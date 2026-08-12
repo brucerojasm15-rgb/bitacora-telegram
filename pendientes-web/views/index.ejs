@@ -15,11 +15,17 @@
       <button type="submit">Agregar</button>
     </form>
 
+    <form method="GET" action="/" class="filtro-rango">
+      <input type="text" name="q" value="<%= q %>" placeholder="Buscar pendientes...">
+      <button type="submit">Buscar</button>
+      <% if (q) { %><a href="/" class="btn-link">Limpiar</a><% } %>
+    </form>
+
     <div id="lista">
       <% if (error) { %>
         <p class="error"><%= error %></p>
       <% } else if (pendientes.length === 0) { %>
-        <p class="empty">No hay pendientes. 🎉</p>
+        <p class="empty"><%= q ? 'Ningún pendiente coincide con "' + q + '".' : 'No hay pendientes. 🎉' %></p>
       <% } else { %>
         <p class="count" id="contador"><%= pendientes.length %> pendiente(s)</p>
         <table id="tabla-pendientes">

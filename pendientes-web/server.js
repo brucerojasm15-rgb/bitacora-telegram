@@ -319,15 +319,21 @@ async function usuarioPerteneceAmistad(usuarioId, amistadId) {
 }
 
 app.get('/', async (req, res) => {
+  const q = (req.query.q || '').trim();
   try {
-    const { rows } = await pool.query(
-      'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE AND usuario_id = $1 ORDER BY creado ASC',
-      [req.usuarioId]
-    );
+    const params = [req.usuarioId];
+    let consulta = 'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE AND usuario_id = $1';
+    if (q) {
+      params.push(`%${q}%`);
+      consulta += ` AND texto ILIKE $${params.length}`;
+    }
+    consulta += ' ORDER BY creado ASC';
+    const { rows } = await pool.query(consulta, params);
     res.render('index', {
       pendientes: rows,
       error: null,
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      q,
     });
   } catch (err) {
     console.error('Error consultando pendientes:', err.message);
@@ -335,6 +341,7 @@ app.get('/', async (req, res) => {
       pendientes: [],
       error: 'No se pudo leer la base de datos.',
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      q,
     });
   }
 });
@@ -804,30 +811,40 @@ app.post('/amigos/:id/rechazar', async (req, res) => {
 // construye en otra rama.
 app.get('/chat', async (req, res) => {
   const amistadId = Number(req.query.amistad_id);
+  const buscar = (req.query.buscar || '').trim();
   if (!Number.isInteger(amistadId)) {
-    return res.render('chat', { mensajes: [], amistadId: null, error: null, usuarioId: req.usuarioId });
+    return res.render('chat', { mensajes: [], amistadId: null, error: null, usuarioId: req.usuarioId, buscar });
   }
   try {
+    // La búsqueda por texto NUNCA se salta esta verificación: primero se
+    // confirma membresía en la amistad, recién después se arma la consulta
+    // de mensajes (con o sin filtro de texto).
     const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
     if (!pertenece) {
-      return res.status(403).render('chat', { mensajes: [], amistadId: null, error: 'No tienes acceso a esta conversación.', usuarioId: req.usuarioId });
+      return res.status(403).render('chat', { mensajes: [], amistadId: null, error: 'No tienes acceso a esta conversación.', usuarioId: req.usuarioId, buscar });
     }
-    const { rows } = await pool.query(
-      'SELECT id, amistad_id, autor_id, texto, fecha, leido FROM mensajes WHERE amistad_id = $1 ORDER BY fecha ASC',
-      [amistadId]
-    );
+    const params = [amistadId];
+    let consulta = 'SELECT id, amistad_id, autor_id, texto, fecha, leido FROM mensajes WHERE amistad_id = $1';
+    if (buscar) {
+      params.push(`%${buscar}%`);
+      consulta += ` AND texto ILIKE $${params.length}`;
+    }
+    consulta += ' ORDER BY fecha ASC';
+    const { rows } = await pool.query(consulta, params);
     // Se capturan los mensajes ANTES de marcarlos como leídos, para que la
     // vista todavía pueda mostrar cuáles llegaron sin leer en esta apertura
     // del chat. Solo se marcan los mensajes del OTRO usuario: los propios no
-    // se tocan (su estado `leido` indica si el otro ya los vio).
+    // se tocan (su estado `leido` indica si el otro ya los vio). Esto pasa
+    // siempre, sin importar el filtro de búsqueda (que solo afecta qué se
+    // muestra, no el estado leído/no leído real de la conversación).
     await pool.query(
       'UPDATE mensajes SET leido = true WHERE amistad_id = $1 AND autor_id != $2 AND leido = false',
       [amistadId, req.usuarioId]
     );
-    res.render('chat', { mensajes: rows, amistadId, error: null, usuarioId: req.usuarioId });
+    res.render('chat', { mensajes: rows, amistadId, error: null, usuarioId: req.usuarioId, buscar });
   } catch (err) {
     console.error('Error consultando mensajes:', err.message);
-    res.status(500).render('chat', { mensajes: [], amistadId, error: 'No se pudo leer la base de datos.', usuarioId: req.usuarioId });
+    res.status(500).render('chat', { mensajes: [], amistadId, error: 'No se pudo leer la base de datos.', usuarioId: req.usuarioId, buscar });
   }
 });
 

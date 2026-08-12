@@ -242,6 +242,67 @@
   máquina Windows (carpeta aislada, rama independiente, `npm install` sin
   problemas) — ver la nueva regla 2 y el paso 4 de onboarding arriba.
 
+### rama-busqueda
+- Estado: ✅ commiteada, lista para merge.
+- Tarea: búsqueda de texto en pendientes (`GET /`, query param `q`) y en el
+  chat (`GET /chat`, query param `buscar`), del backlog "Ronda nueva
+  (2026-08-11)".
+- Cambios en `server.js`: `app.get('/', ...)` arma la consulta con un
+  `WHERE hecho = FALSE AND usuario_id = $1` base y, si `req.query.q` viene
+  no vacío, agrega ` AND texto ILIKE $2` con el patrón `%q%` como parámetro
+  ($2, nunca concatenado directo — mismo estilo parametrizado que ya usa
+  todo el archivo). `app.get('/chat', ...)` hace lo mismo sobre `mensajes`
+  con `req.query.buscar`, pero el filtro se arma DESPUÉS de
+  `usuarioPerteneceAmistad(req.usuarioId, amistadId)` — la verificación de
+  acceso sigue corriendo primero sin excepciones, tanto con como sin
+  `buscar`; no se tocó el helper ni su lógica. El `UPDATE ... SET leido =
+  true` (de rama-notificaciones) sigue marcando como leídos TODOS los
+  mensajes no leídos de la conversación, no solo los que matchean el
+  filtro — es intencional, el filtro solo afecta qué se muestra.
+- Cambios en vistas: `views/index.ejs` — form GET simple (`?q=`) arriba de
+  la lista, reutilizando la clase `.filtro-rango` ya estilizada por
+  rama-tema-chat; mensaje de "vacío" distinto cuando hay `q` sin
+  resultados. `views/chat.ejs` — se agregó un input `buscar` al mismo form
+  GET que ya existía para `amistad_id` (para que ambos viajen juntos al
+  recargar `/chat`), más un link "Limpiar" y mensaje de "vacío" distinto
+  cuando hay `buscar` sin resultados. Sin cambios de esquema (ninguna
+  tabla/columna nueva), como estaba previsto.
+- Qué se probó contra la DB real de Railway (servidor local en puerto
+  3103, usuarios 100% descartables creados vía `POST /registro` real):
+  1) 3 pendientes con textos distintos, uno con una palabra única
+     ("ZORROVERDE") → `GET /?q=zorroverde` (minúscula, confirma
+     case-insensitive de ILIKE) devuelve solo ese pendiente, los otros 2
+     no aparecen. `GET /?q=palabraquenoexiste123` devuelve el mensaje de
+     "sin resultados".
+  2) Segundo usuario de prueba + amistad aceptada entre ambos (por el
+     flujo real: `/amigos/solicitar` + `/amigos/:id/aceptar`) + 3 mensajes
+     con textos distintos, uno con palabra única ("CAFEXTRAORDINARIO") →
+     `GET /chat?amistad_id=X&buscar=cafextraordinario` devuelve solo ese
+     mensaje.
+  3) Un tercer usuario de prueba SIN pertenecer a esa amistad →
+     `GET /chat?amistad_id=X&buscar=cafextraordinario` → 403, confirmando
+     que la búsqueda no abre ningún atajo alrededor de
+     `usuarioPerteneceAmistad`.
+  Los 3 usuarios de prueba, sus pendientes, la amistad y los mensajes se
+  borraron al terminar (verificado con una consulta final que no queda
+  ningún `testbusca_*` en `usuarios`).
+- Nota/hueco encontrado (no relacionado con esta tarea, no se tocó nada al
+  respecto): durante las pruebas se observó una condición de carrera
+  preexistente, intermitente y de ventana muy corta, en el guardado de
+  sesión contra la DB remota — inmediatamente después de `POST /registro`
+  (o análogo), una request siguiente disparada sin ninguna pausa a veces
+  no ve todavía `usuario_id` en la sesión (se comporta como no
+  autenticado un instante) y solo se estabiliza con un pequeño delay o una
+  query intermedia. Se reprodujo 2 de ~5 veces en scripts de prueba con
+  fetch inmediato tras registro; con cualquier pausa/round-trip de por
+  medio (como en el flujo normal de un usuario real navegando) no se
+  reprodujo. No afecta la lógica de `usuarioPerteneceAmistad` en sí (se
+  confirmó con consultas directas a la tabla `session` que, cuando la
+  sesión SÍ está guardada, el 403 se aplica correctamente incluso con
+  `buscar` presente). Podría valer la pena investigarlo aparte si alguna
+  sesión ve login intermitente fallando justo después de registrarse.
+- Puerto local usado para pruebas: 3103.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -350,9 +411,9 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   `pendientes` y reusar la tabla `amistades`/`usuarioPerteneceAmistad` ya
   existente para validar que solo se puede compartir con un amigo real. —
   sin asignar
-- [ ] Búsqueda de texto en pendientes y en el chat: input de búsqueda en `/`
+- [ ] ~~Búsqueda de texto en pendientes y en el chat: input de búsqueda en `/`
   que filtre pendientes por texto, e input de búsqueda en `/chat` que filtre
-  mensajes por texto dentro de una amistad. — sin asignar
+  mensajes por texto dentro de una amistad.~~ — tomada por rama-busqueda
 - [ ] Panel de estadísticas: nueva ruta `/estadisticas` con métricas simples
   (tareas completadas por semana, pendientes vencidos, racha de días
   seguidos completando algo), reusando datos ya existentes en `pendientes`

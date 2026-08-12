@@ -610,6 +610,21 @@
   ajuste funciona. Usuario y pendientes de prueba borrados al terminar.
 - Commit: 60e35bd. Mergeada a main vía PR #29 (ver Historial de merges abajo).
 
+### rama-fix-recuperar-pin
+- Estado: 🔧 en progreso.
+- Tarea: tarea 1 de la ronda "2026-08-12 — roadmap grande" (backlog, arriba)
+  — `/recuperar` hoy solo pide `nombre_usuario` + código; hay que exigir
+  también el PIN actual, verificándolo contra `pin_hash` con la
+  `verificarPin()` ya existente, además del código contra
+  `codigo_recuperacion_hash`. Si cualquiera de los dos falla, mismo error
+  genérico ("Usuario o código incorrecto").
+- Archivos que voy a tocar: `pendientes-web/server.js` (ruta `POST
+  /recuperar` únicamente — no toco `/login`, `/registro` ni
+  `limitarIntentos`), `pendientes-web/views/recuperar.ejs` (agregar el
+  campo del PIN actual al formulario).
+- Próxima actualización: al terminar, con el detalle de qué cambió, cómo se
+  probó, y el hash del commit.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

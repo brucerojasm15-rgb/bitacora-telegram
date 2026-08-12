@@ -530,6 +530,58 @@
   caso — requeriría intervención manual en la DB).
 - Commit: 912b745. Mergeada a main vía PR #24 (ver Historial de merges abajo).
 
+### rama-eliminar-pendientes
+- Estado: ✅ commiteada, lista para merge.
+- Tarea: botón "Eliminar" para pendientes (decisión pendiente en la sección
+  de rama-historial-ediciones, arriba). Implementado como **borrado
+  lógico**, nunca `DELETE` real — motivo no solo de consistencia con la
+  regla de inmutabilidad de `historial_ediciones`, sino que un `DELETE`
+  real directamente fallaría por la FK (`historial_ediciones.pendiente_id
+  REFERENCES pendientes(id)` sin `ON DELETE CASCADE`, a propósito) en
+  cuanto el pendiente tuviera alguna edición registrada.
+- Cambios en `server.js`:
+  - `ensureSchema()`: `ALTER TABLE pendientes ADD COLUMN IF NOT EXISTS
+    eliminado BOOLEAN DEFAULT false` (mismo patrón idempotente del resto).
+  - Nueva ruta `POST /pendientes/:id/eliminar`: `UPDATE ... SET eliminado =
+    TRUE WHERE id = $1 AND usuario_id = $2` (solo el dueño puede eliminar).
+  - `GET /`: agrega `AND p.eliminado = FALSE` al filtro existente — un
+    pendiente eliminado deja de listarse (tanto los propios como los
+    asignados por un amigo).
+  - Guardas `AND eliminado = FALSE` agregadas a las mutaciones existentes
+    para que un formulario viejo en el navegador no pueda resucitar o
+    modificar algo ya eliminado: `POST .../completar`, `POST .../posponer`,
+    el `UPDATE` de `POST .../reflexion`, el `SELECT` de
+    `GET .../editar` (ahora responde 404 si está eliminado), el `SELECT`
+    inicial de `POST .../editar`, y el `SELECT` de "propios" en
+    `POST .../asignar`.
+  - `GET /exportar`: la hoja "Pendientes" ahora excluye los eliminados
+    (`AND eliminado = FALSE`) — las demás hojas (Ideas, Recordatorios,
+    Hechos, Reflexiones) no se tocaron.
+- Vista: `views/index.ejs` — botón "🗑️ Eliminar" junto a Completar/Posponer/
+  Editar (oculto para los pendientes asignados por un amigo, igual que esos
+  otros botones), con `confirm()` antes de enviar y la misma animación
+  `fila-saliendo` que ya usan completar/posponer (sin recarga completa).
+  `public/style.css`: `.eliminar-form button` reusa el mismo patrón visual
+  que `.logout-form button` (texto en `--danger`, sin fondo) — no se creó
+  un componente nuevo.
+- Qué se verificó: `npm run ci` (19 archivos) sin errores. Contra la DB real
+  de Railway (servidor local puerto 3107, usuario descartable
+  `test_borrado_log` creado vía `POST /registro` real): crear pendiente →
+  aparece en `/`; eliminar → desaparece de `/`; `GET .../editar` del
+  pendiente eliminado → 404; `POST .../completar` sobre el pendiente
+  eliminado → sigue redirigiendo 302 (no rompe) pero se confirmó por
+  consulta directa a la DB que `hecho` se quedó en `FALSE` (el guard
+  funcionó, no lo completó). Usuario y pendiente de prueba borrados al
+  terminar.
+- Hallazgo aparte (no tocado en esta rama, reportado al usuario): la ruta
+  `GET /estadisticas` no existe en `server.js` a pesar de que
+  `views/estadisticas.ejs` sí está en el repo y el nav (`partials/nav.ejs`)
+  tiene el link "📊 Estadísticas" — se perdió en algún merge/reconstrucción
+  posterior a rama-estadisticas (PR #15). Confirmado con sesión real: GET
+  autenticado a `/estadisticas` → 404. Pendiente de que alguien la
+  reconstruya.
+- Commit: (ver historial de merges abajo tras mergear).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

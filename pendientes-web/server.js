@@ -315,7 +315,8 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS necesita_reflexion BOOLEAN DEFAULT false,
       ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id),
       ADD COLUMN IF NOT EXISTS categoria TEXT,
-      ADD COLUMN IF NOT EXISTS asignado_a INT REFERENCES usuarios(id)
+      ADD COLUMN IF NOT EXISTS asignado_a INT REFERENCES usuarios(id),
+      ADD COLUMN IF NOT EXISTS eliminado BOOLEAN DEFAULT false
   `);
   await pool.query(`
     ALTER TABLE ideas ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
@@ -421,7 +422,7 @@ app.get('/', async (req, res) => {
               uc.nombre_usuario AS creador_nombre
        FROM pendientes p
        LEFT JOIN usuarios uc ON uc.id = p.usuario_id
-       WHERE p.hecho = FALSE AND (p.usuario_id = $1 OR p.asignado_a = $1)`;
+       WHERE p.hecho = FALSE AND p.eliminado = FALSE AND (p.usuario_id = $1 OR p.asignado_a = $1)`;
     if (categoriaFiltro) {
       params.push(categoriaFiltro);
       consulta += ` AND p.categoria = $${params.length}`;
@@ -478,9 +479,33 @@ app.post('/pendientes/:id/completar', async (req, res) => {
     return res.status(400).send('id inválido');
   }
   try {
-    await pool.query('UPDATE pendientes SET hecho = TRUE WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+    await pool.query(
+      'UPDATE pendientes SET hecho = TRUE WHERE id = $1 AND usuario_id = $2 AND eliminado = FALSE',
+      [id, req.usuarioId]
+    );
   } catch (err) {
     console.error('Error marcando pendiente como hecho:', err.message);
+  }
+  res.redirect('/');
+});
+
+// Borrado lógico: nunca DELETE real. historial_ediciones referencia
+// pendientes(id) sin ON DELETE CASCADE (a propósito, ver rama-historial-
+// ediciones), así que un DELETE real fallaría por la FK apenas el pendiente
+// tuviera alguna edición registrada — o forzaría borrar también su
+// historial, que es justo lo que esa rama garantiza que sea inmutable.
+app.post('/pendientes/:id/eliminar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    await pool.query(
+      'UPDATE pendientes SET eliminado = TRUE WHERE id = $1 AND usuario_id = $2',
+      [id, req.usuarioId]
+    );
+  } catch (err) {
+    console.error('Error eliminando pendiente:', err.message);
   }
   res.redirect('/');
 });
@@ -495,7 +520,7 @@ app.post('/pendientes/:id/posponer', async (req, res) => {
       `UPDATE pendientes
        SET contador_posposiciones = contador_posposiciones + 1,
            necesita_reflexion = (contador_posposiciones + 1) >= 3
-       WHERE id = $1 AND usuario_id = $2`,
+       WHERE id = $1 AND usuario_id = $2 AND eliminado = FALSE`,
       [id, req.usuarioId]
     );
   } catch (err) {
@@ -521,7 +546,7 @@ app.post('/pendientes/:id/reflexion', async (req, res) => {
       [id, '¿Qué pasa?', respuesta, req.usuarioId]
     );
     await client.query(
-      'UPDATE pendientes SET contador_posposiciones = 0, necesita_reflexion = FALSE WHERE id = $1 AND usuario_id = $2',
+      'UPDATE pendientes SET contador_posposiciones = 0, necesita_reflexion = FALSE WHERE id = $1 AND usuario_id = $2 AND eliminado = FALSE',
       [id, req.usuarioId]
     );
     await client.query('COMMIT');
@@ -699,7 +724,7 @@ app.get('/pendientes/:id/editar', async (req, res) => {
       `SELECT p.id, p.texto, p.categoria, p.asignado_a, ua.nombre_usuario AS asignado_a_nombre
        FROM pendientes p
        LEFT JOIN usuarios ua ON ua.id = p.asignado_a
-       WHERE p.id = $1 AND p.usuario_id = $2`,
+       WHERE p.id = $1 AND p.usuario_id = $2 AND p.eliminado = FALSE`,
       [id, req.usuarioId]
     );
     if (rows.length === 0) {
@@ -734,7 +759,7 @@ app.post('/pendientes/:id/editar', async (req, res) => {
   try {
     await client.query('BEGIN');
     const actual = await client.query(
-      'SELECT texto FROM pendientes WHERE id = $1 AND usuario_id = $2',
+      'SELECT texto FROM pendientes WHERE id = $1 AND usuario_id = $2 AND eliminado = FALSE',
       [id, req.usuarioId]
     );
     if (actual.rows.length > 0) {
@@ -765,7 +790,7 @@ app.post('/pendientes/:id/asignar', async (req, res) => {
   }
   try {
     const { rows: propios } = await pool.query(
-      'SELECT id FROM pendientes WHERE id = $1 AND usuario_id = $2',
+      'SELECT id FROM pendientes WHERE id = $1 AND usuario_id = $2 AND eliminado = FALSE',
       [id, req.usuarioId]
     );
     if (propios.length === 0) {
@@ -814,7 +839,7 @@ app.get('/exportar', async (req, res) => {
   try {
     const workbook = new ExcelJS.Workbook();
     const tablas = [
-      { nombre: 'Pendientes', query: 'SELECT * FROM pendientes WHERE usuario_id = $1 ORDER BY id' },
+      { nombre: 'Pendientes', query: 'SELECT * FROM pendientes WHERE usuario_id = $1 AND eliminado = FALSE ORDER BY id' },
       { nombre: 'Ideas', query: 'SELECT * FROM ideas WHERE usuario_id = $1 ORDER BY id' },
       { nombre: 'Recordatorios', query: 'SELECT * FROM recordatorios WHERE usuario_id = $1 ORDER BY id' },
       { nombre: 'Hechos', query: 'SELECT * FROM hechos WHERE usuario_id = $1 ORDER BY id' },

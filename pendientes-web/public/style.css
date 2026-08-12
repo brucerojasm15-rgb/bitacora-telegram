@@ -597,3 +597,58 @@ tr.fila-saliendo {
     animation: none !important;
   }
 }
+
+/* rama-tareas-compartidas: pendientes asignados por un amigo */
+.badge-asignado {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bg-elevated-2);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.solo-lectura {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.asignado-actual {
+  color: var(--text-muted);
+}
+
+.asignar-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.asignar-form select {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.asignar-form select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+}
+
+.asignar-form button {
+  padding: 0.6rem 1.1rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-strong);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}

@@ -245,6 +245,13 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS necesita_reflexion BOOLEAN DEFAULT false,
       ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
   `);
+  // rama-tareas-compartidas: permite asignar un pendiente propio a un amigo.
+  // Nullable — un pendiente sin asignar_a se comporta exactamente igual que
+  // antes. La validación de que el destino sea un amigo real (tabla
+  // amistades, estado 'aceptada') se hace en la ruta, no acá.
+  await pool.query(`
+    ALTER TABLE pendientes ADD COLUMN IF NOT EXISTS asignado_a INT REFERENCES usuarios(id)
+  `);
   await pool.query(`
     ALTER TABLE ideas ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
   `);
@@ -318,16 +325,40 @@ async function usuarioPerteneceAmistad(usuarioId, amistadId) {
   return rows.length > 0;
 }
 
+// rama-tareas-compartidas: variante de usuarioPerteneceAmistad para cuando
+// se tienen los dos ids de usuario en vez de un amistad_id (ej. al asignar
+// un pendiente a alguien por su nombre de usuario). Misma tabla, mismo
+// criterio de "amistad real" (estado = 'aceptada').
+async function usuariosSonAmigos(usuarioIdA, usuarioIdB) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM amistades
+     WHERE estado = 'aceptada'
+       AND ((usuario_a_id = $1 AND usuario_b_id = $2) OR (usuario_a_id = $2 AND usuario_b_id = $1))`,
+    [usuarioIdA, usuarioIdB]
+  );
+  return rows.length > 0;
+}
+
 app.get('/', async (req, res) => {
   try {
+    // rama-tareas-compartidas: además de los pendientes propios, trae los
+    // que un amigo le asignó (asignado_a = req.usuarioId). Se trae el
+    // nombre de quien creó el pendiente para poder mostrar "Asignado por
+    // @fulano" en los que no son propios.
     const { rows } = await pool.query(
-      'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE AND usuario_id = $1 ORDER BY creado ASC',
+      `SELECT p.id, p.texto, p.creado, p.necesita_reflexion, p.usuario_id, p.asignado_a,
+              uc.nombre_usuario AS creador_nombre
+       FROM pendientes p
+       LEFT JOIN usuarios uc ON uc.id = p.usuario_id
+       WHERE p.hecho = FALSE AND (p.usuario_id = $1 OR p.asignado_a = $1)
+       ORDER BY p.creado ASC`,
       [req.usuarioId]
     );
     res.render('index', {
       pendientes: rows,
       error: null,
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      usuarioId: req.usuarioId,
     });
   } catch (err) {
     console.error('Error consultando pendientes:', err.message);
@@ -335,6 +366,7 @@ app.get('/', async (req, res) => {
       pendientes: [],
       error: 'No se pudo leer la base de datos.',
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      usuarioId: req.usuarioId,
     });
   }
 });
@@ -576,11 +608,29 @@ app.get('/pendientes/:id/editar', async (req, res) => {
     return res.status(400).send('id inválido');
   }
   try {
-    const { rows } = await pool.query('SELECT id, texto FROM pendientes WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+    // rama-tareas-compartidas: además del texto, trae a quién está asignado
+    // (si aplica) y la lista de amigos del dueño para poblar el selector de
+    // asignación. Solo el dueño (usuario_id = req.usuarioId) puede editar o
+    // reasignar — igual que antes.
+    const { rows } = await pool.query(
+      `SELECT p.id, p.texto, p.asignado_a, ua.nombre_usuario AS asignado_a_nombre
+       FROM pendientes p
+       LEFT JOIN usuarios ua ON ua.id = p.asignado_a
+       WHERE p.id = $1 AND p.usuario_id = $2`,
+      [id, req.usuarioId]
+    );
     if (rows.length === 0) {
       return res.status(404).send('Pendiente no encontrado');
     }
-    res.render('editar', { pendiente: rows[0] });
+    const { rows: amigos } = await pool.query(
+      `SELECT u.id, u.nombre_usuario
+       FROM amistades a
+       JOIN usuarios u ON u.id = CASE WHEN a.usuario_a_id = $1 THEN a.usuario_b_id ELSE a.usuario_a_id END
+       WHERE a.estado = 'aceptada' AND (a.usuario_a_id = $1 OR a.usuario_b_id = $1)
+       ORDER BY u.nombre_usuario ASC`,
+      [req.usuarioId]
+    );
+    res.render('editar', { pendiente: rows[0], amigos });
   } catch (err) {
     console.error('Error cargando pendiente para editar:', err.message);
     res.status(500).send('No se pudo cargar el pendiente');
@@ -618,6 +668,56 @@ app.post('/pendientes/:id/editar', async (req, res) => {
     client.release();
   }
   res.redirect('/');
+});
+
+// rama-tareas-compartidas: asigna (o quita la asignación de) un pendiente
+// propio a un amigo. Solo el dueño del pendiente puede asignarlo (se
+// verifica usuario_id = req.usuarioId antes de tocar nada) y el destino
+// tiene que ser un amigo real con amistad 'aceptada' — se rechaza en el
+// servidor con 403 si no lo es, no solo se oculta en la UI.
+app.post('/pendientes/:id/asignar', async (req, res) => {
+  const id = Number(req.params.id);
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    const { rows: propios } = await pool.query(
+      'SELECT id FROM pendientes WHERE id = $1 AND usuario_id = $2',
+      [id, req.usuarioId]
+    );
+    if (propios.length === 0) {
+      return res.status(404).send('Pendiente no encontrado');
+    }
+
+    if (!nombreUsuario) {
+      // Selector vacío = quitar la asignación actual.
+      await pool.query('UPDATE pendientes SET asignado_a = NULL WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+      return res.redirect('/pendientes/' + id + '/editar');
+    }
+
+    const { rows: destinatarioRows } = await pool.query(
+      'SELECT id FROM usuarios WHERE nombre_usuario = $1',
+      [nombreUsuario]
+    );
+    const destinatario = destinatarioRows[0];
+    if (!destinatario) {
+      return res.status(400).send('No existe ningún usuario con ese nombre.');
+    }
+    if (destinatario.id === req.usuarioId) {
+      return res.status(400).send('No puedes asignarte un pendiente a ti mismo.');
+    }
+    const sonAmigos = await usuariosSonAmigos(req.usuarioId, destinatario.id);
+    if (!sonAmigos) {
+      return res.status(403).send('Solo puedes asignar pendientes a un amigo (amistad aceptada).');
+    }
+
+    await pool.query('UPDATE pendientes SET asignado_a = $1 WHERE id = $2 AND usuario_id = $3', [destinatario.id, id, req.usuarioId]);
+  } catch (err) {
+    console.error('Error asignando pendiente:', err.message);
+    return res.status(500).send('No se pudo asignar el pendiente.');
+  }
+  res.redirect('/pendientes/' + id + '/editar');
 });
 
 app.get('/exportar', async (req, res) => {

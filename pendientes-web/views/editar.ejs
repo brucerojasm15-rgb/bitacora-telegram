@@ -15,6 +15,24 @@
         <a href="/" class="btn-link">Cancelar</a>
       </div>
     </form>
+
+    <h2>🤝 Asignar a un amigo</h2>
+    <% if (pendiente.asignado_a_nombre) { %>
+      <p class="asignado-actual">Actualmente asignado a <strong>@<%= pendiente.asignado_a_nombre %></strong></p>
+    <% } %>
+    <% if (amigos.length === 0) { %>
+      <p class="empty">No tienes amigos agregados todavía. Ve a <a href="/amigos">Amigos</a> para agregar uno.</p>
+    <% } else { %>
+      <form method="POST" action="/pendientes/<%= pendiente.id %>/asignar" class="asignar-form">
+        <select name="nombre_usuario">
+          <option value="">— Sin asignar —</option>
+          <% amigos.forEach((a) => { %>
+            <option value="<%= a.nombre_usuario %>" <%= pendiente.asignado_a === a.id ? 'selected' : '' %>>@<%= a.nombre_usuario %></option>
+          <% }) %>
+        </select>
+        <button type="submit">Guardar asignación</button>
+      </form>
+    <% } %>
   </main>
 
 <%- include('partials/scripts') %>

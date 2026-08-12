@@ -242,6 +242,53 @@
   máquina Windows (carpeta aislada, rama independiente, `npm install` sin
   problemas) — ver la nueva regla 2 y el paso 4 de onboarding arriba.
 
+### rama-tareas-compartidas
+- Estado: ✅ commiteada, lista para merge (pendiente de push/PR).
+- Tarea (backlog "Ronda nueva 2026-08-11"): permitir asignar un pendiente
+  propio a un amigo — columna `asignado_a` en `pendientes`, validada contra
+  `amistades` (misma tabla/convención que `usuarioPerteneceAmistad`), y que
+  el pendiente asignado aparezca también en el `/` de quien lo recibió.
+- Alcance deliberadamente chico (indicado por el usuario): NO se construyeron
+  carpetas compartidas, tablero, posponer con duración ni aviso a 30 min —
+  eso es la visión más grande "B8.3" en el documento maestro del usuario,
+  pospuesta a v0.2 a propósito. Esta rama solo agrega la columna y el
+  mecanismo simple de asignar/ver.
+- Archivos tocados: `server.js` (ensureSchema agrega `asignado_a INT
+  REFERENCES usuarios(id)` nullable; nueva función `usuariosSonAmigos(idA,
+  idB)` — variante de `usuarioPerteneceAmistad` para cuando se tienen los
+  dos ids de usuario en vez de un `amistad_id`, misma tabla `amistades` y
+  mismo criterio `estado = 'aceptada'`; `GET /` ahora trae `usuario_id =
+  $1 OR asignado_a = $1` con JOIN a `usuarios` para el nombre del creador;
+  `GET /pendientes/:id/editar` trae también la lista de amigos y el
+  `asignado_a` actual; nueva ruta `POST /pendientes/:id/asignar`, valida que
+  el pendiente sea propio y que el destino sea amigo aceptado, rechaza con
+  403 si no — el body vacío quita la asignación), `views/index.ejs` (marca
+  "Asignado por @fulano" + "Solo lectura" en los pendientes recibidos, sin
+  botones de completar/posponer/editar para esos), `views/editar.ejs`
+  (selector de amigos + botón "Guardar asignación"), `public/style.css`
+  (`.badge-asignado`, `.solo-lectura`, `.asignado-actual`, `.asignar-form`,
+  reusando las variables de color existentes).
+- Decisión de alcance explícita: el usuario que RECIBE la asignación NO
+  puede completar/posponer/editar el pendiente (las rutas existentes siguen
+  exigiendo `usuario_id = req.usuarioId`, sin tocarlas) — por ahora es solo
+  visibilidad de lectura con la marca "Asignado por @fulano". Si el usuario
+  quiere que el destinatario también pueda completarlo, es un cambio
+  pequeño y separado (agregar `OR asignado_a = req.usuarioId` a esas rutas)
+  pero no se hizo acá para no ampliar el alcance sin pedirlo.
+- Qué se probó (contra la DB real de Railway, puerto 3102, con
+  `_test_compartidas.js` — borrado antes de commitear): 3 usuarios
+  descartables (`test_compartidas_a/b/c`) vía `POST /registro` real. A crea
+  un pendiente → A intenta asignarlo a C (sin amistad) → 403 rechazado en
+  servidor. Se crea la amistad A-B `aceptada` directo por SQL. A asigna el
+  mismo pendiente a B → 302, `asignado_a` queda correcto en DB. B abre `/`
+  → ve el pendiente con la marca "Asignado por @test_compartidas_a" y
+  "Solo lectura" (sin botones de acción). C (sin amistad ni asignación) NO
+  ve el pendiente en su `/`. Reintento de asignar a C sigue dando 403.
+  Limpieza completa al terminar: pendiente, amistad y los 3 usuarios de
+  prueba borrados de la DB real.
+- Commit: ver hash abajo en "Historial de merges" cuando se mergee, o
+  `git log` de esta rama mientras tanto.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -349,7 +396,7 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   (no solo verlo uno mismo) — requiere columna tipo `asignado_a` en
   `pendientes` y reusar la tabla `amistades`/`usuarioPerteneceAmistad` ya
   existente para validar que solo se puede compartir con un amigo real. —
-  sin asignar
+  tomada por rama-tareas-compartidas
 - [ ] Búsqueda de texto en pendientes y en el chat: input de búsqueda en `/`
   que filtre pendientes por texto, e input de búsqueda en `/chat` que filtre
   mensajes por texto dentro de una amistad. — sin asignar

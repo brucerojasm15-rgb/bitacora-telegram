@@ -364,24 +364,149 @@ h1 {
   border: 1px solid rgba(255, 107, 107, 0.25);
 }
 
-/* Notificaciones/lectura de chat: estilo mínimo, a la espera de la tarea
-   pendiente "aplicar tema visual oscuro a views/chat.ejs" que rediseñará
-   el resto de la vista. */
 .notificacion {
   color: var(--accent);
   background: var(--bg-elevated-2);
   padding: 0.7rem 1rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+/* Tema visual del chat: burbujas de mensaje, alineadas a la izquierda para
+   mensajes ajenos y a la derecha para los propios (como cualquier app de
+   chat), reutilizando las variables de color ya definidas arriba. */
+.filtro-rango {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.filtro-rango input[type="number"] {
+  flex: 1;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.95rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.filtro-rango input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+}
+
+.filtro-rango button {
+  padding: 0.7rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.filtro-rango button:hover {
+  background: var(--bg-elevated-2);
+  border-color: var(--accent);
+}
+
+.filtro-rango button:active {
+  transform: scale(0.97);
+}
+
+.chat-mensajes {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.chat-mensajes li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: 78%;
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  animation: burbuja-entra var(--transition-medium);
+}
+
+.chat-mensajes li.mensaje-otro {
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+}
+
+.chat-mensajes li.mensaje-propio {
+  align-self: flex-end;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: white;
+  border-bottom-right-radius: 3px;
+}
+
+.chat-mensajes .autor {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.chat-mensajes li.mensaje-propio .autor {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.chat-mensajes .texto {
+  font-size: 0.98rem;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.chat-mensajes .fecha {
+  align-self: flex-end;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chat-mensajes li.mensaje-propio .fecha {
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .no-leido {
   color: var(--accent);
+  font-size: 0.7rem;
 }
 
 .visto {
-  color: var(--text-muted);
   font-size: 0.85em;
+}
+
+@keyframes burbuja-entra {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-mensajes li {
+    animation: none !important;
+  }
 }
 
 table {

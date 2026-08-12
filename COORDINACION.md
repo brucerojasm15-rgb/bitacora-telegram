@@ -168,6 +168,33 @@
 - rama-amigos (la original) queda sin mergear — su contenido ya vive en
   esta rama nueva.
 
+### rama-tema-chat
+- Estado: commiteada, lista para merge.
+- Tarea: aplicar tema visual oscuro a views/chat.ejs (último ítem del
+  backlog original). Antes, chat.ejs no tenía ningún estilo propio más
+  allá de lo agregado por rama-notificaciones (.notificacion, .no-leido,
+  .visto) — la lista de mensajes se veía como un `<ul>` sin estilo.
+- Cambios: burbujas de chat en `public/style.css` (`.chat-mensajes`,
+  reutilizando las variables de color ya existentes): mensajes ajenos
+  alineados a la izquierda con el fondo `--bg-elevated`, mensajes propios
+  alineados a la derecha con `--accent-strong` (como cualquier app de
+  chat), animación sutil de entrada (respeta `prefers-reduced-motion`,
+  igual que el resto de la app). También se estilizó `.filtro-rango` (el
+  form para saltar a un `amistad_id`), que tampoco tenía estilo. Se ajustó
+  levemente el markup de `chat.ejs` para agrupar fecha + indicador de
+  leído/visto en la misma línea dentro de la burbuja.
+- Archivos tocados: public/style.css, views/chat.ejs (solo markup, sin
+  tocar server.js).
+- Qué se verificó: `ejs.renderFile` con datos simulados (sin DB) confirmó
+  que compila y que las clases `mensaje-propio`/`mensaje-otro`/`no-leido`
+  aparecen donde corresponde. Contra la DB real de Railway (2 usuarios de
+  prueba, amistad ya aceptada, 2 mensajes reales): `GET /chat` → 200, sin
+  errores de render, con las clases nuevas presentes en el HTML. No se
+  pudo tomar captura de pantalla en esta sesión (sin herramientas de
+  navegador disponibles) — se generó una vista previa HTML con el CSS
+  real incrustado y se le envió al usuario para que la revise él mismo
+  antes de mergear.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -238,8 +265,8 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 - [x] Registro público de usuarios + rate limiting básico en login/registro — tomada por rama-registro
 - [x] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
   existente en tabla mensajes) — tomada por rama-notificaciones
-- [ ] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
-  no tiene el estilo aplicado) — asignada a: sin asignar
+- [x] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
+  no tenía el estilo aplicado) — tomada por rama-tema-chat
 
 ## Cómo agregar un trabajador nuevo (para el usuario)
 

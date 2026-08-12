@@ -34,14 +34,16 @@
             const esMio = m.autor_id === usuarioId;
           %>
             <li class="<%= esMio ? 'mensaje-propio' : 'mensaje-otro' %>">
-              <span class="autor">Usuario <%= m.autor_id %></span>
+              <% if (!esMio) { %><span class="autor">Usuario <%= m.autor_id %></span><% } %>
               <span class="texto"><%= m.texto %></span>
-              <span class="fecha"><%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></span>
-              <% if (!esMio && !m.leido) { %>
-                <span class="no-leido" title="Mensaje nuevo">●</span>
-              <% } else if (esMio) { %>
-                <span class="visto" title="<%= m.leido ? 'Visto' : 'Enviado' %>"><%= m.leido ? '✓✓' : '✓' %></span>
-              <% } %>
+              <span class="fecha">
+                <%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %>
+                <% if (!esMio && !m.leido) { %>
+                  <span class="no-leido" title="Mensaje nuevo">●</span>
+                <% } else if (esMio) { %>
+                  <span class="visto" title="<%= m.leido ? 'Visto' : 'Enviado' %>"><%= m.leido ? '✓✓' : '✓' %></span>
+                <% } %>
+              </span>
             </li>
           <% }) %>
         </ul>

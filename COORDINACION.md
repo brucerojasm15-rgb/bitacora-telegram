@@ -582,6 +582,34 @@
   reconstruya.
 - Commit: 9d0e2ad. Mergeada a main vía PR #27 (ver Historial de merges abajo).
 
+### rama-fix-estadisticas
+- Estado: ✅ commiteada, lista para merge.
+- Tarea: reconstruir `GET /estadisticas`, que había desaparecido de
+  `server.js` en algún merge posterior a rama-estadisticas (PR #15) —
+  detectado y agregado al backlog por rama-eliminar-pendientes.
+- Cambios: se recuperó el código original del commit `515c6a8` (helpers
+  `formatearDiaLima`/`diaAnterior`/`calcularRacha`, constante
+  `VENCIDO_DIAS`, y la ruta en sí, con sus 3 queries en paralelo) y se
+  reinsertó en `server.js` tal cual, con un solo ajuste necesario: las 3
+  queries ahora excluyen `eliminado = TRUE` (columna que no existía cuando
+  se escribió el código original — la agregó rama-eliminar-pendientes
+  después). `views/estadisticas.ejs` y el link del nav ya estaban en el
+  repo, no se tocaron.
+- Qué se verificó: `npm run ci` sin errores. Contra la DB real de Railway
+  (servidor local puerto 3108, usuario descartable `test_estad_fix`,
+  pendientes de prueba insertados directo por SQL con fechas controladas,
+  igual que hizo la sesión original de rama-estadisticas): racha calculada
+  = 3 (3 días consecutivos armados a propósito, con un cuarto completado
+  aislado 10 días atrás que correctamente no la extendió); vencidos = 2
+  (los `hecho=FALSE` de hace 8 y 10 días; el de hace 1 día correctamente
+  excluido) — verificado también con una consulta SQL independiente
+  (mismo resultado). Caso nuevo agregado a la prueba (no existía en la
+  sesión original, por la columna `eliminado`): un pendiente sin completar
+  de hace 9 días pero con `eliminado = TRUE` NO aparece como vencido, y uno
+  completado hoy pero eliminado NO cuenta para la racha — confirma que el
+  ajuste funciona. Usuario y pendientes de prueba borrados al terminar.
+- Commit: (ver historial de merges abajo tras mergear).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

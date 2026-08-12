@@ -670,6 +670,90 @@ function whereRango(rango, columnaFecha) {
   return '';
 }
 
+// --- Helpers para /estadisticas ---
+// La tabla `pendientes` no tiene una columna de "fecha de completado": solo
+// `creado` (cuándo se creó el pendiente) y `hecho` (si ya se completó o no).
+// Por eso, tanto "completadas por semana" como la "racha de días" usan
+// `creado` como aproximación de cuándo se completó. Si un pendiente se crea
+// un día y se completa varios días después, estas métricas lo cuentan en la
+// semana/día en que se CREÓ, no en el que se completó. Documentado también
+// en la vista.
+const VENCIDO_DIAS = 7; // "vencido" = pendiente sin hacer, creado hace más de 7 días.
+
+function formatearDiaLima(fecha) {
+  return new Date(fecha).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+}
+
+function diaAnterior(diaStr) {
+  const d = new Date(diaStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// Cuenta días consecutivos (calendario America/Lima) con al menos un
+// pendiente completado, contando hacia atrás desde hoy. Si hoy todavía no
+// se completó nada, la racha no se rompe por eso (el día actual no terminó
+// todavía) y se empieza a contar desde ayer.
+function calcularRacha(diasSet) {
+  const hoyLima = formatearDiaLima(new Date());
+  let cursor = diasSet.has(hoyLima) ? hoyLima : diaAnterior(hoyLima);
+  let racha = 0;
+  while (diasSet.has(cursor)) {
+    racha++;
+    cursor = diaAnterior(cursor);
+  }
+  return racha;
+}
+
+app.get('/estadisticas', async (req, res) => {
+  try {
+    const [porSemana, vencidos, completados] = await Promise.all([
+      pool.query(
+        `SELECT
+           to_char(date_trunc('week', creado AT TIME ZONE 'America/Lima'), 'YYYY-MM-DD') AS semana,
+           COUNT(*)::int AS cantidad
+         FROM pendientes
+         WHERE hecho = TRUE AND eliminado = FALSE AND usuario_id = $1
+         GROUP BY semana
+         ORDER BY semana DESC
+         LIMIT 12`,
+        [req.usuarioId]
+      ),
+      pool.query(
+        `SELECT id, texto, creado
+         FROM pendientes
+         WHERE hecho = FALSE AND eliminado = FALSE AND usuario_id = $1 AND creado < NOW() - INTERVAL '${VENCIDO_DIAS} days'
+         ORDER BY creado ASC`,
+        [req.usuarioId]
+      ),
+      pool.query(
+        'SELECT creado FROM pendientes WHERE hecho = TRUE AND eliminado = FALSE AND usuario_id = $1',
+        [req.usuarioId]
+      ),
+    ]);
+
+    const diasCompletados = new Set(completados.rows.map((r) => formatearDiaLima(r.creado)));
+    const racha = calcularRacha(diasCompletados);
+
+    res.render('estadisticas', {
+      porSemana: porSemana.rows,
+      vencidos: vencidos.rows,
+      racha,
+      vencidoDias: VENCIDO_DIAS,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando estadisticas:', err.message);
+    res.status(500).render('estadisticas', {
+      porSemana: [],
+      vencidos: [],
+      racha: 0,
+      vencidoDias: VENCIDO_DIAS,
+      error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
 app.get('/ideas', async (req, res) => {
   const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {

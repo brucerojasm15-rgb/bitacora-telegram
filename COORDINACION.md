@@ -286,8 +286,10 @@
   ve el pendiente en su `/`. Reintento de asignar a C sigue dando 403.
   Limpieza completa al terminar: pendiente, amistad y los 3 usuarios de
   prueba borrados de la DB real.
-- Commit: ver hash abajo en "Historial de merges" cuando se mergee, o
-  `git log` de esta rama mientras tanto.
+- Commit: 34dddbe. PR abierto contra main: #14
+  (https://github.com/brucerojasm15-rgb/bitacora-telegram/pull/14), NO
+  mergeado por esta sesión (bloqueado por permisos, además la regla del
+  protocolo es que rama-integracion o el usuario deciden el merge).
 
 ### rama-integracion
 - Estado: —

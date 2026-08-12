@@ -283,6 +283,13 @@ async function ensureSchema() {
       UNIQUE (usuario_a_id, usuario_b_id)
     )
   `);
+  // usuario_a_id = quien envía la solicitud, usuario_b_id = quien la recibe.
+  // Columnas agregadas por rama-amigos (ver COORDINACION.md) — no se recreó la tabla.
+  await pool.query(`
+    ALTER TABLE amistades
+      ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'pendiente',
+      ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT now()
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS mensajes (
       id SERIAL PRIMARY KEY,
@@ -297,7 +304,7 @@ async function ensureSchema() {
 
 async function usuarioPerteneceAmistad(usuarioId, amistadId) {
   const { rows } = await pool.query(
-    'SELECT 1 FROM amistades WHERE id = $1 AND (usuario_a_id = $2 OR usuario_b_id = $2)',
+    "SELECT 1 FROM amistades WHERE id = $1 AND estado = 'aceptada' AND (usuario_a_id = $2 OR usuario_b_id = $2)",
     [amistadId, usuarioId]
   );
   return rows.length > 0;
@@ -627,6 +634,145 @@ app.get('/exportar', async (req, res) => {
       res.end();
     }
   }
+});
+
+// Vista y rutas de amigos (rama-amigos). Usa la tabla amistades ya creada
+// por rama-chat (id, usuario_a_id, usuario_b_id) más las columnas estado y
+// fecha agregadas arriba con ALTER TABLE. Convención propia de esta rama,
+// documentada en COORDINACION.md: usuario_a_id = quien envía la solicitud,
+// usuario_b_id = quien la recibe; estado ∈ {pendiente, aceptada, rechazada}.
+app.get('/amigos', async (req, res) => {
+  try {
+    const [amigos, recibidas, enviadas] = await Promise.all([
+      pool.query(
+        `SELECT a.id AS amistad_id, u.id AS usuario_id, u.nombre_usuario
+         FROM amistades a
+         JOIN usuarios u ON u.id = CASE WHEN a.usuario_a_id = $1 THEN a.usuario_b_id ELSE a.usuario_a_id END
+         WHERE a.estado = 'aceptada' AND (a.usuario_a_id = $1 OR a.usuario_b_id = $1)
+         ORDER BY u.nombre_usuario ASC`,
+        [req.usuarioId]
+      ),
+      pool.query(
+        `SELECT a.id AS amistad_id, u.nombre_usuario, a.fecha
+         FROM amistades a
+         JOIN usuarios u ON u.id = a.usuario_a_id
+         WHERE a.usuario_b_id = $1 AND a.estado = 'pendiente'
+         ORDER BY a.fecha DESC`,
+        [req.usuarioId]
+      ),
+      pool.query(
+        `SELECT a.id AS amistad_id, u.nombre_usuario, a.fecha
+         FROM amistades a
+         JOIN usuarios u ON u.id = a.usuario_b_id
+         WHERE a.usuario_a_id = $1 AND a.estado = 'pendiente'
+         ORDER BY a.fecha DESC`,
+        [req.usuarioId]
+      ),
+    ]);
+    res.render('amigos', {
+      amigos: amigos.rows,
+      recibidas: recibidas.rows,
+      enviadas: enviadas.rows,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando amigos:', err.message);
+    res.status(500).render('amigos', {
+      amigos: [],
+      recibidas: [],
+      enviadas: [],
+      error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
+app.post('/amigos/solicitar', async (req, res) => {
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
+  if (!nombreUsuario) {
+    return res.status(400).send('Escribe un nombre de usuario.');
+  }
+  try {
+    const { rows: destinatarioRows } = await pool.query(
+      'SELECT id FROM usuarios WHERE nombre_usuario = $1',
+      [nombreUsuario]
+    );
+    const destinatario = destinatarioRows[0];
+    if (!destinatario) {
+      return res.status(400).send('No existe ningún usuario con ese nombre.');
+    }
+    if (destinatario.id === req.usuarioId) {
+      return res.status(400).send('No puedes agregarte a ti mismo.');
+    }
+    const { rows: existentes } = await pool.query(
+      `SELECT id, estado FROM amistades
+       WHERE (usuario_a_id = $1 AND usuario_b_id = $2) OR (usuario_a_id = $2 AND usuario_b_id = $1)`,
+      [req.usuarioId, destinatario.id]
+    );
+    const existente = existentes[0];
+    if (existente && existente.estado === 'aceptada') {
+      return res.status(400).send('Ya son amigos.');
+    }
+    if (existente && existente.estado === 'pendiente') {
+      return res.status(400).send('Ya existe una solicitud pendiente con este usuario.');
+    }
+    if (existente && existente.estado === 'rechazada') {
+      // Se había rechazado antes: se reabre como nueva solicitud desde quien la reenvía.
+      await pool.query(
+        `UPDATE amistades SET usuario_a_id = $1, usuario_b_id = $2, estado = 'pendiente', fecha = now()
+         WHERE id = $3`,
+        [req.usuarioId, destinatario.id, existente.id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO amistades (usuario_a_id, usuario_b_id, estado, fecha) VALUES ($1, $2, 'pendiente', now())`,
+        [req.usuarioId, destinatario.id]
+      );
+    }
+  } catch (err) {
+    console.error('Error creando solicitud de amistad:', err.message);
+    return res.status(500).send('No se pudo enviar la solicitud.');
+  }
+  res.redirect('/amigos');
+});
+
+app.post('/amigos/:id/aceptar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE amistades SET estado = 'aceptada' WHERE id = $1 AND usuario_b_id = $2 AND estado = 'pendiente'`,
+      [id, req.usuarioId]
+    );
+    if (rowCount === 0) {
+      return res.status(404).send('Solicitud no encontrada.');
+    }
+  } catch (err) {
+    console.error('Error aceptando solicitud de amistad:', err.message);
+    return res.status(500).send('No se pudo aceptar la solicitud.');
+  }
+  res.redirect('/amigos');
+});
+
+app.post('/amigos/:id/rechazar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE amistades SET estado = 'rechazada' WHERE id = $1 AND usuario_b_id = $2 AND estado = 'pendiente'`,
+      [id, req.usuarioId]
+    );
+    if (rowCount === 0) {
+      return res.status(404).send('Solicitud no encontrada.');
+    }
+  } catch (err) {
+    console.error('Error rechazando solicitud de amistad:', err.message);
+    return res.status(500).send('No se pudo rechazar la solicitud.');
+  }
+  res.redirect('/amigos');
 });
 
 // Vista y rutas de chat. Todavía no está enlazada al menú de navegación

@@ -136,6 +136,37 @@
 - rama-registro (la original) queda sin mergear — su contenido ya vive en
   esta rama nueva.
 
+### rama-amigos (reconstruida como rama-amigos-integrada)
+- Estado: commiteada, lista para merge — la última de las tres ramas
+  pendientes, ya integrada con rama-notificaciones y rama-registro en main.
+- Tarea: sistema de amigos — agregar amigo, aceptar/rechazar solicitud,
+  listar amigos. Trabajo original en `rama-amigos` (commits 125507f,
+  d8ee391, 57b08fd, 8653d66, a1aba4b).
+- Por qué existe esta rama con otro nombre: mismo motivo que las dos
+  anteriores — el PR contra `main` quedaba CONFLICTING solo por
+  `COORDINACION.md` (confirmado con `diff3` fuera de git: `server.js`,
+  `login.ejs` y `nav.ejs` mergeaban limpio, sin conflicto real de código).
+- Antes de aplicar el `ALTER TABLE amistades ADD COLUMN estado ... DEFAULT
+  'pendiente'` + el filtro `estado = 'aceptada'` en `usuarioPerteneceAmistad`,
+  se verificó contra la DB real que la tabla `amistades` está vacía (0 filas)
+  — así que este cambio de esquema no puede romper ningún chat existente al
+  aplicarse en producción.
+- Archivos tocados (idénticos a rama-amigos original): server.js (ALTER
+  TABLE amistades, filtro estado='aceptada' en usuarioPerteneceAmistad,
+  rutas /amigos, /amigos/solicitar, /amigos/:id/aceptar,
+  /amigos/:id/rechazar), views/amigos.ejs (nuevo), views/partials/nav.ejs
+  (link a /amigos).
+- Qué se verificó contra la DB real de Railway (usuarios de prueba nuevos,
+  creados y borrados en el script): A solicita amistad a B escribiendo su
+  usuario en MAYÚSCULA (prueba la normalización a minúsculas) → 302; chat
+  antes de aceptar → 403; B acepta → 302; chat después de aceptar → 200; A
+  manda un mensaje → 302; `GET /notificaciones` de B (ruta de
+  rama-notificaciones, ya en main) detecta el mensaje nuevo →
+  `{"noLeidos":1}`, confirma que ambas features quedaron bien integradas; A
+  ve a B en "Mis amigos". Limpieza completa al terminar.
+- rama-amigos (la original) queda sin mergear — su contenido ya vive en
+  esta rama nueva.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

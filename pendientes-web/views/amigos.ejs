@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Amigos' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1>🤝 Amigos</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+      <form method="POST" action="/amigos/solicitar" class="nuevo">
+        <input type="text" name="nombre_usuario" placeholder="Nombre de usuario..." autocapitalize="none" autocorrect="off" spellcheck="false" required>
+        <button type="submit">Agregar</button>
+      </form>
+
+      <h2>Solicitudes recibidas</h2>
+      <% if (recibidas.length === 0) { %>
+        <p class="empty">No tienes solicitudes pendientes.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Fecha</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% recibidas.forEach((s) => { %>
+              <tr>
+                <td><%= s.nombre_usuario %></td>
+                <td><%= new Date(s.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
+                <td>
+                  <div class="acciones">
+                    <form method="POST" action="/amigos/<%= s.amistad_id %>/aceptar">
+                      <button type="submit">✅ Aceptar</button>
+                    </form>
+                    <form method="POST" action="/amigos/<%= s.amistad_id %>/rechazar">
+                      <button type="submit">❌ Rechazar</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+
+      <h2>Solicitudes enviadas</h2>
+      <% if (enviadas.length === 0) { %>
+        <p class="empty">No tienes solicitudes enviadas pendientes.</p>
+      <% } else { %>
+        <ul class="chat-mensajes">
+          <% enviadas.forEach((s) => { %>
+            <li>
+              <span class="autor"><%= s.nombre_usuario %></span>
+              <span class="texto">Pendiente de respuesta</span>
+              <span class="fecha"><%= new Date(s.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+
+      <h2>Mis amigos</h2>
+      <% if (amigos.length === 0) { %>
+        <p class="empty">Todavía no tienes amigos agregados.</p>
+      <% } else { %>
+        <ul class="chat-mensajes">
+          <% amigos.forEach((a) => { %>
+            <li>
+              <span class="autor"><%= a.nombre_usuario %></span>
+              <a href="/chat?amistad_id=<%= a.amistad_id %>" class="btn-link">💬 Chat</a>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

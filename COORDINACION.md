@@ -828,6 +828,255 @@ rama debe anotar en su sección de "Estado de ramas" exactamente qué rutas y
 qué parte del archivo toca, apenas empiece, para anticipar conflictos igual
 que en la ronda anterior.
 
+### Ronda nueva (2026-08-12) — roadmap grande, propuesta por el usuario
+
+Diez tareas nuevas, con dependencias explícitas entre varias. Antes de asignar
+cualquiera de estas a una rama: **leé el plan de despacho completo abajo**, no
+solo la tarea individual — el orden importa y algunas están bloqueadas hasta
+que otra termine.
+
+**Regla para quien tome cualquiera de estas tareas:** actualizá tu sección en
+"Estado de ramas" (arriba) ANTES de escribir código, y documentá ahí mismo
+cualquier decisión de diseño (esquema de tablas, límites numéricos, balances
+de moneda, etc.) **antes** de implementarla — no después. Esta ronda tiene
+varias tareas que piden explícitamente "decide el número, documenta el
+porqué": esa decisión se toma y se registra en el momento de implementar esa
+tarea puntual, no antes (yo no la resolví al armar este backlog, a propósito,
+para no adivinar un número sin estar viendo el código real en ese momento).
+
+#### Plan de despacho (orden real de construcción, decidido respetando las dependencias marcadas)
+
+```
+Fase 0 (bloqueante, primero, nada de registro público sin esto)
+  └── 1. Fix /recuperar: exigir PIN actual + código
+
+Fase 1 (gateada por Fase 0 — no deploy hasta que 0 esté confirmado)
+  └── 2. Registro público + límite por IP/hora
+
+Fase 2 (sin dependencias, puede arrancar en paralelo con 0/1)
+  └── 3. Chat de captura rápida (Pendiente/Idea/Recordatorio)
+
+Fase 3 (depende de 3)
+  └── 4. Notificaciones push para recordatorios
+
+Fase 4 (ambas dependen SOLO de 4, pueden correr en paralelo entre sí)
+  ├── 6. Tareas asignadas + trazabilidad social
+  └── 10. Integración Google Calendar
+
+Fase 5 (depende de 6)
+  └── 7. Sistema de moneda virtual
+
+Fase 6 (depende de 7)
+  └── 8. IA compañera visual — Fase 1
+
+Bloqueada indefinidamente, NO despachar todavía
+  └── 9. IA compañera conversacional — Fase 2 (requiere modelo de ingresos
+        definido por el dueño del proyecto; no hay fecha)
+
+Sin dependencias funcionales, pero despachar AL FINAL a propósito
+  └── 5. Rediseño visual "Jungla/Monstera"
+```
+
+**Por qué el rediseño visual (tarea 5) va al final aunque no depende de nada
+técnicamente:** toca "TODOS los .ejs y server.js" para reemplazar cada emoji
+por un ícono SVG — si se despacha en paralelo con cualquier otra tarea de esta
+ronda, cada rama nueva que agregue una vista o un botón (captura rápida,
+trazabilidad social, IA) va a chocar con ella constantemente y forzar
+reconstrucciones repetidas (el mismo problema que ya vivimos con la ronda de
+categorías/búsqueda/estadísticas en paralelo). Mejor esperar a que el resto
+del roadmap funcional esté estable y aplicar el rediseño en una sola pasada
+sobre una base quieta. Es una decisión de orden de despacho, no de prioridad:
+el usuario puede pedir adelantarla si quiere verla antes.
+
+**Por qué Google Calendar (10) puede ir en paralelo con trazabilidad social/
+moneda/IA (6→7→8) y no en la misma cadena:** el enunciado original solo la
+hace depender de notificaciones push (4), no de trazabilidad social — son
+subsistemas independientes que comparten la infraestructura de push pero no
+se tocan entre sí (uno lee `pendientes`/`amistades`, el otro habla con la API
+de Google). Separarlas en dos cadenas paralelas después de la Fase 3 acorta
+el tiempo total sin generar conflictos de archivo entre ellas.
+
+---
+
+- [ ] **1. [SEGURIDAD, bloqueante] Arreglar `/recuperar` para exigir el PIN
+  actual ADEMÁS del código de recuperación.** Ahora mismo `/recuperar` solo
+  pide `nombre_usuario` + código — cualquiera que tenga el código puede
+  resetear el PIN sin saber el PIN actual (documentado como hueco conocido
+  en la sección de rama-recuperacion-pin, arriba). Agregar un campo más al
+  formulario y a la validación del backend: el PIN actual también debe
+  verificar contra `pin_hash` con `verificarPin()`, además del código contra
+  `codigo_recuperacion_hash`. Si CUALQUIERA de los dos falla, mismo error
+  genérico que ya existe ("Usuario o código incorrecto") para no revelar
+  cuál de los dos fue. Probar con un usuario descartable que: código
+  correcto + PIN viejo incorrecto → falla; código incorrecto + PIN correcto
+  → falla; ambos correctos → funciona igual que antes (PIN nuevo + código
+  nuevo). — asignada a: sin asignar (sugerido: `rama-fix-recuperar-pin`)
+  — Depende de: nada. Bloquea: tarea 2 (no deploy de registro público sin
+  esto confirmado).
+
+- [ ] **2. Confirmar/ajustar registro público + límite por IP/hora.** Nota
+  importante para quien tome esto: `POST /registro` **ya existe y ya es
+  público** (sin invitación, sin sesión previa — ver el middleware de
+  autenticación en `server.js`), y ya pasa por `limitarIntentos('registro')`
+  (8 intentos cada 15 min por IP — ver la constante `LIMITE_INTENTOS`).
+  Esa protección ya existe pero está pensada contra fuerza bruta de login,
+  no específicamente contra spam de cuentas nuevas — evaluar si 8/15min
+  (≈32/hora) es un límite razonable específicamente para *registros exitosos*
+  o si hace falta uno más estricto y separado solo para altas de cuenta
+  (decidir el número en el momento de implementar, documentarlo acá con el
+  porqué, igual que pide el enunciado original). — asignada a: sin asignar
+  (sugerido: `rama-limite-registro`) — Depende de: tarea 1 (**NO desplegar a
+  producción hasta que el fix de `/recuperar` esté probado y confirmado** —
+  esta tarea se puede desarrollar/probar en paralelo, pero el PR no se
+  mergea/despliega antes que el de la tarea 1).
+
+- [ ] **3. Chat de captura rápida.** Input tipo chat de texto libre, con
+  botones debajo (Pendiente / Idea / Recordatorio) para clasificar antes de
+  enviar. Decidir en el momento de implementar el esquema más limpio (tabla
+  única con columna `tipo`, o mantener las 3 tablas separadas `pendientes`/
+  `ideas`/`recordatorios` ya existentes e insertar en la que corresponda
+  según el botón elegido) y documentar esa decisión acá antes de escribir el
+  `ensureSchema()`. Sonido distinto según acción (enviar, completar,
+  eliminar): usar audios cortos con licencia libre (mixkit.co,
+  freesound.org) — **nunca generarlos ni usar ninguno sin verificar la
+  licencia primero**, documentar de dónde salió cada archivo de audio usado.
+  Si el tipo elegido es "Recordatorio", pedir fecha/hora antes de guardar. —
+  asignada a: sin asignar (sugerido: `rama-captura-rapida`) — Depende de:
+  nada, puede arrancar en paralelo con 1/2.
+
+- [ ] **4. Notificaciones push para recordatorios.** Depende de la tarea 3
+  (necesita que existan recordatorios con fecha/hora capturados desde el
+  chat rápido, o al menos la tabla/columna de recordatorios ya definida por
+  esa tarea). Web Push API vía el paquete `web-push` (ya está en
+  `package.json`, ya se usa para el recordatorio diario genérico — ver
+  `enviarPushATodos()` en `server.js`). Las VAPID keys son secretas: van en
+  `.env` (ya existen `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`), nunca
+  hardcodeadas ni comiteadas. Falta: pedir permiso de notificaciones desde
+  el frontend específicamente para recordatorios (ya existe un botón
+  genérico "Activar notificaciones" en `index.ejs`, evaluar si se reusa o se
+  separa), guardar la suscripción (ya existe `push_subscriptions`, evaluar
+  si alcanza o hace falta asociarla a `usuario_id`), y un proceso (cron,
+  mismo patrón que `revisarYNotificarSiNoHayHechosHoy` con `node-cron`) que
+  revise recordatorios pendientes y dispare la notificación a la hora
+  indicada. — asignada a: sin asignar (sugerido:
+  `rama-notificaciones-recordatorios`) — Depende de: tarea 3.
+
+- [ ] **5. Rediseño visual "Jungla/Monstera".** Paleta modo claro (fondo
+  `#F4F1E8`, verde `#2D5A3D`, acento `#D4A574`) y modo oscuro (fondo
+  `#1A2620`, verde `#7CB88F`, mismo acento `#D4A574`). Toggle claro/oscuro
+  guardado en preferencia del usuario (columna nueva en `usuarios`, o
+  `localStorage` — decidir y documentar en el momento). Ilustración SVG de
+  hoja de monstera (con fenestraciones) en: estado vacío de pendientes,
+  login/registro, favicon. Mantener los nombres de sección normales
+  (Pendientes, Ideas, Recordatorios) — el tema visual cambia colores/iconos,
+  no la terminología. Bordes redondeados generosos. Reemplazar TODOS los
+  emojis existentes por íconos SVG en línea coherentes con la paleta
+  (lucide-icons o heroicons, MIT/libre): 🔔 → campana, 🗑️ → papelera, ✔ →
+  check, ✓✓ → doble check — revisar TODO `server.js` y TODOS los `.ejs`
+  (incluidos partials) para no dejar ningún emoji suelto, `npm run ci` no
+  detecta esto porque no es un error de sintaxis, hay que revisarlo a mano
+  o con un grep de emojis antes de dar la tarea por terminada. **NO
+  reemplazar el tema oscuro ya existente (de rama-tema-chat/rama-visual) sin
+  coordinarlo — esta tarea lo reemplaza/actualiza a propósito, no es un
+  conflicto, es la continuación esperada.** — asignada a: sin asignar
+  (sugerido: `rama-tema-jungla`) — Depende de: nada funcionalmente, pero
+  **despachar al final** (ver "Plan de despacho" arriba, razón documentada
+  ahí).
+
+- [ ] **6. Tareas asignadas: marcar como hecha + trazabilidad social.** Botón
+  "Completar" visible SOLO para la persona asignada (ahora mismo
+  `views/index.ejs` le muestra "Solo lectura" sin ningún botón — hay que
+  agregar uno nuevo, sin tocar el `POST /pendientes/:id/completar` existente
+  que sigue exigiendo `usuario_id = req.usuarioId`; este nuevo botón necesita
+  su propia ruta o ampliar esa con `OR asignado_a = req.usuarioId`, decidir y
+  documentar cuál). Al completar, permitir un comentario opcional de texto
+  (sin foto) — columna nueva, decidir dónde (¿tabla `pendientes` o una nueva
+  tabla de eventos de trazabilidad? documentar). Guardar quién completó y
+  cuándo, visible para ambos usuarios de la amistad. Agregar feed de
+  actividad compartido (últimos 7–14 días, paginado — decidir el rango
+  exacto y el tamaño de página, documentar el porqué). Agregar contador de
+  "tareas completadas esta semana" por persona (mismo criterio de semana que
+  ya usa `/estadisticas` — reusar, no reinventar). Notificación push al
+  completar: cuando alguien completa una tarea que otro le asignó, quien
+  asignó recibe una notificación reusando `enviarPushATodos` (o una variante
+  que envíe a un solo usuario en vez de a todos — probablemente hace falta
+  esa variante, evaluar). — asignada a: sin asignar (sugerido:
+  `rama-trazabilidad-social`) — Depende de: tarea 4 (notificaciones push).
+
+- [ ] **7. Sistema de moneda virtual.** Moneda ganada al completar una tarea
+  asignada (no una tarea propia — solo las que vienen de `asignado_a`, para
+  que tenga sentido social), con bonus por racha (reusar el concepto de
+  racha ya definido en `/estadisticas`, adaptado a "racha completando tareas
+  asignadas" si es distinto de la racha general — documentar la diferencia
+  si la hay). Reparto 70% quien completa / 30% quien asignó — constantes
+  nombradas, no números sueltos en el código. Límite de moneda ganable por
+  día: decidir el número en el momento de implementar y documentar el
+  porqué (pensar en cuántas tareas asignadas reales se esperan por día entre
+  dos amigos para que el límite no se sienta arbitrario). Anti-granjeo:
+  no contar hacia la racha ni pagar el bonus completo tareas completadas en
+  un tiempo sospechosamente corto desde que fueron asignadas — decidir el
+  umbral de tiempo mínimo y documentarlo (con el mismo espíritu que
+  `VENCIDO_DIAS` en estadísticas: una constante nombrada y explicada). —
+  asignada a: sin asignar (sugerido: `rama-moneda-virtual`) — Depende de:
+  tarea 6.
+
+- [ ] **8. IA compañera visual — Fase 1.** Selección de especie de planta al
+  registrarse (monstera, cactus, ficus, suculenta — mínimo 4 opciones), cada
+  una con su set de ilustraciones para etapas de crecimiento (semilla →
+  brote → joven → adulta). Crece según moneda acumulada: decidir un balance
+  razonable de moneda necesaria por etapa en el momento de implementar y
+  documentar el razonamiento (probablemente progresivo, cada etapa cuesta
+  más que la anterior — decidir la curva exacta ahí, no acá). Ventana "IA en
+  construcción" mostrando la etapa actual (placeholder de la Fase 2, sin
+  conversación real todavía). Observaciones basadas en datos propios del
+  usuario (patrones de horario, frecuencia, racha) — estadística simple
+  sobre las tablas ya existentes, **sin llamar a ningún modelo de IA en esta
+  fase**. Animación suave de transición entre etapas (CSS, respetar
+  `prefers-reduced-motion` igual que el resto de la app). Usos de la moneda:
+  cambiar skin/nombre/personalidad de la IA, comodines funcionales (perdonar
+  una tarea vencida sin romper la racha), temas visuales adicionales.
+  **Dejar el modelo de datos preparado para compra futura de moneda con
+  dinero real** (columna de origen en la tabla de moneda: `ganada` vs
+  `comprada`, o un enum — decidir y documentar) **pero sin integrar ningún
+  proveedor de pagos todavía** — eso no es parte de esta tarea. — asignada a:
+  sin asignar (sugerido: `rama-ia-companera-fase1`) — Depende de: tarea 7.
+
+- [ ] **9. [BLOQUEADA — no despachar todavía] IA compañera conversacional
+  real — Fase 2.** Integrar la API de Claude para que la planta hable de
+  verdad con el usuario. Depende de que exista un modelo de ingresos activo
+  (ej. suscripción/premium) — **el dueño del proyecto no lo ha definido
+  todavía, así que esta tarea no se asigna a ninguna rama hasta que exista
+  esa decisión de negocio.** Cuando se desbloquee: hay costo real por uso,
+  definir antes de lanzar un límite de mensajes por usuario/día y si el
+  acceso es exclusivo de usuarios con suscripción activa. La API key de
+  Claude es secreta: va en `.env`, nunca hardcodeada ni comiteada.
+  Documentar en esta misma sección de `COORDINACION.md` el costo estimado
+  por usuario activo (mensajes/día × precio por token, con la referencia de
+  precios vigente en ese momento) **para aprobación explícita del dueño del
+  proyecto antes de lanzar** — no desplegar solo con la aprobación de la
+  sesión que la construya. — asignada a: sin asignar, NO tomar hasta nuevo
+  aviso — Depende de: decisión de negocio externa (modelo de ingresos), no
+  de otra tarea de este backlog.
+
+- [ ] **10. Integración con Google Calendar.** OAuth explícito, mismo patrón
+  que cualquier conector tipo Claude (pantalla de consentimiento clara,
+  scope mínimo necesario). La IA (o, si la Fase 1 de la tarea 8 todavía no
+  está lista, un botón manual) crea eventos en el calendario a partir de un
+  recordatorio. Registrar la app en Google Cloud Console; `client_id` y
+  `client_secret` en `.env`, nunca hardcodeados ni comiteados. Botón para
+  desconectar la integración. Token de acceso (y refresh token) **cifrado en
+  la base de datos, nunca en texto plano** — decidir el mecanismo de cifrado
+  en el momento de implementar (ej. `crypto.createCipheriv` con una clave en
+  `.env` separada de las demás) y documentarlo. Cada usuario solo accede a
+  SU PROPIO calendario — validar en cada llamada con el mismo criterio que
+  ya usa `usuarioPerteneceAmistad()` (nunca confiar en un id que venga del
+  cliente sin cruzarlo contra la sesión). Esta es la primera de una fase
+  futura de integraciones — Gmail y Spotify quedan explícitamente para
+  después, no se abren en esta tarea. — asignada a: sin asignar (sugerido:
+  `rama-google-calendar`) — Depende de: tarea 4 (notificaciones push). Puede
+  correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
+  no depende de ellas.
+
 ## Cómo agregar un trabajador nuevo (para el usuario)
 
 1. Escribe la tarea nueva en "Backlog de tareas" arriba (o pídele a cualquier sesión

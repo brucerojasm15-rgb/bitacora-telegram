@@ -242,6 +242,58 @@
   máquina Windows (carpeta aislada, rama independiente, `npm install` sin
   problemas) — ver la nueva regla 2 y el paso 4 de onboarding arriba.
 
+### rama-estadisticas
+- Estado: ✅ commiteada, lista para merge.
+- Tarea: panel de estadísticas — nueva ruta `GET /estadisticas` con métricas
+  simples (completadas por semana, pendientes vencidos, racha de días
+  seguidos completando algo), todo de solo lectura sobre la tabla
+  `pendientes` ya existente (columnas `hecho`, `creado`), sin tablas nuevas.
+- Archivos tocados: server.js (helpers `formatearDiaLima`/`diaAnterior`/
+  `calcularRacha` y constante `VENCIDO_DIAS` junto a `whereRango`; nueva ruta
+  `GET /estadisticas` agregada justo después de `/hechos`, sin tocar otras
+  rutas), views/estadisticas.ejs (nuevo), views/partials/nav.ejs (una línea
+  nueva con el link). No toqué public/style.css — reuso clases ya existentes
+  (`.count`, `.empty`, `.error`, `table`) para no pisar a rama-visual/
+  rama-tema-chat que ya lo tocaron.
+- Definiciones usadas (documentadas también en la vista):
+  - "Completadas por semana": `pendientes` con `hecho = TRUE`, agrupadas por
+    `date_trunc('week', creado AT TIME ZONE 'America/Lima')`. LIMITACIÓN: la
+    tabla no tiene columna de fecha de completado, así que se usa `creado`
+    como aproximación — si un pendiente se completa días después de
+    creado, esta métrica lo cuenta en la semana en que se CREÓ, no en la que
+    se completó.
+  - "Vencido": pendiente con `hecho = FALSE` y `creado < NOW() - INTERVAL
+    '7 days'` (constante `VENCIDO_DIAS = 7` en server.js).
+  - "Racha": días consecutivos (calendario America/Lima) con al menos un
+    pendiente `hecho = TRUE`, contando hacia atrás desde hoy; usa `creado`
+    como fecha de referencia (misma limitación de arriba). Si hoy todavía no
+    se completó nada, no rompe la racha (el día no terminó) y se cuenta
+    desde ayer.
+- Qué se probó contra la DB real de Railway (servidor en puerto 3104, dos
+  usuarios de prueba descartables creados vía `POST /registro` real y
+  borrados al terminar, pendientes insertados directo por SQL para controlar
+  `creado`):
+  - Usuario 1, 7 pendientes de prueba con offsets de días controlados
+    (hoy, ayer, anteayer, hace 8 y 10 días, mezclando `hecho` true/false):
+    `GET /estadisticas` → 200. Racha calculada = 3 (coincide con 3 días
+    consecutivos hecho=TRUE armados a propósito, con un cuarto completado
+    aislado 10 días atrás que correctamente NO extendió la racha). Vencidos
+    = 2 (los dos `hecho=FALSE` creados hace 8 y 10 días; el creado hace 1
+    día correctamente excluido). Completadas por semana: 3 buckets exactos
+    — `2026-08-10` → 2, `2026-08-03` → 1, `2026-07-27` → 1 — verificados
+    tanto en el HTML devuelto como con una consulta SQL independiente hecha
+    desde el script de prueba (mismos números).
+  - Usuario 2 (sin pendientes): `GET /estadisticas` → 200, sin errores,
+    mostrando los 3 mensajes de estado vacío ("Sin racha activa todavía",
+    "No hay pendientes vencidos", "Todavía no hay pendientes completados").
+  - Ambos usuarios de prueba y sus pendientes fueron borrados al final de
+    cada script. Scripts `_test_*.js` temporales borrados antes de
+    commitear.
+- Pendiente/hueco conocido: no hay columna de fecha de completado en
+  `pendientes`, así que "por semana" y "racha" son aproximaciones basadas en
+  `creado` (documentado arriba y en la vista). Si en el futuro se agrega una
+  columna tipo `completado_en`, estas dos queries deberían migrar a usarla.
+
 ### rama-categorias
 - Estado: ✅ commiteada, lista para merge.
 - Tarea: categorías/etiquetas en pendientes (ronda 2026-08-11) — columna
@@ -404,7 +456,7 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 - [ ] Panel de estadísticas: nueva ruta `/estadisticas` con métricas simples
   (tareas completadas por semana, pendientes vencidos, racha de días
   seguidos completando algo), reusando datos ya existentes en `pendientes`
-  (no requiere tablas nuevas). — sin asignar
+  (no requiere tablas nuevas). — tomada por rama-estadisticas
 
 Nota de coordinación: las 4 tareas de esta ronda tocan `server.js` y
 probablemente `views/index.ejs`/`views/chat.ejs` en zonas distintas — cada

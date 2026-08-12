@@ -496,6 +496,30 @@
 - 2026-08-11 — merge de rama-tema-chat (e6c51ee) → main vía PR #8: sin
   conflictos (mergeStateStatus CLEAN). Última tarea del backlog original
   (tema oscuro para chat.ejs) ya cerrada. Commit de merge e694dee.
+- 2026-08-11 — merge de rama-estadisticas (515c6a8) → main vía PR #15: sin
+  conflictos (CLEAN/MERGEABLE). Primera de 4 tareas delegadas en paralelo a
+  agentes en worktrees separados. Commit de merge a85e7ce.
+- 2026-08-11 — merge de rama-categorias-v2 (4b52c92) → main vía PR #18: el
+  PR original de rama-categorias quedó CONFLICTING después del merge de
+  rama-estadisticas (ambas tocaban `GET /` y `ensureSchema`). Reconstruida
+  desde main actualizado (mismo patrón que rondas anteriores), reprobada y
+  mergeada limpia. Commit de merge 3f499e4.
+- 2026-08-11 — merge de rama-busqueda-v2 (7a05bbb) → main vía PR #19: el PR
+  original de rama-busqueda quedó CONFLICTING tras rama-categorias-v2
+  (ambas tocaban `GET /` y `views/index.ejs`). Reconstruida desde main
+  actualizado combinando el filtro de categoría con la búsqueda por texto,
+  reprobada y mergeada limpia. Commit de merge 91b6c64.
+- 2026-08-11 — merge de rama-tareas-compartidas-v2 (e668857) → main vía PR
+  #20: el PR original de rama-tareas-compartidas (#14) quedó CONFLICTING
+  tras los tres merges anteriores. Reconstruida desde main actualizado
+  (columna `asignado_a`, `usuariosSonAmigos()`, ruta `/pendientes/:id/
+  asignar`, badge "Asignado por" + modo solo lectura en index.ejs, selector
+  de amigos en editar.ejs). Verificada sintaxis (`node -c`) y renderizado de
+  plantillas con datos simulados; NO se repitió la prueba end-to-end contra
+  la DB real en esta reconstrucción (el worktree no tenía `.env`) — se
+  mergeó con esa salvedad explícita, confirmada por el usuario. Commit de
+  merge c56dc6c. Con esto, las 4 tareas delegadas en paralelo están
+  mergeadas a main.
 
 ## Onboarding para una sesión nueva (nuevo "trabajador")
 

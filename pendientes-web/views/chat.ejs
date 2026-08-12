@@ -13,13 +13,15 @@
     <% } else { %>
       <form method="GET" action="/chat" class="filtro-rango">
         <input type="number" name="amistad_id" value="<%= amistadId %>" min="1" required>
+        <input type="text" name="buscar" value="<%= buscar %>" placeholder="Buscar mensajes...">
         <button type="submit">Ver</button>
+        <% if (buscar) { %><a href="/chat?amistad_id=<%= amistadId %>" class="btn-link">Limpiar</a><% } %>
       </form>
 
       <% if (error) { %>
         <p class="error"><%= error %></p>
       <% } else if (mensajes.length === 0) { %>
-        <p class="empty">Todavía no hay mensajes en esta conversación.</p>
+        <p class="empty"><%= buscar ? 'Ningún mensaje coincide con "' + buscar + '".' : 'Todavía no hay mensajes en esta conversación.' %></p>
       <% } else { %>
         <%
           const sinLeerPrevios = mensajes.filter((m) => !m.leido && m.autor_id !== usuarioId).length;

@@ -654,6 +654,21 @@
   estuviera "probado y confirmado".
 - Commit: ead2985. Mergeada a main vía PR #32 (ver Historial de merges abajo).
 
+### rama-limite-registro
+- Estado: 🔧 en progreso.
+- Tarea: tarea 2 de la ronda "2026-08-12 — roadmap grande" — confirmar/
+  ajustar el límite de registro público por IP/hora. `POST /registro` ya es
+  público y ya pasa por `limitarIntentos('registro')` (8 intentos/15min por
+  IP); evaluar si eso alcanza como límite anti-spam de cuentas o si hace
+  falta uno separado, decidir el número y documentar el porqué acá antes de
+  implementar.
+- Depende de: tarea 1 (fix de `/recuperar`), ya mergeada y confirmada en
+  producción (PR #32) — desbloqueada.
+- Archivos que voy a tocar: `pendientes-web/server.js` (posiblemente cerca
+  de `limitarIntentos`/`POST /registro` únicamente).
+- Próxima actualización: con la decisión de diseño (número + porqué) antes
+  de implementar, y luego con el resultado final.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

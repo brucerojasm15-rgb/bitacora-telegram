@@ -697,7 +697,7 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   existente en tabla mensajes) — tomada por rama-notificaciones
 - [x] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
   no tenía el estilo aplicado) — tomada por rama-tema-chat
-- [ ] Código de recuperación de PIN: generarlo una sola vez al crear la cuenta
+- [x] Código de recuperación de PIN: generarlo una sola vez al crear la cuenta
   (`POST /registro`), mostrárselo al usuario UNA vez justo después de registrarse
   (no queda guardado en texto plano — igual que el PIN, se guarda hasheado en una
   columna nueva, ej. `codigo_recuperacion_hash`), y una ruta nueva tipo
@@ -705,23 +705,23 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   correcto para ese usuario. Objetivo: que nadie quede bloqueado de su propia
   cuenta si olvida el PIN (ya casi pasó una vez en esta sesión). Sin tocar el
   rate limiting ya existente (`limitarIntentos`) ni las rutas /login o /registro
-  más allá de lo necesario para generar el código. — asignada a: sin asignar
+  más allá de lo necesario para generar el código. — tomada por rama-recuperacion-pin
 
 ### Ronda nueva (2026-08-11) — propuesta por el usuario, mejoras a definir por rama
 
-- [ ] Categorías/etiquetas en pendientes: agregar columna `categoria` (o tabla
+- [x] Categorías/etiquetas en pendientes: agregar columna `categoria` (o tabla
   aparte) a la tabla `pendientes`, UI para asignar categoría al crear/editar
   una tarea, y filtro por categoría en la vista principal (`/`). — tomada por
-  rama-categorias
+  rama-categorias-v2
 - [x] Tareas compartidas con amigos: permitir asignar un pendiente a un amigo
   (no solo verlo uno mismo) — requiere columna tipo `asignado_a` en
   `pendientes` y reusar la tabla `amistades`/`usuarioPerteneceAmistad` ya
   existente para validar que solo se puede compartir con un amigo real. —
   tomada por rama-tareas-compartidas-v2
-- [ ] Búsqueda de texto en pendientes y en el chat: input de búsqueda en `/`
+- [x] Búsqueda de texto en pendientes y en el chat: input de búsqueda en `/`
   que filtre pendientes por texto, e input de búsqueda en `/chat` que filtre
-  mensajes por texto dentro de una amistad. — tomada por rama-busqueda
-- [ ] Panel de estadísticas: nueva ruta `/estadisticas` con métricas simples
+  mensajes por texto dentro de una amistad. — tomada por rama-busqueda-v2
+- [x] Panel de estadísticas: nueva ruta `/estadisticas` con métricas simples
   (tareas completadas por semana, pendientes vencidos, racha de días
   seguidos completando algo), reusando datos ya existentes en `pendientes`
   (no requiere tablas nuevas). — tomada por rama-estadisticas

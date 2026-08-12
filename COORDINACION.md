@@ -169,7 +169,7 @@
   esta rama nueva.
 
 ### rama-tema-chat
-- Estado: commiteada, lista para merge.
+- Estado: ✅ MERGEADA a main vía PR #8 (commit de merge e694dee).
 - Tarea: aplicar tema visual oscuro a views/chat.ejs (último ítem del
   backlog original). Antes, chat.ejs no tenía ningún estilo propio más
   allá de lo agregado por rama-notificaciones (.notificacion, .no-leido,
@@ -236,6 +236,9 @@
   reprobó end-to-end contra la DB real (incluida la integración con
   GET /notificaciones ya mergeada), y se mergeó limpio. Commit de merge
   10c9a7e.
+- 2026-08-11 — merge de rama-tema-chat (e6c51ee) → main vía PR #8: sin
+  conflictos (mergeStateStatus CLEAN). Última tarea del backlog original
+  (tema oscuro para chat.ejs) ya cerrada. Commit de merge e694dee.
 
 ## Onboarding para una sesión nueva (nuevo "trabajador")
 

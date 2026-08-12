@@ -31,6 +31,12 @@
       </select>
     </div>
 
+    <form method="GET" action="/" class="filtro-rango">
+      <input type="text" name="q" value="<%= q %>" placeholder="Buscar pendientes...">
+      <button type="submit">Buscar</button>
+      <% if (q) { %><a href="/" class="btn-link">Limpiar</a><% } %>
+    </form>
+
     <div id="lista">
       <% if (error) { %>
         <p class="error"><%= error %></p>

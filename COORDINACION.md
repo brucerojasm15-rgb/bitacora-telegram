@@ -242,6 +242,53 @@
   máquina Windows (carpeta aislada, rama independiente, `npm install` sin
   problemas) — ver la nueva regla 2 y el paso 4 de onboarding arriba.
 
+### rama-categorias
+- Estado: ✅ commiteada, lista para merge.
+- Tarea: categorías/etiquetas en pendientes (ronda 2026-08-11) — columna
+  `categoria` en tabla `pendientes`, UI para asignarla al crear/editar, y
+  filtro por categoría en `GET /`.
+- Cambios en `server.js`:
+  - `ensureSchema()`: `ALTER TABLE pendientes ADD COLUMN IF NOT EXISTS
+    categoria TEXT` (mismo patrón idempotente que el resto de la función).
+  - Constante `CATEGORIAS_VALIDAS = ['personal', 'trabajo', 'fundo', 'salud',
+    'otro']` (lista cerrada, mismo espíritu que `RANGOS_VALIDOS`): cualquier
+    valor recibido que no esté en la lista se guarda/filtra como "sin
+    categoría" en vez de fallar.
+  - `GET /`: acepta `?categoria=<valor>`; si es válido agrega `AND categoria
+    = $2` a la query y pasa `categoriaFiltro` + `categorias` a la vista.
+  - `POST /pendientes`: guarda `categoria` (o `null` si no viene o no es
+    válida).
+  - `GET /pendientes/:id/editar`: ahora trae también `categoria` y pasa la
+    lista `categorias` a la vista para prellenar el `<select>`.
+  - `POST /pendientes/:id/editar`: guarda `categoria` junto con `texto` en
+    el mismo UPDATE ya usado por rama-historial-ediciones (no rompe esa
+    transacción, solo se agregó una columna más al SET).
+- Cambios en vistas: `views/index.ejs` (select de categoría en el form de
+  "Agregar pendiente", selector de filtro `?categoria=` reusando la clase
+  `.filtro` ya existente, columna nueva "Categoría" en la tabla mostrada
+  como `#categoria`), `views/editar.ejs` (select de categoría, preseleccionada
+  con la categoría actual del pendiente).
+- `public/style.css`: agregado `.nuevo select` (estilo simple, coherente con
+  `.nuevo input`/`.nuevo button` ya existentes) — no se tocó nada del tema
+  oscuro de rama-visual, solo se reutilizaron sus variables CSS.
+- Archivos tocados: `pendientes-web/server.js`, `pendientes-web/views/index.ejs`,
+  `pendientes-web/views/editar.ejs`, `pendientes-web/public/style.css`.
+- Qué se verificó: `node --check server.js` sin errores. Contra la DB real de
+  Railway con usuario descartable `test_categorias_temp` (creado vía
+  `POST /registro`, borrado al terminar junto con sus pendientes e historial
+  de ediciones asociado): creé un pendiente con categoría `trabajo` y otro
+  con `personal` → ambos aparecen en `/` con su `#categoria` visible;
+  `GET /?categoria=trabajo` solo devuelve el de trabajo, `GET
+  /?categoria=personal` solo el de personal; abrí `/pendientes/:id/editar`
+  del primero y confirmé que el `<option value="trabajo" selected>` viene
+  marcado; lo edité cambiando la categoría a `fundo` →
+  `GET /?categoria=fundo` ahora lo incluye y `GET /?categoria=trabajo` ya no.
+  Limpieza completa confirmada en DB (pendientes, historial_ediciones y
+  usuario de prueba borrados, 0 filas restantes).
+- No toqué `historial_ediciones` (rama-historial-ediciones) ni las rutas
+  /amigos, /chat, /notificaciones — solo pendientes.
+- Commit: (ver hash abajo en el mensaje final al usuario / `git log`).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -344,7 +391,8 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Categorías/etiquetas en pendientes: agregar columna `categoria` (o tabla
   aparte) a la tabla `pendientes`, UI para asignar categoría al crear/editar
-  una tarea, y filtro por categoría en la vista principal (`/`). — sin asignar
+  una tarea, y filtro por categoría en la vista principal (`/`). — tomada por
+  rama-categorias
 - [ ] Tareas compartidas con amigos: permitir asignar un pendiente a un amigo
   (no solo verlo uno mismo) — requiere columna tipo `asignado_a` en
   `pendientes` y reusar la tabla `amistades`/`usuarioPerteneceAmistad` ya

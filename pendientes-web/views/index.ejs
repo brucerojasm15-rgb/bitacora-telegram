@@ -12,8 +12,24 @@
 
     <form method="POST" action="/pendientes" class="nuevo">
       <input type="text" name="texto" id="nuevo-pendiente" placeholder="Nuevo pendiente..." required>
+      <select name="categoria" aria-label="Categoría">
+        <option value="">Sin categoría</option>
+        <% categorias.forEach((c) => { %>
+          <option value="<%= c %>">#<%= c %></option>
+        <% }) %>
+      </select>
       <button type="submit">Agregar</button>
     </form>
+
+    <div class="filtro">
+      <label for="filtro-categoria">Categoría:</label>
+      <select id="filtro-categoria" onchange="window.location.href = this.value ? '?categoria=' + this.value : '/'">
+        <option value="" <%= !categoriaFiltro ? 'selected' : '' %>>Todas</option>
+        <% categorias.forEach((c) => { %>
+          <option value="<%= c %>" <%= categoriaFiltro === c ? 'selected' : '' %>>#<%= c %></option>
+        <% }) %>
+      </select>
+    </div>
 
     <div id="lista">
       <% if (error) { %>
@@ -27,6 +43,7 @@
             <tr>
               <th>#</th>
               <th>Actividad</th>
+              <th>Categoría</th>
               <th>Creado</th>
               <th></th>
             </tr>
@@ -36,6 +53,7 @@
               <tr>
                 <td><%= i + 1 %></td>
                 <td><%= p.texto %></td>
+                <td><%= p.categoria ? '#' + p.categoria : '-' %></td>
                 <td><%= new Date(p.creado).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
                 <td>
                   <% if (p.necesita_reflexion) { %>

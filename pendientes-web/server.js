@@ -243,7 +243,8 @@ async function ensureSchema() {
     ALTER TABLE pendientes
       ADD COLUMN IF NOT EXISTS contador_posposiciones INT DEFAULT 0,
       ADD COLUMN IF NOT EXISTS necesita_reflexion BOOLEAN DEFAULT false,
-      ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+      ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id),
+      ADD COLUMN IF NOT EXISTS categoria TEXT
   `);
   await pool.query(`
     ALTER TABLE ideas ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
@@ -310,6 +311,12 @@ async function ensureSchema() {
   `);
 }
 
+// Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
+// cerrada simple, mismo espíritu que RANGOS_VALIDOS más abajo: si el valor
+// recibido (crear/editar/filtrar) no está en esta lista, se ignora/guarda
+// como sin categoría en vez de fallar.
+const CATEGORIAS_VALIDAS = ['personal', 'trabajo', 'fundo', 'salud', 'otro'];
+
 async function usuarioPerteneceAmistad(usuarioId, amistadId) {
   const { rows } = await pool.query(
     "SELECT 1 FROM amistades WHERE id = $1 AND estado = 'aceptada' AND (usuario_a_id = $2 OR usuario_b_id = $2)",
@@ -319,15 +326,21 @@ async function usuarioPerteneceAmistad(usuarioId, amistadId) {
 }
 
 app.get('/', async (req, res) => {
+  const categoriaFiltro = CATEGORIAS_VALIDAS.includes(req.query.categoria) ? req.query.categoria : null;
   try {
+    const params = categoriaFiltro ? [req.usuarioId, categoriaFiltro] : [req.usuarioId];
     const { rows } = await pool.query(
-      'SELECT id, texto, creado, necesita_reflexion FROM pendientes WHERE hecho = FALSE AND usuario_id = $1 ORDER BY creado ASC',
-      [req.usuarioId]
+      `SELECT id, texto, creado, necesita_reflexion, categoria FROM pendientes
+       WHERE hecho = FALSE AND usuario_id = $1 ${categoriaFiltro ? 'AND categoria = $2' : ''}
+       ORDER BY creado ASC`,
+      params
     );
     res.render('index', {
       pendientes: rows,
       error: null,
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      categorias: CATEGORIAS_VALIDAS,
+      categoriaFiltro,
     });
   } catch (err) {
     console.error('Error consultando pendientes:', err.message);
@@ -335,19 +348,22 @@ app.get('/', async (req, res) => {
       pendientes: [],
       error: 'No se pudo leer la base de datos.',
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      categorias: CATEGORIAS_VALIDAS,
+      categoriaFiltro,
     });
   }
 });
 
 app.post('/pendientes', async (req, res) => {
   const texto = (req.body.texto || '').trim();
+  const categoria = CATEGORIAS_VALIDAS.includes(req.body.categoria) ? req.body.categoria : null;
   if (!texto) {
     return res.status(400).send('El texto no puede estar vacío');
   }
   try {
     await pool.query(
-      'INSERT INTO pendientes (texto, creado, hecho, usuario_id) VALUES ($1, now(), FALSE, $2)',
-      [texto, req.usuarioId]
+      'INSERT INTO pendientes (texto, creado, hecho, usuario_id, categoria) VALUES ($1, now(), FALSE, $2, $3)',
+      [texto, req.usuarioId, categoria]
     );
   } catch (err) {
     console.error('Error creando pendiente:', err.message);
@@ -576,11 +592,11 @@ app.get('/pendientes/:id/editar', async (req, res) => {
     return res.status(400).send('id inválido');
   }
   try {
-    const { rows } = await pool.query('SELECT id, texto FROM pendientes WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+    const { rows } = await pool.query('SELECT id, texto, categoria FROM pendientes WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
     if (rows.length === 0) {
       return res.status(404).send('Pendiente no encontrado');
     }
-    res.render('editar', { pendiente: rows[0] });
+    res.render('editar', { pendiente: rows[0], categorias: CATEGORIAS_VALIDAS });
   } catch (err) {
     console.error('Error cargando pendiente para editar:', err.message);
     res.status(500).send('No se pudo cargar el pendiente');
@@ -590,6 +606,7 @@ app.get('/pendientes/:id/editar', async (req, res) => {
 app.post('/pendientes/:id/editar', async (req, res) => {
   const id = Number(req.params.id);
   const texto = (req.body.texto || '').trim();
+  const categoria = CATEGORIAS_VALIDAS.includes(req.body.categoria) ? req.body.categoria : null;
   if (!Number.isInteger(id)) {
     return res.status(400).send('id inválido');
   }
@@ -608,7 +625,10 @@ app.post('/pendientes/:id/editar', async (req, res) => {
         'INSERT INTO historial_ediciones (pendiente_id, texto_anterior) VALUES ($1, $2)',
         [id, actual.rows[0].texto]
       );
-      await client.query('UPDATE pendientes SET texto = $1 WHERE id = $2 AND usuario_id = $3', [texto, id, req.usuarioId]);
+      await client.query(
+        'UPDATE pendientes SET texto = $1, categoria = $2 WHERE id = $3 AND usuario_id = $4',
+        [texto, categoria, id, req.usuarioId]
+      );
     }
     await client.query('COMMIT');
   } catch (err) {

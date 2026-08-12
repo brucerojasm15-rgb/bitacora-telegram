@@ -521,6 +521,56 @@
   merge c56dc6c. Con esto, las 4 tareas delegadas en paralelo están
   mergeadas a main.
 
+## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
+
+Este patrón se usó y funcionó de forma confiable 4 veces seguidas (rama-notificaciones-integrada,
+rama-registro-integrada, rama-categorias-v2, rama-busqueda-v2, rama-tareas-compartidas-v2). NO
+intentes arreglar el PR viejo con un commit encima — falla incluso cuando el contenido final es
+compatible, porque el merge de 3 vías se confunde con el historial divergente. Reconstruye la
+rama entera desde main actualizado:
+
+1. `git checkout -b rama-<feature>-v2 origin/main` (si ya existe un -v2, sube el número).
+2. Trae el código ya probado de la rama vieja SOLO para copiar/entender, no para mergear:
+   `git show origin/rama-<feature>:pendientes-web/server.js > /tmp/mt/old_server.js` (y lo mismo
+   para cualquier otro archivo tocado). En Windows, usa la ruta real
+   `C:/Users/.../AppData/Local/Temp/mt/...`, no `/tmp/...` — Node no la resuelve igual.
+3. Antes de leer/diffear archivos completos: corre `git diff --stat origin/main -- <archivo>` para
+   ver cuánto cambió. Si el archivo es grande (como `style.css`), NO vuelques el diff completo —
+   lee solo la cola nueva o usa un diff acotado. Volcar diffs enteros innecesarios es la forma más
+   rápida de inflar el contexto sin necesidad.
+4. Aplica a mano (Edit tool) solo los cambios reales de la rama vieja sobre el `server.js`/vistas
+   actuales de main, entendiendo la intención de cada lado — no un merge automático.
+5. Para `COORDINACION.md`: extrae SOLO la sección propia de la rama vieja (el bloque
+   `### rama-<feature>` hasta el siguiente `### `) con un script Node chico que busque el heading
+   anclado a salto de línea (`'\n### rama-<feature>'`, nunca sin el `\n` — un match sin anclar
+   puede caer dentro de una mención entre comillas en otra sección) e insértalo en el
+   `COORDINACION.md` actual de main, justo antes de `### rama-integracion`.
+6. `node -c server.js` para sintaxis. Si hay vistas EJS nuevas/tocadas, valídalas con
+   `ejs.render(...)` y datos simulados (sin necesitar la DB) antes de gastar una prueba real.
+7. Prueba end-to-end contra la DB real SOLO si tienes `.env` en ese worktree (los worktrees no lo
+   traen por defecto, está en `.gitignore` a propósito). Si no lo tienes, dilo explícitamente al
+   reportar en vez de saltarte la prueba en silencio, y que el usuario decida si mergea igual.
+8. Commit, push, `gh pr close <viejo> --comment "..."`, `gh pr create`, verifica
+   `gh pr view <nuevo> --json mergeable,mergeStateStatus` da CLEAN/MERGEABLE, luego
+   `gh pr merge <nuevo> --merge --delete-branch=false`.
+9. Registra el merge en "Historial de merges a main" (arriba) con el hash del commit de merge.
+
+### Para varias ramas en conflicto entre sí (delegación en paralelo)
+
+Si vas a reconstruir varias ramas seguidas (porque se delegaron en paralelo y ahora chocan entre
+sí), NO lo hagas todo en un solo hilo largo — cada reconstrucción sucesiva arrastra el contexto
+(diffs, lecturas, pruebas) de las anteriores aunque ya no las necesite, y eso es lo que más
+infla el costo en tokens. Mejor:
+
+- Delega cada reconstrucción a un agente/subagente nuevo (Agent tool, `isolation: "worktree"`),
+  aunque tengan que correr en orden (cada uno depende de que main ya tenga el merge anterior) —
+  no hace falta que sean paralelos entre sí para ahorrar, el ahorro viene de que cada uno arranca
+  con contexto limpio y solo devuelve un resumen corto al hilo principal.
+- Dale a cada agente un prompt autocontenido: qué rama reconstruir, qué archivos tocó
+  originalmente (según su propia sección en COORDINACION.md), y que siga esta receta.
+- El hilo principal (rama-integracion) solo necesita el resumen de cada uno para decidir el
+  siguiente paso, no los diffs ni las pruebas completas.
+
 ## Onboarding para una sesión nueva (nuevo "trabajador")
 
 Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:

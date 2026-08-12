@@ -528,7 +528,7 @@
   esta rama): no hay forma de recuperar la cuenta si el usuario pierde el
   código de recuperación (se comporta igual que antes de esta rama en ese
   caso — requeriría intervención manual en la DB).
-- Commit: (pendiente de commitear en esta sesión).
+- Commit: 912b745. Mergeada a main vía PR #24 (ver Historial de merges abajo).
 
 ### rama-integracion
 - Estado: —
@@ -598,6 +598,11 @@
   mergeó con esa salvedad explícita, confirmada por el usuario. Commit de
   merge c56dc6c. Con esto, las 4 tareas delegadas en paralelo están
   mergeadas a main.
+- 2026-08-12 — merge de rama-recuperacion-pin (912b745) → main vía PR #24:
+  sin conflictos (mergeStateStatus CLEAN), CI (`verificar`) en verde. Cierra
+  el último ítem del backlog original (código de recuperación de PIN).
+  Probado end-to-end contra la DB real antes de abrir el PR (ver su sección
+  arriba). Commit de merge 00ad9ce.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 

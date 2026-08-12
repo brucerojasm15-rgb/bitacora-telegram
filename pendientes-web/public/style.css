@@ -373,6 +373,24 @@ h1 {
   border: 1px solid rgba(255, 107, 107, 0.25);
 }
 
+.codigo-recuperacion {
+  font-family: ui-monospace, monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.aviso-codigo {
+  color: var(--warning);
+  font-size: 0.9rem;
+}
+
 .notificacion {
   color: var(--accent);
   background: var(--bg-elevated-2);

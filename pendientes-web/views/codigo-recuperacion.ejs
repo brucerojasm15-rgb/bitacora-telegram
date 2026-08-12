@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Código de recuperación' }) %>
+</head>
+<body>
+  <main class="login-main">
+    <h1>🔐 Bitácora</h1>
+
+    <p><%= mensaje %></p>
+    <p class="codigo-recuperacion"><%= codigo %></p>
+    <p class="aviso-codigo">Guárdalo en un lugar seguro: no se va a volver a mostrar. Lo vas a necesitar si algún día olvidas tu PIN.</p>
+
+    <p><a href="<%= continuarUrl %>">Ya lo guardé, continuar</a></p>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

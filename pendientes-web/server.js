@@ -89,7 +89,7 @@ app.use((req, res, next) => {
 // /registro sin exigir sesión (si no, nadie podría loguearse ni crear
 // cuenta); todo lo demás requiere una sesión activa o redirige/rechaza.
 app.use((req, res, next) => {
-  if (req.path === '/login' || req.path === '/registro') return next();
+  if (req.path === '/login' || req.path === '/registro' || req.path === '/recuperar') return next();
   if (req.session && req.session.usuario_id) {
     req.usuarioId = req.session.usuario_id;
     return next();
@@ -146,6 +146,20 @@ function crearPinHash(pin) {
   const salt = crypto.randomBytes(16);
   const hash = crypto.scryptSync(pin, salt, 64);
   return `${salt.toString('hex')}:${hash.toString('hex')}`;
+}
+
+// Código de recuperación de PIN: mismo esquema hash que el PIN (crearPinHash/
+// verificarPin funcionan con cualquier string, se reusan tal cual). Alfabeto
+// sin 0/O/1/I/L para evitar confusión al copiarlo a mano.
+const ALFABETO_CODIGO_RECUPERACION = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function generarCodigoRecuperacion() {
+  const bytes = crypto.randomBytes(10);
+  let codigo = '';
+  for (let i = 0; i < bytes.length; i++) {
+    codigo += ALFABETO_CODIGO_RECUPERACION[bytes[i] % ALFABETO_CODIGO_RECUPERACION.length];
+  }
+  return `${codigo.slice(0, 5)}-${codigo.slice(5)}`;
 }
 
 const NOMBRE_USUARIO_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
@@ -213,19 +227,72 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
 
   try {
     const pinHash = crearPinHash(pin);
+    const codigoRecuperacion = generarCodigoRecuperacion();
+    const codigoRecuperacionHash = crearPinHash(codigoRecuperacion);
     const { rows } = await pool.query(
-      'INSERT INTO usuarios (nombre_usuario, pin_hash) VALUES ($1, $2) RETURNING id',
-      [nombreUsuario, pinHash]
+      'INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash) VALUES ($1, $2, $3) RETURNING id',
+      [nombreUsuario, pinHash, codigoRecuperacionHash]
     );
     req.session.usuario_id = rows[0].id;
     req.session.nombre_usuario = nombreUsuario;
-    res.redirect('/');
+    res.render('codigo-recuperacion', {
+      codigo: codigoRecuperacion,
+      mensaje: 'Cuenta creada. Este es tu código de recuperación de PIN — apúntalo antes de continuar:',
+      continuarUrl: '/',
+    });
   } catch (err) {
     if (err.code === '23505') {
       return res.render('registro', { error: 'Ese nombre de usuario ya está en uso.', nombreUsuario });
     }
     console.error('Error en registro:', err.message);
     res.status(500).render('registro', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario });
+  }
+});
+
+app.get('/recuperar', (req, res) => {
+  res.render('recuperar', { error: null, nombreUsuario: '' });
+});
+
+app.post('/recuperar', limitarIntentos('recuperar'), async (req, res) => {
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
+  const codigo = (req.body.codigo || '').trim().toUpperCase();
+  const pin = req.body.pin || '';
+  const confirmarPin = req.body.confirmar_pin || '';
+
+  if (!nombreUsuario || !codigo) {
+    return res.render('recuperar', { error: 'Completa usuario y código de recuperación.', nombreUsuario });
+  }
+  if (!PIN_REGEX.test(pin)) {
+    return res.render('recuperar', { error: 'El PIN nuevo debe ser numérico, de 4 a 6 dígitos.', nombreUsuario });
+  }
+  if (pin !== confirmarPin) {
+    return res.render('recuperar', { error: 'El PIN nuevo y su confirmación no coinciden.', nombreUsuario });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, codigo_recuperacion_hash FROM usuarios WHERE nombre_usuario = $1',
+      [nombreUsuario]
+    );
+    const usuario = rows[0];
+    if (!usuario || !usuario.codigo_recuperacion_hash || !verificarPin(codigo, usuario.codigo_recuperacion_hash)) {
+      return res.render('recuperar', { error: 'Usuario o código incorrecto.', nombreUsuario });
+    }
+    const nuevoPinHash = crearPinHash(pin);
+    const nuevoCodigo = generarCodigoRecuperacion();
+    const nuevoCodigoHash = crearPinHash(nuevoCodigo);
+    await pool.query(
+      'UPDATE usuarios SET pin_hash = $1, codigo_recuperacion_hash = $2 WHERE id = $3',
+      [nuevoPinHash, nuevoCodigoHash, usuario.id]
+    );
+    res.render('codigo-recuperacion', {
+      codigo: nuevoCodigo,
+      mensaje: 'Tu PIN se actualizó. Este es tu nuevo código de recuperación — apúntalo antes de continuar:',
+      continuarUrl: '/login',
+    });
+  } catch (err) {
+    console.error('Error en recuperación de PIN:', err.message);
+    res.status(500).render('recuperar', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario });
   }
 });
 
@@ -238,6 +305,9 @@ async function ensureSchema() {
       pin_hash TEXT,
       creado TIMESTAMP DEFAULT now()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigo_recuperacion_hash TEXT
   `);
   await pool.query(`
     ALTER TABLE pendientes

@@ -474,6 +474,62 @@
   terminal interactiva del usuario (permisos OAuth + secreto de API key),
   algo que ninguna sesión de Claude Code puede hacer por su cuenta.
 
+### rama-recuperacion-pin
+- Estado: ✅ commiteada, lista para merge.
+- Tarea (backlog): código de recuperación de PIN — generarlo una sola vez al
+  crear la cuenta, mostrarlo al usuario UNA vez, guardarlo hasheado (nunca en
+  texto plano), y una ruta `GET/POST /recuperar` que permita fijar un PIN
+  nuevo si se ingresa el código correcto. Objetivo: que nadie quede bloqueado
+  de su propia cuenta si olvida el PIN.
+- Cambios en `server.js`:
+  - `ensureSchema()`: `ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS
+    codigo_recuperacion_hash TEXT` (mismo patrón idempotente del resto).
+  - `generarCodigoRecuperacion()`: código de 10 caracteres (formato
+    `XXXXX-XXXXX`) con alfabeto sin `0/O/1/I/L` para evitar confusión al
+    copiarlo a mano. Se hashea con las mismas `crearPinHash`/`verificarPin`
+    ya existentes (genéricas para cualquier string, se reusaron tal cual sin
+    tocarlas).
+  - `POST /registro`: además del PIN, genera y guarda el hash del código de
+    recuperación; en vez de redirigir a `/` directo, renderiza
+    `codigo-recuperacion.ejs` mostrándolo una vez (la sesión ya queda
+    iniciada, "Continuar" lleva a `/`).
+  - Nuevas rutas `GET/POST /recuperar` (agregada al bypass del middleware de
+    sesión junto con `/login` y `/registro`, ya que es para gente sin
+    sesión): valida usuario + código contra el hash guardado, exige un PIN
+    nuevo válido (mismo `PIN_REGEX`), y si todo calza actualiza `pin_hash` Y
+    rota el código a uno nuevo (se muestra de nuevo, una sola vez) —
+    el código es de un solo uso, el viejo deja de servir apenas se usa.
+    `POST /recuperar` usa `limitarIntentos('recuperar')` (mismo helper ya
+    existente, sin tocar su lógica ni las rutas de login/registro).
+- Vistas nuevas: `views/recuperar.ejs` (formulario, mismo estilo
+  `.login-form` que login/registro), `views/codigo-recuperacion.ejs`
+  (muestra el código, reusada tanto por `/registro` como por `/recuperar`
+  vía las props `mensaje`/`continuarUrl`). `views/login.ejs`: agregado el
+  link "¿Olvidaste tu PIN?" hacia `/recuperar`.
+- `public/style.css`: `.codigo-recuperacion` (caja monoespaciada, letras
+  separadas, reusa `--bg-elevated`/`--border` ya existentes) y
+  `.aviso-codigo` (texto de advertencia con `--warning`).
+- Qué se verificó: `npm run ci` (sintaxis + compilación de las 18 plantillas,
+  incluidas las 2 nuevas) sin errores. Contra la DB real de Railway (servidor
+  local puerto 3105, usuario descartable `test_recu_pin_tmp` creado vía
+  `POST /registro` real, borrado al terminar): registro devuelve el código;
+  código incorrecto en `/recuperar` → error genérico "Usuario o código
+  incorrecto" (sin distinguir si el usuario existe, mismo estilo que
+  login); login con el PIN nuevo ANTES de recuperar → falla (el PIN viejo
+  seguía activo); `/recuperar` con el código correcto → 200, devuelve un
+  código NUEVO distinto al anterior, y actualiza el PIN; login con el PIN
+  viejo → falla; login con el PIN nuevo → 302 a `/`; reintentar `/recuperar`
+  con el código YA USADO (rotado) → falla, confirma que es de un solo uso.
+  Usuario de prueba borrado de la DB real al terminar.
+- No se tocó `limitarIntentos`, ni las rutas `/login`/`/registro` más allá de
+  agregar la generación/guardado del código en el registro (como pedía el
+  backlog explícitamente).
+- Hueco conocido (documentado en el backlog original, fuera de alcance de
+  esta rama): no hay forma de recuperar la cuenta si el usuario pierde el
+  código de recuperación (se comporta igual que antes de esta rama en ese
+  caso — requeriría intervención manual en la DB).
+- Commit: (pendiente de commitear en esta sesión).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

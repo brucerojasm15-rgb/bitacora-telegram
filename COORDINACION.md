@@ -654,6 +654,45 @@
   estuviera "probado y confirmado".
 - Commit: ead2985. Mergeada a main vía PR #32 (ver Historial de merges abajo).
 
+### rama-limite-registro
+- Estado: ✅ commiteada, lista para merge.
+- Tarea: tarea 2 de la ronda "2026-08-12 — roadmap grande" — confirmar/
+  ajustar el límite de registro público por IP/hora.
+- **Decisión de diseño (límite y porqué):** `limitarIntentos('registro')` ya
+  existente (8 intentos/15min ≈ 32/hora por IP) protege contra fuerza bruta,
+  pero cuenta intentos totales (éxito o fracaso) — alguien con paciencia
+  podría espaciar sus requests para no gatillarlo y aun así crear decenas de
+  cuentas falsas por hora sin que ese límite se active. Se agregó un
+  segundo límite, independiente, que cuenta SOLO registros **exitosos**:
+  `LIMITE_REGISTROS_EXITOSOS_POR_HORA = 5` por IP, ventana de 1 hora fija
+  (mismo patrón de `Map` con `resetAt` que ya usa `limitarIntentos`, sin
+  reusar la misma estructura porque mide algo distinto). Elegí 5 porque esta
+  app es para un grupo chico de amigos/familia (ver sistema de amistades y
+  chat en el resto de este archivo), no una red pública — 5 cubre el caso
+  legítimo más exigente esperable (varias personas de la misma red
+  registrándose seguido) y queda muy por debajo del límite de fuerza bruta
+  existente (32/hora), para que farmear cuentas automatizadas deje de ser
+  rentable sin bloquear el uso real. Documentado también como comentario en
+  el propio código, junto a la constante.
+- Cambios en `server.js`: `registrosPorIp` (Map), constantes
+  `LIMITE_REGISTROS_EXITOSOS_POR_HORA`/`VENTANA_REGISTROS_MS`, helpers
+  `limiteRegistrosAlcanzado(ip)`/`registrarAltaExitosa(ip)`, un
+  `setInterval` de limpieza (mismo patrón que el de `intentosPorIp`). En
+  `POST /registro`: chequeo de `limiteRegistrosAlcanzado(req.ip)` justo
+  antes del `try` (mismo estilo que las demás validaciones, error propio:
+  "Se alcanzó el límite de cuentas nuevas desde esta red en la última
+  hora..."), y `registrarAltaExitosa(req.ip)` justo después del `INSERT`
+  exitoso. No se tocó `limitarIntentos`, `/login`, ni `/recuperar` — ambos
+  límites de `/registro` (el de intentos y el nuevo de altas exitosas)
+  corren en paralelo, independientes.
+- Qué se verificó: `npm run ci` sin errores. Contra la DB real de Railway
+  (servidor local puerto 3110, 5 usuarios descartables `test_limreg_1..5`):
+  los primeros 5 registros desde la misma IP se crean con éxito; el 6to,
+  misma IP, se rechaza con el mensaje del límite nuevo y NO crea la cuenta
+  (confirmado que no quedó una 6ta fila en `usuarios`). Los 5 usuarios de
+  prueba se borraron de la DB real al terminar.
+- Commit: (ver historial de merges abajo tras mergear).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

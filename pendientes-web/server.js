@@ -132,6 +132,44 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000).unref();
 
+// Límite de CUENTAS NUEVAS por IP por hora — distinto de limitarIntentos('registro')
+// de arriba (que limita intentos totales, exitosos o no, contra fuerza bruta) porque
+// resuelve un problema distinto: alguien con paciencia podría espaciar sus intentos
+// para no gatillar el límite de fuerza bruta (8/15min = 32/hora) y aun así crear
+// decenas de cuentas falsas por hora. Este límite cuenta SOLO registros exitosos.
+// Número elegido (5/hora por IP): esta app es para un grupo chico de amigos/familia
+// (ver el resto de COORDINACION.md — sistema de amistades, chat entre amigos), no
+// una red social pública. 5 cubre el caso legítimo más exigente que se puede esperar
+// (varias personas de la misma casa/red registrándose seguido en una sesión), y deja
+// muy por debajo del límite de fuerza bruta existente (32/hora) para que farmear
+// cuentas automatizadas deje de ser rentable sin bloquear el uso real.
+const registrosPorIp = new Map();
+const LIMITE_REGISTROS_EXITOSOS_POR_HORA = 5;
+const VENTANA_REGISTROS_MS = 60 * 60 * 1000;
+
+function limiteRegistrosAlcanzado(ip) {
+  const entrada = registrosPorIp.get(ip);
+  if (!entrada || Date.now() > entrada.resetAt) return false;
+  return entrada.count >= LIMITE_REGISTROS_EXITOSOS_POR_HORA;
+}
+
+function registrarAltaExitosa(ip) {
+  const ahora = Date.now();
+  const entrada = registrosPorIp.get(ip);
+  if (!entrada || ahora > entrada.resetAt) {
+    registrosPorIp.set(ip, { count: 1, resetAt: ahora + VENTANA_REGISTROS_MS });
+    return;
+  }
+  entrada.count += 1;
+}
+
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [ip, entrada] of registrosPorIp) {
+    if (ahora > entrada.resetAt) registrosPorIp.delete(ip);
+  }
+}, 60 * 60 * 1000).unref();
+
 function verificarPin(pin, pinHashGuardado) {
   const partes = (pinHashGuardado || '').split(':');
   if (partes.length !== 2) return false;
@@ -224,6 +262,12 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
   if (pin !== confirmarPin) {
     return res.render('registro', { error: 'El PIN y su confirmación no coinciden.', nombreUsuario });
   }
+  if (limiteRegistrosAlcanzado(req.ip)) {
+    return res.render('registro', {
+      error: 'Se alcanzó el límite de cuentas nuevas desde esta red en la última hora. Intenta de nuevo más tarde.',
+      nombreUsuario,
+    });
+  }
 
   try {
     const pinHash = crearPinHash(pin);
@@ -233,6 +277,7 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
       'INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash) VALUES ($1, $2, $3) RETURNING id',
       [nombreUsuario, pinHash, codigoRecuperacionHash]
     );
+    registrarAltaExitosa(req.ip);
     req.session.usuario_id = rows[0].id;
     req.session.nombre_usuario = nombreUsuario;
     res.render('codigo-recuperacion', {

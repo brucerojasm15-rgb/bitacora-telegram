@@ -195,6 +195,31 @@
   real incrustado y se le envió al usuario para que la revise él mismo
   antes de mergear.
 
+### rama-historial-ediciones
+- Estado: commiteada, lista para merge.
+- Tarea: guardar el texto anterior de un pendiente antes de sobrescribirlo al
+  editar, sin cambiar nada visible para el usuario. Reacciona a un hueco
+  encontrado en revisión: la regla de "historial inmutable" planeada para B8.6
+  ya estaba siendo violada por `POST /pendientes/:id/editar` en producción
+  (sobrescribía sin dejar rastro).
+- Cambios: `ensureSchema()` agrega `historial_ediciones (id, pendiente_id
+  REFERENCES pendientes(id), texto_anterior, editado)`. `POST
+  /pendientes/:id/editar` ahora lee el texto actual, lo inserta en
+  `historial_ediciones`, y recién después actualiza — las tres cosas en una
+  sola transacción (si algo falla, no queda ni historial a medias ni el texto
+  sin actualizar).
+- Archivos tocados: server.js únicamente.
+- Qué se verificó: con un usuario y pendiente de prueba 100% descartables
+  (creados vía `POST /registro` real, borrados al terminar) — dos ediciones
+  seguidas → 2 filas en `historial_ediciones`, cada una con el texto correcto
+  de antes de cada cambio; el texto visible para el usuario sigue siendo solo
+  el actual.
+- Commit: 8eeb45d.
+- Pendiente/nota para quien decida sobre B8.6: el botón "Eliminar" (backlog
+  B7) sigue sin construirse — si se construye, debería ser borrado lógico
+  (columna `eliminado boolean`), no `DELETE` real, para no contradecir esta
+  misma regla de inmutabilidad. Decisión del usuario, no tomada todavía.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -270,6 +295,15 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   existente en tabla mensajes) — tomada por rama-notificaciones
 - [x] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,
   no tenía el estilo aplicado) — tomada por rama-tema-chat
+- [ ] Código de recuperación de PIN: generarlo una sola vez al crear la cuenta
+  (`POST /registro`), mostrárselo al usuario UNA vez justo después de registrarse
+  (no queda guardado en texto plano — igual que el PIN, se guarda hasheado en una
+  columna nueva, ej. `codigo_recuperacion_hash`), y una ruta nueva tipo
+  `GET/POST /recuperar` que permita fijar un PIN nuevo si se ingresa el código
+  correcto para ese usuario. Objetivo: que nadie quede bloqueado de su propia
+  cuenta si olvida el PIN (ya casi pasó una vez en esta sesión). Sin tocar el
+  rate limiting ya existente (`limitarIntentos`) ni las rutas /login o /registro
+  más allá de lo necesario para generar el código. — asignada a: sin asignar
 
 ## Cómo agregar un trabajador nuevo (para el usuario)
 

@@ -4,7 +4,18 @@
 ## Reglas para cualquier sesión de Claude Code que trabaje aquí
 
 1. Al empezar, lee este archivo completo antes de tocar código.
-2. Trabaja SOLO en tu rama asignada. Si no tienes una, créala: `git checkout -b rama-<feature>`.
+2. Trabaja SOLO en tu rama asignada, y hazlo en tu propio **worktree** (carpeta
+   aparte), NUNCA con `git checkout` directo en `C:\Users\lenovo\Desktop\a`
+   — esa carpeta la comparten todas las sesiones a la vez, y cambiarle la
+   rama ahí se la cambia a todas las demás sin avisar (nos pasó varias veces
+   en esta misma sesión). Desde `C:\Users\lenovo\Desktop\a`, crea tu worktree
+   con:
+   ```
+   git worktree add "C:\Users\lenovo\Desktop\a-worktrees\rama-<feature>" -b rama-<feature> origin/main
+   ```
+   Eso te deja una carpeta propia (`C:\Users\lenovo\Desktop\a-worktrees\rama-<feature>`)
+   ya parada en tu rama, sin tocar el checkout de nadie más. Trabaja siempre
+   desde ahí (`cd` a esa carpeta antes de cualquier otro comando).
 3. Antes de modificar `server.js`, revisa la sección "Estado de ramas" abajo — si otra rama
    ya está tocando el mismo archivo/función, escribe aquí qué vas a tocar tú también para
    anticipar conflictos.
@@ -220,6 +231,17 @@
   (columna `eliminado boolean`), no `DELETE` real, para no contradecir esta
   misma regla de inmutabilidad. Decisión del usuario, no tomada todavía.
 
+### rama-recuperacion-pin
+- Estado: worktree creado, sin código todavía — lista para que alguien la tome.
+- Tarea: código de recuperación de PIN (ver Backlog de tareas).
+- Ya tiene worktree propio en `C:\Users\lenovo\Desktop\a-worktrees\rama-recuperacion-pin`,
+  con `npm install` ya corrido en `pendientes-web/`. Falta copiar `.env` a mano
+  (bloqueado por permisos para la sesión que la creó) antes de poder correr el
+  server localmente ahí.
+- Esta rama también sirvió para probar que `git worktree` funciona bien en esta
+  máquina Windows (carpeta aislada, rama independiente, `npm install` sin
+  problemas) — ver la nueva regla 2 y el paso 4 de onboarding arriba.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -273,7 +295,20 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 2. Corre `git log --oneline -10` y `git branch -a` para ver el estado real.
 3. Busca tu tarea en la sección "Backlog de tareas" de abajo. Si el usuario ya te dio
    una tarea directamente en el chat, usa esa en vez del backlog.
-4. Crea tu rama desde `main` actualizado: `git checkout -b rama-<nombre-corto>`.
+4. Crea tu worktree desde `main` actualizado (NUNCA `git checkout` directo en
+   `C:\Users\lenovo\Desktop\a` — ver regla 2 de arriba):
+   ```
+   cd "C:\Users\lenovo\Desktop\a"
+   git fetch origin
+   git worktree add "C:\Users\lenovo\Desktop\a-worktrees\rama-<nombre-corto>" -b rama-<nombre-corto> origin/main
+   ```
+   Luego `cd` a esa carpeta nueva y trabaja siempre desde ahí. Copia
+   `pendientes-web\.env` a tu worktree a mano si necesitas correr el server
+   localmente (no está en git, cada worktree necesita su propia copia; y ojo,
+   una sesión con el deny de `*.env*` activo no va a poder copiarlo ella
+   misma — hazlo tú o pídeselo a una sesión sin esa restricción). También
+   corre `npm install` en `pendientes-web/` dentro de tu worktree — los
+   `node_modules` tampoco se comparten entre worktrees.
 5. Agrega tu sección en "Estado de ramas" con tu tarea y estado "en progreso" ANTES
    de escribir código.
 6. Mueve tu tarea del backlog a "en progreso" (o táchala con ~~texto~~) para que

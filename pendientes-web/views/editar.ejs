@@ -10,6 +10,13 @@
 
     <form method="POST" action="/pendientes/<%= pendiente.id %>/editar" class="editar-form">
       <textarea name="texto" rows="6" required><%= pendiente.texto %></textarea>
+      <label for="categoria">Categoría</label>
+      <select name="categoria" id="categoria">
+        <option value="">Sin categoría</option>
+        <% categorias.forEach((c) => { %>
+          <option value="<%= c %>" <%= pendiente.categoria === c ? 'selected' : '' %>>#<%= c %></option>
+        <% }) %>
+      </select>
       <div class="acciones-form">
         <button type="submit">Guardar</button>
         <a href="/" class="btn-link">Cancelar</a>

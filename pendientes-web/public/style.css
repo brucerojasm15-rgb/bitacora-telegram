@@ -161,6 +161,15 @@ h1 {
   box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
 }
 
+.nuevo select {
+  padding: 0.85rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
 .nuevo button {
   padding: 0.85rem 1.4rem;
   border: none;

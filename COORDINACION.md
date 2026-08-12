@@ -302,6 +302,7 @@
   `buscar` presente). Podría valer la pena investigarlo aparte si alguna
   sesión ve login intermitente fallando justo después de registrarse.
 - Puerto local usado para pruebas: 3103.
+- Commit: fe793c6.
 
 ### rama-integracion
 - Estado: —

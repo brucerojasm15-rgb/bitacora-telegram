@@ -56,13 +56,21 @@
           </thead>
           <tbody>
             <% pendientes.forEach((p, i) => { %>
+              <% const esAsignado = p.usuario_id !== usuarioId; %>
               <tr>
                 <td><%= i + 1 %></td>
-                <td><%= p.texto %></td>
+                <td>
+                  <%= p.texto %>
+                  <% if (esAsignado) { %>
+                    <span class="badge-asignado">Asignado por @<%= p.creador_nombre %></span>
+                  <% } %>
+                </td>
                 <td><%= p.categoria ? '#' + p.categoria : '-' %></td>
                 <td><%= new Date(p.creado).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
                 <td>
-                  <% if (p.necesita_reflexion) { %>
+                  <% if (esAsignado) { %>
+                    <span class="solo-lectura">Solo lectura</span>
+                  <% } else if (p.necesita_reflexion) { %>
                     <form method="POST" action="/pendientes/<%= p.id %>/reflexion" class="reflexion-form">
                       <label>¿Qué pasa?</label>
                       <input type="text" name="respuesta" required>

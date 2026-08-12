@@ -85,6 +85,9 @@
                         <button type="submit">⏳ Posponer</button>
                       </form>
                       <a href="/pendientes/<%= p.id %>/editar" class="btn-link">✏️ Editar</a>
+                      <form method="POST" action="/pendientes/<%= p.id %>/eliminar" class="eliminar-form">
+                        <button type="submit">🗑️ Eliminar</button>
+                      </form>
                     </div>
                   <% } %>
                 </td>
@@ -163,6 +166,21 @@
             fila.classList.add('fila-saliendo');
             setTimeout(() => quitarFila(fila), 350);
           }, 500);
+        } catch (err) {
+          form.submit();
+        }
+      });
+    });
+
+    document.querySelectorAll('.eliminar-form').forEach((form) => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!confirm('¿Eliminar este pendiente?')) return;
+        const fila = form.closest('tr');
+        try {
+          await fetch(form.action, { method: 'POST', body: new FormData(form) });
+          if (fila) fila.classList.add('fila-saliendo');
+          setTimeout(() => quitarFila(fila), 350);
         } catch (err) {
           form.submit();
         }

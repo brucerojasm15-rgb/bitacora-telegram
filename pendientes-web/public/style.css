@@ -218,6 +218,22 @@ h1 {
   flex-wrap: wrap;
 }
 
+.eliminar-form button {
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 0.65rem 0.5rem;
+  font-family: inherit;
+  transition: opacity var(--transition-fast);
+}
+
+.eliminar-form button:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
 .btn-link {
   display: inline-flex;
   align-items: center;

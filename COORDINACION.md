@@ -452,6 +452,28 @@
   mergeado por esta sesión (bloqueado por permisos, además la regla del
   protocolo es que rama-integracion o el usuario deciden el merge).
 
+### rama-ci-basica
+- Estado: commiteada, lista para merge.
+- Tarea: agrega verificación automática por PR (GitHub Actions) — hasta ahora
+  toda la validación de sintaxis/plantillas antes de mergear se hacía a mano
+  en cada sesión. `.github/workflows/ci.yml` corre en cada PR/push a main:
+  `npm install` + `npm run ci` dentro de `pendientes-web/`.
+- Archivos nuevos: `.github/workflows/ci.yml`, `pendientes-web/scripts/
+  verificar.js` (sin DB ni variables de entorno: `node --check` a todos los
+  `.js` del proyecto — excepto `node_modules` — y `ejs.compile()` a todos
+  los `.ejs` de `views/`, incluidos los partials), `package.json` (nuevo
+  script `"ci": "node scripts/verificar.js"`).
+- No reemplaza la prueba end-to-end contra la DB real que se sigue haciendo
+  a mano antes de mergear una rama con lógica nueva — solo atrapa errores de
+  sintaxis/plantillas rotas automáticamente, antes de que alguien los vea.
+- Probado localmente: `npm run ci` da OK en los 16 archivos actuales
+  (1 `.js` + 15 `.ejs`).
+- No incluye `anthropics/claude-code-action` ni `anthropics/
+  claude-code-security-review` (las Actions oficiales de Claude Code) —
+  esas requieren instalar la GitHub App vía `/install-github-app` desde una
+  terminal interactiva del usuario (permisos OAuth + secreto de API key),
+  algo que ninguna sesión de Claude Code puede hacer por su cuenta.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

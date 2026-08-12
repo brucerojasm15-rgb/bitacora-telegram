@@ -652,7 +652,7 @@
 - Esto desbloquea la tarea 2 (registro público) del mismo roadmap, que
   tenía como condición explícita no desplegarse hasta que este fix
   estuviera "probado y confirmado".
-- Commit: (ver historial de merges abajo tras mergear).
+- Commit: ead2985. Mergeada a main vía PR #32 (ver Historial de merges abajo).
 
 ### rama-integracion
 - Estado: —
@@ -739,6 +739,13 @@
   anterior — bug detectado y documentado por rama-eliminar-pendientes.
   Probado end-to-end contra la DB real con fechas controladas por SQL
   antes de abrir el PR (ver su sección arriba). Commit de merge 656e096.
+- 2026-08-12 — merge de rama-fix-recuperar-pin (ead2985) → main vía PR #32:
+  sin conflictos (mergeStateStatus CLEAN), CI (`verificar`) en verde. Tarea
+  1 (SEGURIDAD, bloqueante) del roadmap 2026-08-12: `/recuperar` ahora
+  exige PIN actual + código, cierra el hueco de reseteo de PIN ajeno.
+  Desbloquea la tarea 2 (registro público) del mismo roadmap. Probado
+  end-to-end contra la DB real antes de abrir el PR (ver su sección
+  arriba). Commit de merge 0fd4410.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 
@@ -942,7 +949,7 @@ el tiempo total sin generar conflictos de archivo entre ellas.
 
 ---
 
-- [ ] **1. [SEGURIDAD, bloqueante] Arreglar `/recuperar` para exigir el PIN
+- [x] **1. [SEGURIDAD, bloqueante] Arreglar `/recuperar` para exigir el PIN
   actual ADEMÁS del código de recuperación.** Ahora mismo `/recuperar` solo
   pide `nombre_usuario` + código — cualquiera que tenga el código puede
   resetear el PIN sin saber el PIN actual (documentado como hueco conocido
@@ -969,10 +976,10 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   o si hace falta uno más estricto y separado solo para altas de cuenta
   (decidir el número en el momento de implementar, documentarlo acá con el
   porqué, igual que pide el enunciado original). — asignada a: sin asignar
-  (sugerido: `rama-limite-registro`) — Depende de: tarea 1 (**NO desplegar a
-  producción hasta que el fix de `/recuperar` esté probado y confirmado** —
-  esta tarea se puede desarrollar/probar en paralelo, pero el PR no se
-  mergea/despliega antes que el de la tarea 1).
+  (sugerido: `rama-limite-registro`) — Depende de: tarea 1, **ya resuelta y
+  confirmada en producción** (PR #32, commit de merge 0fd4410, ver Historial
+  de merges) — el bloqueo de despliegue ya no aplica, esta tarea queda libre
+  para tomarse y desplegarse normalmente.
 
 - [ ] **3. Chat de captura rápida.** Input tipo chat de texto libre, con
   botones debajo (Pendiente / Idea / Recordatorio) para clasificar antes de

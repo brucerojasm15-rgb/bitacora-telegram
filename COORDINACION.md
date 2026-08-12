@@ -110,6 +110,32 @@
   en esta rama nueva. No se borró el branch remoto por si el usuario quiere
   revisarlo, pero no hace falta abrir PR desde ahí.
 
+### rama-registro (reconstruida como rama-registro-integrada)
+- Estado: commiteada, lista para merge.
+- Tarea: registro público de usuarios (`/registro`) + rate limiting en
+  `/login` y `/registro`. Trabajo original hecho en `rama-registro`
+  (commits a64d1fd, f5e0235, f903792).
+- Por qué existe esta rama con otro nombre: mismo motivo que
+  rama-notificaciones-integrada — el PR de `rama-registro` contra `main`
+  quedó CONFLICTING. A diferencia de esa vez, aquí SÍ había un conflicto de
+  código real (confirmado con `diff3` fuera de git, no solo el de
+  COORDINACION.md): tanto el hotfix de `/login` (main) como esta rama
+  modificaban la misma línea de `app.post('/login', ...)` — main le agregó
+  `.toLowerCase()`, esta rama le agregó el middleware `limitarIntentos('login')`.
+  Se resolvió a mano combinando ambos:
+  `app.post('/login', limitarIntentos('login'), async (req, res) => { const nombreUsuario = (...).trim().toLowerCase();`.
+  El resto de los archivos (registro.ejs nuevo, login.ejs con el link) no
+  tenían conflicto real.
+- Archivos tocados (igual que rama-registro original, más la línea de
+  /login combinada): server.js, views/registro.ejs (nuevo), views/login.ejs.
+- Qué se verificó contra la DB real de Railway: login existente
+  ("Bruce"/2006, ya con el hotfix de mayúsculas) sigue funcionando → 302;
+  registro de un usuario nuevo con mayúscula inicial → 302; login
+  inmediatamente después con ese mismo usuario en minúscula → 302. Usuario
+  de prueba borrado al terminar.
+- rama-registro (la original) queda sin mergear — su contenido ya vive en
+  esta rama nueva.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -152,6 +178,7 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [x] Registro público de usuarios + rate limiting básico en login/registro — tomada por rama-registro
 - [x] Notificaciones/marcar como leído en el chat (usar columna `leido` ya
   existente en tabla mensajes) — tomada por rama-notificaciones
 - [ ] Aplicar tema visual oscuro a views/chat.ejs (creado después de rama-visual,

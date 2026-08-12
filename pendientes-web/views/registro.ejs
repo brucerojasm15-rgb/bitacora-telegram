@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Crear cuenta' }) %>
+</head>
+<body>
+  <main class="login-main">
+    <h1>🔐 Bitácora</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } %>
+
+    <form method="POST" action="/registro" class="login-form">
+      <input type="text" name="nombre_usuario" placeholder="Usuario" value="<%= nombreUsuario %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" minlength="3" maxlength="20" required autofocus>
+      <input type="password" name="pin" placeholder="PIN (4 a 6 dígitos)" inputmode="numeric" pattern="\d{4,6}" required>
+      <input type="password" name="confirmar_pin" placeholder="Repite el PIN" inputmode="numeric" pattern="\d{4,6}" required>
+      <button type="submit">Crear cuenta</button>
+    </form>
+
+    <p><a href="/login">Ya tengo cuenta</a></p>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

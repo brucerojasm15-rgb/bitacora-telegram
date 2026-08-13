@@ -1,6 +1,13 @@
+  <%
+    // rama-busqueda-filtros: si la vista que incluye este partial pasa `q`
+    // (hoy solo /ideas), lo preserva al cambiar de rango en vez de perderlo
+    // — el resto de las vistas (recordatorios, hechos) no pasan `q` y siguen
+    // igual que antes.
+    const qActual = typeof q !== 'undefined' ? q : '';
+  %>
   <div class="filtro">
     <label for="rango">Rango:</label>
-    <select id="rango" onchange="window.location.href = '?rango=' + this.value">
+    <select id="rango" onchange="window.location.href = '?rango=' + this.value + '<%= qActual ? '&q=' + encodeURIComponent(qActual) : '' %>'">
       <option value="7" <%= rango === '7' ? 'selected' : '' %>>Últimos 7 días</option>
       <option value="30" <%= rango === '30' ? 'selected' : '' %>>Últimos 30 días</option>
       <option value="todo" <%= rango === 'todo' ? 'selected' : '' %>>Todo</option>

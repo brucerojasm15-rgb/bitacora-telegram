@@ -781,7 +781,7 @@ async function ensureSchema() {
       usuario_id INT REFERENCES usuarios(id),
       rol TEXT NOT NULL CHECK (rol IN ('usuario', 'ia')),
       texto TEXT NOT NULL,
-      fecha TIMESTAMP DEFAULT now()
+      fecha TIMESTAMPTZ DEFAULT now()
     )
   `);
   await pool.query(`
@@ -796,7 +796,7 @@ async function ensureSchema() {
       usuario_id INT PRIMARY KEY REFERENCES usuarios(id),
       resumen TEXT NOT NULL DEFAULT '',
       mensajes_en_resumen INT NOT NULL DEFAULT 0,
-      actualizado TIMESTAMP DEFAULT now()
+      actualizado TIMESTAMPTZ DEFAULT now()
     )
   `);
   // ia_llamadas: instrumentación de costo/latencia desde el día 1 (ya no
@@ -815,7 +815,7 @@ async function ensureSchema() {
       costo_usd NUMERIC(10,6) NOT NULL DEFAULT 0,
       latencia_ms INT NOT NULL,
       error TEXT,
-      fecha TIMESTAMP DEFAULT now()
+      fecha TIMESTAMPTZ DEFAULT now()
     )
   `);
 }

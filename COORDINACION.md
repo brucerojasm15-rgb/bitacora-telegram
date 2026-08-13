@@ -2273,6 +2273,32 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   instrucciones de esta sesión), no se reinstaló nada nuevo. No se tocó
   `views/partials/nav.ejs`, `public/style.css`, `views/chat.ejs` ni
   `views/chat-general.ejs`.
+- **Corrección aplicada por la sesión principal antes de pushear (2026-08-13),
+  ya incluida en el commit `fff01c4`**: las 3 columnas de fecha nuevas
+  (`mensajes_ia.fecha`, `perfil_ia.actualizado`, `ia_llamadas.fecha`) se
+  implementaron como `TIMESTAMP` (sin tz, copiando el patrón de
+  `historial_ediciones`/`eventos_completado`), pero el Postgres de Railway
+  corre en UTC — confirmado con una consulta directa (`SHOW timezone` →
+  `Etc/UTC`) y con una prueba con `to_char()` que mostró que aplicar
+  `AT TIME ZONE 'America/Lima'` a una columna `TIMESTAMP` poblada vía
+  `DEFAULT now()` da un resultado desplazado +5 horas, cayendo en el día
+  siguiente (`2026-08-13 23:33:28 UTC` guardado como
+  `2026-08-13 23:33:28` naive → con `AT TIME ZONE 'America/Lima'` da
+  `2026-08-14 04:33:28`, en vez de la hora Lima real `2026-08-13 18:33:28`).
+  Esto habría hecho que el reset del límite mensual y el corte de la alerta
+  de gasto (ambos con `date_trunc('month', fecha AT TIME ZONE
+  'America/Lima')`) ocurrieran a las 7pm hora Lima, no a medianoche — exactamente
+  el riesgo que planteó el usuario antes de aprobar. Corregido a
+  `TIMESTAMPTZ` en las 3 columnas (mismo tipo que `pendientes.creado`, que
+  sí es correcto porque viene del esquema original del bot de Telegram).
+  Las 3 tablas ya existían en la DB real de Railway (creadas por las pruebas
+  del agente implementador, con 0 filas) — migradas con `ALTER TABLE ...
+  ALTER COLUMN ... TYPE TIMESTAMPTZ USING columna AT TIME ZONE 'UTC'`
+  (seguro por tener 0 filas; confirmado el tipo final con
+  `information_schema.columns`). El resto del código (queries, endpoint,
+  vistas, alerta de gasto) no cambió — el texto SQL de `AT TIME ZONE
+  'America/Lima'` ya estaba bien escrito, el problema era solo el tipo de
+  columna.
 
 ### rama-integracion
 - Estado: —
@@ -2721,6 +2747,20 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [ ] **HALLAZGO (2026-08-13, no relacionado con tarea 9 — descubierto de
+  paso al verificar timezones para esa tarea): timestamps naive en
+  producción.** `eventos_completado.fecha`, `historial_ediciones.editado`,
+  `mensajes.fecha` y `mensajes_generales.fecha` están declaradas `TIMESTAMP`
+  (sin tz) en su `CREATE TABLE` original. `server.js:2117` hace
+  `e.fecha AT TIME ZONE 'America/Lima'` sobre `eventos_completado.fecha`
+  (naive) para calcular el corte semanal de trazabilidad social entre
+  amigos — con Railway en UTC (confirmado, `SHOW timezone` → `Etc/UTC`), el
+  cálculo queda desplazado 5 horas y puede caer en la semana equivocada
+  cerca del borde. `pendientes.creado` SÍ está bien (`TIMESTAMPTZ`, heredado
+  del esquema original del bot de Telegram) — `/estadisticas` y
+  `calcularRacha` no tienen este problema. **Sin arreglar todavía, por regla
+  del proyecto (no tocar sin autorización).** Pendiente con dueño: el
+  usuario decide cuándo se corrige — sin asignar a ninguna rama todavía.
 - [x] BUG: `GET /estadisticas` no existe en `server.js` (404 confirmado en
   producción y local) aunque `views/estadisticas.ejs` y el link de nav
   siguen ahí — se perdió en algún merge/reconstrucción posterior a

@@ -810,6 +810,50 @@ app.get('/estadisticas', async (req, res) => {
   }
 });
 
+// rama-captura-rapida: decisión de esquema documentada en COORDINACION.md —
+// se reusan las 3 tablas ya existentes (pendientes/ideas/recordatorios, las
+// mismas que ya llena el bot de Telegram) en vez de crear una tabla única
+// con columna `tipo`. No hace falta ALTER TABLE nuevo: las 3 ya tienen
+// usuario_id desde ramas anteriores.
+const TIPOS_CAPTURA_VALIDOS = ['pendiente', 'idea', 'recordatorio'];
+
+app.get('/captura', (req, res) => {
+  res.render('captura', { error: null, guardado: req.query.guardado === '1' });
+});
+
+app.post('/captura', async (req, res) => {
+  const texto = (req.body.texto || '').trim();
+  const tipo = req.body.tipo;
+  if (!texto || !TIPOS_CAPTURA_VALIDOS.includes(tipo)) {
+    return res.status(400).render('captura', { error: 'Escribe algo y elige un tipo válido.' });
+  }
+  if (tipo === 'recordatorio' && !req.body.cuando) {
+    return res.status(400).render('captura', { error: 'Los recordatorios necesitan fecha y hora.' });
+  }
+  try {
+    if (tipo === 'pendiente') {
+      await pool.query(
+        'INSERT INTO pendientes (texto, creado, hecho, usuario_id) VALUES ($1, now(), FALSE, $2)',
+        [texto, req.usuarioId]
+      );
+    } else if (tipo === 'idea') {
+      await pool.query(
+        'INSERT INTO ideas (fecha, idea, estado, usuario_id) VALUES ($1, $2, NULL, $3)',
+        [new Date().toISOString(), texto, req.usuarioId]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO recordatorios (texto, cuando, avisado, usuario_id) VALUES ($1, $2, FALSE, $3)',
+        [texto, new Date(req.body.cuando), req.usuarioId]
+      );
+    }
+  } catch (err) {
+    console.error('Error guardando captura rápida:', err.message);
+    return res.status(500).render('captura', { error: 'No se pudo guardar. Intenta de nuevo.' });
+  }
+  res.redirect('/captura?guardado=1');
+});
+
 app.get('/ideas', async (req, res) => {
   const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {

@@ -696,6 +696,45 @@
   agotó el cupo completo de 5/hora a propósito, para no bloquear registros
   reales desde el mismo IP compartido durante la hora siguiente).
 
+### rama-captura-rapida
+- Estado: en progreso.
+- Tarea: chat de captura rápida (tarea 3 del roadmap 2026-08-12) — input de
+  texto libre con botones Pendiente/Idea/Recordatorio debajo para clasificar
+  antes de guardar.
+- Decisión de esquema (tomada al implementar, como pide el enunciado): se
+  reusan las 3 tablas ya existentes `pendientes`/`ideas`/`recordatorios` (las
+  mismas que llena el bot de Telegram) en vez de crear una tabla única con
+  columna `tipo`. Motivo: las 3 ya tienen `usuario_id` (agregado por
+  rama-categorias/rama-tareas-compartidas) y ya las leen `/`, `/ideas`,
+  `/recordatorios` y `/exportar` tal cual — una tabla nueva hubiera obligado
+  a mantener dos representaciones del mismo dato. `POST /captura` valida el
+  `tipo` contra `TIPOS_CAPTURA_VALIDOS` e inserta en la tabla que
+  corresponde; si el tipo es `recordatorio` exige `cuando` antes de guardar.
+- Archivos tocados: server.js (rutas GET/POST /captura), views/captura.ejs
+  (nuevo), public/style.css (`.captura-form`, `.captura-tipos`,
+  `.captura-cuando`), views/partials/nav.ejs (link nuevo).
+- **Pendiente sin resolver — sonido por acción:** el enunciado pide un sonido
+  corto distinto para enviar/completar/eliminar, con licencia libre
+  verificada (mixkit.co, freesound.org) y la fuente documentada. Esta sesión
+  no tiene acceso de red saliente (permiso de Bash denegado para `curl`), así
+  que no se puede bajar ni verificar la licencia de ningún audio real desde
+  acá — y por instrucción explícita del enunciado, nunca se debe generar uno
+  ni usar uno sin licencia confirmada. Queda sin implementar a propósito.
+  Quien continúe esto con acceso de red: elegir un audio corto de mixkit.co o
+  freesound.org con licencia libre, guardarlo en `public/sonidos/`,
+  documentar acá el nombre del archivo + link de origen + licencia, y
+  reproducirlo desde `captura.ejs` (evento `submit`) y desde los botones
+  completar/eliminar existentes en `index.ejs`.
+- Qué se verificó esta sesión (sin DB real — mismo motivo, sin red saliente):
+  `node --check server.js` sin errores; `ejs.renderFile('views/captura.ejs',
+  ...)` con datos simulados renderiza sin error y contiene las clases CSS
+  nuevas; revisado a mano que las 3 queries INSERT usan las mismas columnas
+  que ya usa el bot/las rutas existentes. Falta la prueba end-to-end contra
+  la DB real de Railway que sí se hizo en ramas anteriores — pendiente para
+  quien tenga esa conexión disponible, o para el usuario antes de mergear.
+- No commiteado todavía (queda para cuando se resuelva o se acepte el hueco
+  del sonido).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -1040,8 +1079,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   freesound.org) — **nunca generarlos ni usar ninguno sin verificar la
   licencia primero**, documentar de dónde salió cada archivo de audio usado.
   Si el tipo elegido es "Recordatorio", pedir fecha/hora antes de guardar. —
-  asignada a: sin asignar (sugerido: `rama-captura-rapida`) — Depende de:
-  nada, puede arrancar en paralelo con 1/2.
+  asignada a: `rama-captura-rapida` (en progreso — falta el sonido por
+  acción, ver su sección en "Estado de ramas") — Depende de: nada, puede
+  arrancar en paralelo con 1/2.
 
 - [ ] **4. Notificaciones push para recordatorios.** Depende de la tarea 3
   (necesita que existan recordatorios con fecha/hora capturados desde el

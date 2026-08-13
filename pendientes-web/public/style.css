@@ -695,3 +695,81 @@ tr.fila-saliendo {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* rama-captura-rapida: chat de captura rápida (Pendiente/Idea/Recordatorio) */
+.captura-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 480px;
+}
+
+.captura-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  resize: vertical;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.captura-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+}
+
+.captura-tipos {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.captura-tipo-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.captura-tipo-btn:hover {
+  background: var(--bg-elevated-2);
+  border-color: var(--accent);
+}
+
+.captura-tipo-btn:active {
+  transform: scale(0.97);
+}
+
+.captura-cuando {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.captura-cuando input[type="datetime-local"] {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.captura-cuando input[type="datetime-local"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+}

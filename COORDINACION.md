@@ -1567,6 +1567,61 @@
 - **NO PUSHEADO, SIN PR** — regla 8: el hilo principal muestra el diff
   completo al usuario y espera su "aprobado" antes de pushear/mergear.
 
+### rama-invitar-amigos
+- Estado: commiteada, lista para revisión (sin push/PR/merge — regla 8).
+- Tarea: ítem D de "Ronda — pulido y detalles de producto" — invitar amigos
+  con enlace/código.
+- Decisiones de diseño:
+  - **El código NO se hashea y no es de un solo uso**, a diferencia de
+    `codigo_recuperacion_hash` (que sí es ambas cosas). Motivo: el código
+    de recuperación es un secreto que, si se filtra, permite resetear el
+    PIN de otra cuenta — necesita hash + un solo uso + rotación. El código
+    de invitación no desbloquea nada de la cuenta del que invita, solo
+    resuelve a un `usuario_id` para pre-cargar una solicitud de amistad
+    (que la otra persona igual tiene que aceptar) — el peor caso de que
+    alguien más lo use es que le llegue una solicitud de amistad no
+    esperada, no un acceso indebido. Al no ser secreto ni de un solo uso,
+    guardarlo en texto plano permite un `SELECT ... WHERE codigo_invitacion
+    = $1` directo (necesario para resolverlo desde `/registro`) sin la
+    complejidad de comparar contra un hash.
+  - Formato: `crypto.randomBytes(9).toString('base64url')` (12 caracteres,
+    ya seguro para URLs). No reusa el alfabeto sin ambigüedades del código
+    de recuperación (`ABCDEFGHJKMNPQRSTUVWXYZ23456789`) porque ese existe
+    para que se pueda transcribir a mano sin confundir letras — un enlace
+    de invitación se comparte y se toca, no se tipea.
+  - Se genera **perezosamente** (primera vez que `GET /amigos` lo necesita,
+    vía `obtenerOCrearCodigoInvitacion`), no en `POST /registro` — así
+    cuentas creadas antes de esta rama también pueden invitar sin
+    reprocesar su registro.
+  - `GET /registro?invitacion=<codigo>` resuelve el código a un usuario
+    (`resolverInvitador`) y muestra un banner "Te invitó @fulano"; el
+    código viaja como campo oculto (`name="invitacion"`) a través de TODOS
+    los re-renders de error del formulario, para no perderlo si el PIN no
+    valida. Un código inválido o ausente no rompe nada — el registro sigue
+    funcionando normal, sin el banner.
+  - `POST /registro`, después de crear la cuenta con éxito: si el código
+    resuelve a un usuario real, inserta una fila `pendiente` en
+    `amistades` (nuevo usuario → quien invitó) — mismo INSERT que ya usa
+    `POST /amigos/solicitar`, sin duplicar la lógica de validación de esa
+    ruta (no hace falta: ya sabemos que ambos ids son válidos y distintos).
+    Si falla, solo loguea — nunca revierte el registro, que ya ocurrió.
+- Archivos tocados: `server.js` (columna `usuarios.codigo_invitacion`,
+  `generarCodigoInvitacion`, `obtenerOCrearCodigoInvitacion`,
+  `resolverInvitador`, cambios en `GET`/`POST /registro`, `codigoInvitacion`
+  agregado a `GET /amigos`), `views/registro.ejs` (banner + campo oculto),
+  `views/amigos.ejs` (caja de enlace + botón copiar), `public/style.css`
+  (`.invitar-amigo*`).
+- Qué se verificó: `node --check` limpio, CSS balanceado, grep de
+  emoji sobre todo el proyecto en cero. Renderizado `registro.ejs` con y sin
+  `invitadoPor`/`codigoInvitacion` y `amigos.ejs` con el código presente.
+  **Sin probar contra la DB real** — este worktree no tiene `.env`.
+- Nota de reconstrucción: esta rama se reconstruyó sobre `main` actualizado
+  (chocaba con B/C en `server.js`/`COORDINACION.md` tras sus merges) —
+  mismo contenido ya aprobado por el usuario, `server.js` reaplicado a mano
+  (patch limpio salvo por las líneas ya movidas por B/C), confirmado con
+  conteo de ocurrencias de cada símbolo nuevo (24 en la original, 24 en la
+  reconstruida).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2187,7 +2242,8 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   simplemente su `id` numérico ni su `nombre_usuario` en texto plano si eso permite
   enumerar cuentas; decidir el mecanismo exacto (token aleatorio opaco guardado en una
   tabla/columna que lo resuelve al `usuario_id` real del lado del servidor) y
-  documentarlo. — asignada a: sin asignar — Depende de: sistema de amigos (ya existe).
+  documentarlo. — asignada a: `rama-invitar-amigos` (commiteada, sin
+  probar contra la DB real — ver su sección en "Estado de ramas") — Depende de: sistema de amigos (ya existe).
 
 - [ ] **E. Términos de servicio y política de privacidad + borrado de cuenta.** Página
   estática (decidir la ruta, ej. `/terminos` — documentar) explicando qué datos se

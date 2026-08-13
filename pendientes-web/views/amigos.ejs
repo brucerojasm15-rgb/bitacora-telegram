@@ -16,6 +16,16 @@
         <button type="submit">Agregar</button>
       </form>
 
+      <% if (codigoInvitacion) { %>
+        <div class="invitar-amigo">
+          <label for="enlace-invitacion">O invitá con un enlace — se pre-carga la solicitud al registrarse:</label>
+          <div class="invitar-amigo-fila">
+            <input type="text" id="enlace-invitacion" readonly value="/registro?invitacion=<%= codigoInvitacion %>" data-codigo="<%= codigoInvitacion %>">
+            <button type="button" id="copiar-invitacion"><%- include('partials/icono', { nombre: 'portapapeles' }) %> Copiar</button>
+          </div>
+        </div>
+      <% } %>
+
       <h2>Solicitudes recibidas</h2>
       <% if (recibidas.length === 0) { %>
         <p class="empty">No tienes solicitudes pendientes.</p>
@@ -80,6 +90,26 @@
       <% } %>
     <% } %>
   </main>
+
+  <% if (codigoInvitacion) { %>
+    <script>
+      (function () {
+        var input = document.getElementById('enlace-invitacion');
+        var boton = document.getElementById('copiar-invitacion');
+        if (!input || !boton) return;
+        input.value = location.origin + '/registro?invitacion=' + input.dataset.codigo;
+        boton.addEventListener('click', function () {
+          navigator.clipboard.writeText(input.value).then(function () {
+            var textoOriginal = boton.textContent;
+            boton.textContent = 'Copiado';
+            setTimeout(function () { boton.textContent = textoOriginal; }, 1500);
+          }).catch(function () {
+            input.select();
+          });
+        });
+      })();
+    </script>
+  <% } %>
 
 <%- include('partials/scripts') %>
 </body>

@@ -1,9 +1,18 @@
-const CACHE_NAME = 'pendientes-static-v1';
+// rama-pwa-instalable: v2 del cache -- agrega favicon.svg (no estaba,
+// quedó afuera cuando se creó en el rediseño visual) y OFFLINE_URL, una
+// página mínima cacheada para cuando una navegación falla por completo
+// sin red (no cachea /, /pendientes, etc. -- esas siguen yendo siempre a
+// la red porque dependen de la sesión y la DB, esto es solo el "no tengo
+// internet" en vez de que el navegador muestre su propio error genérico).
+const CACHE_NAME = 'pendientes-static-v2';
+const OFFLINE_URL = '/offline.html';
 const STATIC_ASSETS = [
   '/style.css',
   '/manifest.json',
+  '/favicon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  OFFLINE_URL,
 ];
 
 self.addEventListener('install', (event) => {
@@ -25,8 +34,19 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Solo intercepta assets estáticos precacheados. Todo lo demás (/, /pendientes,
-  // /pendientes/:id/completar) va directo a la red porque depende de la base de datos.
+  // Navegaciones (cargar una página, no un asset): siempre a la red primero
+  // -- dependen de sesión/DB, nunca servir una versión vieja cacheada. Si la
+  // red falla del todo (sin internet), mostrar la página offline en vez del
+  // error genérico del navegador.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(OFFLINE_URL))
+    );
+    return;
+  }
+
+  // Solo intercepta assets estáticos precacheados. Todo lo demás (/pendientes,
+  // /pendientes/:id/completar, etc.) va directo a la red porque depende de la base de datos.
   if (!STATIC_ASSETS.includes(url.pathname)) return;
 
   event.respondWith(

@@ -1095,10 +1095,9 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   — asignada a: `rama-chat-general` (commiteada, sin probar contra la DB
   real — ver su sección en "Estado de ramas") — Depende de: nada.
   - Nota: este ítem se agregó primero en `rama-notificaciones-recordatorios`
-    (commit 5aa4c0c), rama que todavía no está mergeada a `main` — esta
-    rama (`rama-chat-general`) se creó desde `origin/main` directo (no
-    dependía de ninguna rama del roadmap), así que el ítem se portó a mano
-    acá para no depender de una rama ajena sin mergear.
+    (commit 5aa4c0c) y por separado, a mano, en `rama-chat-general` (que no
+    dependía de esa rama) — al combinar todo en `rama-tema-jungla` quedó
+    una sola copia, ya no hace falta la nota de duplicación.
 
 ### Ronda nueva (2026-08-11) — propuesta por el usuario, mejoras a definir por rama
 

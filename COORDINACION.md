@@ -53,6 +53,15 @@
      `.claude/settings.json`, a diferencia de `git merge`/`rebase`) sin pedir esta
      confirmación puntual, interpretando una instrucción general anterior como suficiente.
      El usuario no había visto el resultado combinado antes de que llegara a `main`.
+   - **[Excepción agregada 2026-08-13, confirmada explícitamente por el usuario]** Un commit
+     que toca **ÚNICAMENTE `COORDINACION.md`** (sin ningún archivo de código —
+     `server.js`, ninguna vista `.ejs`, `public/*.css`, `public/*.js` del frontend, ni
+     cambios de esquema de base de datos) **queda exento de esta regla**: se puede pushear
+     directo a `main` sin mostrar diff ni esperar "aprobado". Motivo: es solo
+     documentación/coordinación entre sesiones, no cambia comportamiento de la app en
+     producción. **Esta excepción NO aplica si el mismo commit toca código además de
+     `COORDINACION.md`** — en ese caso la regla 8 se aplica completa, sin excepción, al
+     commit entero.
 
 ## Estado de ramas
 

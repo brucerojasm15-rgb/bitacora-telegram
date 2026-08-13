@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Mi planta compañera' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'planta' }) %> Mi planta compañera</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+
+      <section class="ia-tarjeta">
+        <div class="ia-ilustracion ia-etapa-transicion">
+          <%- include('partials/planta', { especie, etapa: etapa.indice, tamano: 140, idSufijo: 'ia-principal' }) %>
+        </div>
+        <div class="ia-info">
+          <form method="POST" action="/ia/nombre" class="ia-nombre-form">
+            <input type="text" name="nombre" value="<%= nombreIa %>" maxlength="30" aria-label="Nombre de tu planta">
+            <button type="submit" title="Guardar nombre"><%- include('partials/icono', { nombre: 'check' }) %></button>
+          </form>
+          <p class="ia-etapa-actual">Etapa: <strong><%= etapa.nombre %></strong> (<%= etapa.indice + 1 %> de 4)</p>
+          <% if (etapa.siguienteUmbral !== null) { %>
+            <div class="ia-progreso" role="progressbar" aria-valuenow="<%= totalDeVida %>" aria-valuemin="0" aria-valuemax="<%= etapa.siguienteUmbral %>">
+              <div class="ia-progreso-relleno" style="width: <%= Math.min(100, Math.round((totalDeVida / etapa.siguienteUmbral) * 100)) %>%"></div>
+            </div>
+            <p class="ia-progreso-texto"><%= totalDeVida %> / <%= etapa.siguienteUmbral %> moneda ganada de por vida para la próxima etapa.</p>
+          <% } else { %>
+            <p class="ia-progreso-texto">Etapa máxima alcanzada — <%= totalDeVida %> moneda ganada de por vida en total.</p>
+          <% } %>
+          <p class="ia-saldo"><%- include('partials/icono', { nombre: 'moneda' }) %> Saldo para gastar: <strong><%= saldoMoneda %></strong></p>
+        </div>
+      </section>
+
+      <section class="ia-construccion">
+        <h2><%- include('partials/icono', { nombre: 'bombilla' }) %> IA en construcción</h2>
+        <p>Todavía no conversa de verdad — eso es una fase futura. Por ahora, esto es lo que nota mirando tus propios datos:</p>
+        <ul class="ia-observaciones">
+          <% observaciones.forEach((obs) => { %>
+            <li><%= obs %></li>
+          <% }) %>
+        </ul>
+      </section>
+
+      <section class="ia-tienda">
+        <h2><%- include('partials/icono', { nombre: 'portapapeles' }) %> Usar la moneda</h2>
+
+        <div class="ia-tienda-grupo">
+          <h3>Cambiar de skin (<%= costoSkin %> <%- include('partials/icono', { nombre: 'moneda' }) %>)</h3>
+          <div class="ia-tienda-opciones">
+            <% skinsDisponibles.forEach((skin) => { %>
+              <form method="POST" action="/ia/comprar" class="ia-compra-form">
+                <input type="hidden" name="tipo" value="skin">
+                <input type="hidden" name="valor" value="<%= skin %>">
+                <button type="submit" class="ia-opcion-btn <%= skin === skinActual ? 'ia-opcion-actual' : '' %>" <%= skin === skinActual ? 'disabled' : '' %>>
+                  <%= skin.charAt(0).toUpperCase() + skin.slice(1) %><%= skin === skinActual ? ' (actual)' : '' %>
+                </button>
+              </form>
+            <% }) %>
+          </div>
+        </div>
+
+        <div class="ia-tienda-grupo">
+          <h3>Tema visual adicional (<%= costoTemaExtra %> <%- include('partials/icono', { nombre: 'moneda' }) %>)</h3>
+          <div class="ia-tienda-opciones">
+            <% temasExtraDisponibles.forEach((t) => { %>
+              <form method="POST" action="/ia/comprar" class="ia-compra-form">
+                <input type="hidden" name="tipo" value="tema_extra">
+                <input type="hidden" name="valor" value="<%= t %>">
+                <button type="submit" class="ia-opcion-btn <%= t === temaExtraActual ? 'ia-opcion-actual' : '' %>" <%= t === temaExtraActual ? 'disabled' : '' %>>
+                  <%= t.charAt(0).toUpperCase() + t.slice(1) %><%= t === temaExtraActual ? ' (activo)' : '' %>
+                </button>
+              </form>
+            <% }) %>
+          </div>
+        </div>
+
+        <div class="ia-tienda-grupo">
+          <h3>Comodín: perdonar un día sin actividad (<%= costoComodin %> <%- include('partials/icono', { nombre: 'moneda' }) %>)</h3>
+          <p class="ia-comodin-info">Tenés <strong><%= comodinesDisponibles %></strong> disponible(s). No afecta tus estadísticas ni la moneda que ya ganaste — solo protege la racha que ves acá.</p>
+          <div class="ia-tienda-opciones">
+            <form method="POST" action="/ia/comprar" class="ia-compra-form">
+              <input type="hidden" name="tipo" value="comodin_perdon">
+              <button type="submit" class="ia-opcion-btn">Comprar comodín</button>
+            </form>
+            <form method="POST" action="/ia/usar-comodin" class="ia-compra-form">
+              <button type="submit" class="ia-opcion-btn" <%= comodinesDisponibles <= 0 ? 'disabled' : '' %>>Usar uno ahora</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+    <% } %>
+  </main>
+<%- include('partials/scripts') %>
+</body>
+</html>

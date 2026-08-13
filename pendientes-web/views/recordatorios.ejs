@@ -25,7 +25,10 @@
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else if (recordatorios.length === 0) { %>
-      <p class="empty">No hay recordatorios todavía.</p>
+      <div class="empty">
+        <%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio-recordatorios' }) %>
+        <p>No hay recordatorios armados. Cuando quieras que algo no se te escape, agregalo acá.</p>
+      </div>
     <% } else { %>
       <p class="count"><%= recordatorios.length %> recordatorio(s)</p>
       <table>

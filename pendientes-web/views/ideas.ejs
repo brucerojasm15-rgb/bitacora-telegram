@@ -12,7 +12,10 @@
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else if (ideas.length === 0) { %>
-      <p class="empty">No hay ideas todavía.</p>
+      <div class="empty">
+        <%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio-ideas' }) %>
+        <p>Todavía no anotaste ninguna idea. La próxima que se te ocurra, ya sabés dónde va.</p>
+      </div>
     <% } else { %>
       <p class="count"><%= ideas.length %> idea(s)</p>
       <table>

@@ -633,6 +633,25 @@ svg[viewBox="0 0 24 24"] {
   margin-bottom: 1rem;
 }
 
+/* rama-asignacion-texto: banner de asignación por texto en /captura —
+   tanto el paso de confirmación ("Se asignará a @fulano") como el aviso de
+   "no se pudo asignar" tras guardar. Mismo patrón visual que .error (fondo
+   + borde a juego con el color semántico), pero con --warning en vez de
+   --danger porque no es un error, es información a confirmar/tener en
+   cuenta. */
+.aviso-asignacion {
+  color: var(--warning);
+  background: var(--warning-bg);
+  padding: 0.85rem 1.1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--warning);
+  margin-bottom: 1rem;
+}
+
+.aviso-asignacion p {
+  margin: 0.3rem 0;
+}
+
 /* Tema visual del chat: burbujas de mensaje, alineadas a la izquierda para
    mensajes ajenos y a la derecha para los propios (como cualquier app de
    chat), reutilizando las variables de color ya definidas arriba. */

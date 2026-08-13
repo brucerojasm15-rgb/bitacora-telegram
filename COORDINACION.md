@@ -2135,6 +2135,92 @@ commits distintos) — el criterio real de "pasa" es la verificación de conteni
 confirmarse. Si en el futuro hace falta revisar alguna de las 5 recuperables a mano:
 `git fetch origin && git checkout -b rama-X origin/rama-X`.
 
+## Sesión autónoma sin supervisión (2026-08-13, mientras el usuario estaba fuera)
+
+Instrucción recibida: (1) dejar el diff de tarea E listo para revisión sin pushear,
+(2) continuar `rama-asignacion-texto`/`rama-nav-mobile` hasta dejarlas listas para
+review documentado acá, (3) si no hay código pendiente, hacer housekeeping de bajo
+riesgo, (4) no tocar limpieza de ramas, (5) resumir todo acá al terminar.
+
+**Ítems 1 y 2 — premisa desactualizada, verificado contra `gh pr list`:** las tres
+tareas mencionadas ya estaban completamente pusheadas y mergeadas ANTES de recibir
+esta instrucción, con aprobación explícita del usuario en el hilo principal — no
+había ningún diff pendiente que preparar:
+- Tarea E (eliminar cuenta): PR #50, mergeado 2026-08-13T17:21:03Z, commit `9d252e2`.
+- `rama-asignacion-texto`: PR #51, mergeado 2026-08-13T18:06:46Z, commit `2a94534`.
+- `rama-nav-mobile` (como `rama-nav-mobile-v2`, reconstruida por conflicto con la
+  anterior): PR #52, mergeado 2026-08-13T18:30:39Z, commit `45405b5`.
+
+No se inventó trabajo ni se redujo esto a "nada que hacer" sin verificar — se
+confirmó con `gh pr list --state merged` antes de concluir que no había diff que
+preparar. **Ninguna decisión de producto nueva se tomó en esta sesión autónoma**
+(no se escribió código nuevo), así que no hay "decisiones provisionales pendientes
+de confirmar con Hazel" que marcar en esta ronda.
+
+**Ítem 3 — housekeeping de bajo riesgo, tres hallazgos, NADA arreglado (solo
+auditado, como se pidió):**
+
+1. **Credencial con forma real en archivo público del repo.**
+   `pendientes-web/.env.example` línea 34: `# ACCESS_KEY=ea43215f3b640910db93b108ed3d63de`
+   — a diferencia del resto del archivo, que usa placeholders genéricos
+   (`cambia-esta-clave`, `cambia-este-secreto`), esta línea comentada tiene un valor
+   hexadecimal de 32 caracteres con forma de clave real, no de placeholder. El
+   mecanismo `ACCESS_KEY` en sí está muerto (código comentado en `server.js` líneas
+   63-100, "PASO 1 — DESACTIVADO", reemplazado por sesiones reales) así que no hay
+   riesgo de bypass activo — pero el repo es **público** (`gh repo view` confirma
+   `visibility: PUBLIC`), así que si ese valor fue alguna vez una clave real de
+   producción, quedó expuesto en el historial de git de un repo público de todas
+   formas. No pude revisar el historial exacto de cuándo se agregó — el comando
+   `git log -- pendientes-web/.env.example` está bloqueado por la regla
+   `Bash(*.env*)` de este mismo proyecto (bloquea cualquier comando que contenga
+   ".env" en el string, incluida la ruta del archivo). **Propuesta (NO aplicada):**
+   reemplazar esa línea por un placeholder genérico como el resto, o borrarla del
+   todo ya que el mecanismo está muerto. Si esa clave fue real alguna vez, también
+   valdría la pena confirmar que no siga configurada como variable de entorno viva
+   en Railway. Requiere diff + aprobado (no es un cambio solo de `COORDINACION.md`).
+
+2. **`a-chat` (worktree de `rama-chat`, la primera rama de todo el proyecto,
+   ya mergeada hace tiempo) tiene 2 archivos sin trackear:** `.claude/skills/`
+   (carpeta con 3 skills instaladas: `find-skills`, `impeccable`, `task-observer`,
+   de fuentes de GitHub externas) y `skills-lock.json`. Inspeccionado: es solo
+   configuración local de herramientas de Claude Code, nada de código del proyecto
+   ni nada sensible. No están en `.gitignore` (ni el de raíz ni el de
+   `pendientes-web/`). **Propuesta (NO aplicada, nada borrado):** ya que
+   `rama-chat` está mergeada hace mucho, este worktree es candidato al mismo tipo
+   de limpieza que se hizo con las otras 25 — pero por instrucción explícita (ítem
+   4) no se tocó. Queda para cuando el usuario lo autorice puntualmente.
+
+3. **Auditoría de `POST` sin `limitarIntentos`:** de 29 rutas `POST` en
+   `server.js`, solo 3 tienen `limitarIntentos` (`/login`, `/registro`,
+   `/recuperar`) — todas las de autenticación, correcto. El resto no lo necesita en
+   general (requieren sesión ya autenticada, no son fuerza bruta de credenciales),
+   pero 3 rutas destacan por un patrón de riesgo similar al que ya justificó
+   `limitarIntentos` en otros lados:
+   - **`/notificar-prueba` (línea 1372):** envía una notificación push REAL a
+     TODOS los usuarios de la app (`enviarPushATodos`) sin ninguna restricción más
+     allá de tener sesión activa — cualquier usuario logueado (no solo un admin)
+     puede spamear notificaciones a todos los demás, sin límite de frecuencia.
+     Tiene forma de endpoint de prueba/debug olvidado en producción.
+   - **`/amigos/solicitar` (línea 1973):** responde explícitamente `"No existe
+     ningún usuario con ese nombre."` (línea 1985) cuando el nombre no existe —
+     esto permite enumerar nombres de usuario registrados probando muchos, sin
+     ningún rate limit. Impacto limitado porque la app es para un grupo chico de
+     amigos/familia (documentado en otra parte de este archivo), pero el patrón es
+     real.
+   - **`/ajustes/eliminar-cuenta` (línea 2378):** verifica el PIN actual
+     (`verificarPin`) sin `limitarIntentos` — a diferencia de `/login`, que sí lo
+     tiene para el mismo tipo de verificación. Menor severidad porque ya requiere
+     una sesión activa (no es la puerta de entrada), pero es la misma superficie de
+     "adivinar un PIN" que en otros lados sí se protegió.
+   Nada de esto se tocó — son hallazgos para que el usuario decida prioridad,
+   igual que pide la regla del proyecto de "si detectás un hueco, documentalo, no
+   lo arregles sin autorización".
+
+**No se tocó ningún archivo de código en toda esta sesión autónoma** (`server.js`,
+`.ejs`, `.css`, `.js` del frontend, esquema de DB) — todo lo de arriba es lectura,
+verificación con `git`/`gh`, y este resumen en `COORDINACION.md`. Este commit
+cumple la excepción de regla 8 (solo toca `COORDINACION.md`) y se pushea directo.
+
 ## Historial de merges a main
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)

@@ -2349,6 +2349,32 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   de: notificaciones push (tarea 4, ya mergeada — la dependencia ya está satisfecha,
   comparten `public/sw.js`).
 
+- [ ] Rediseño de navegación mobile: reemplazar el menú de texto
+  plano actual (12 ítems envueltos en 4 líneas: Captura rápida,
+  Pendientes, Ideas, Recordatorios, Hechos, Estadísticas, Amigos, Mi
+  planta, Chat general, Exportar, Ajustes, Cerrar sesión) por una
+  barra de navegación inferior fija con los 5-6 accesos más usados
+  (ícono + etiqueta corta: Captura, Pendientes, Ideas, Recordatorios,
+  Amigos — o el set que consideres más usado, documenta el criterio),
+  y mover el resto (Hechos, Estadísticas, Mi planta, Chat general,
+  Exportar, Ajustes, Cerrar sesión) a un menú desplegable accesible
+  con un ícono de "más". Agregar ícono a TODOS los ítems del menú
+  (actualmente Pendientes, Ideas, Recordatorios y Hechos no tienen,
+  el resto sí — inconsistente).
+
+  En la vista de Captura rápida: el textarea debe crecer
+  dinámicamente con el contenido en vez de tener un alto fijo grande
+  desde el inicio (deja espacio vacío innecesario en pantallas
+  chicas). Unificar los 3 botones de tipo (Pendiente/Idea/
+  Recordatorio) en una sola fila de 3 columnas iguales, en vez de la
+  distribución actual (2 arriba lado a lado + 1 abajo ocupando todo
+  el ancho).
+
+  Verificar con captura de pantalla real en mobile (no solo en
+  navegador de escritorio) antes de dar la tarea por terminada.
+  Motivado por revisión visual real de la pantalla de Captura rápida
+  (2026-08-13). — asignada a: sin asignar — Depende de: nada.
+
 ## Cómo agregar un trabajador nuevo (para el usuario)
 
 1. Escribe la tarea nueva en "Backlog de tareas" arriba (o pídele a cualquier sesión

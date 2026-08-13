@@ -1171,3 +1171,61 @@ tr.fila-saliendo {
   color: var(--text-muted);
   margin: 0 0 0.5rem;
 }
+
+/* rama-onboarding: recorrido corto de 3-4 pasos tras el registro. */
+.onboarding-main {
+  max-width: 380px;
+}
+
+.onboarding-paso {
+  animation: onboarding-entrar 0.25s ease-out;
+}
+
+@keyframes onboarding-entrar {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-paso {
+    animation: none !important;
+  }
+}
+
+.onboarding-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 1.5rem;
+}
+
+.onboarding-puntos {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.onboarding-puntos i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background var(--transition-fast);
+}
+
+.onboarding-puntos i.activo {
+  background: var(--accent);
+}
+
+.onboarding-botones {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.onboarding-botones button[type="submit"].btn-link {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}

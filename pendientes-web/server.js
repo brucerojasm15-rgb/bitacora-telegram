@@ -396,7 +396,7 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     res.render('codigo-recuperacion', {
       codigo: codigoRecuperacion,
       mensaje: 'Cuenta creada. Este es tu código de recuperación de PIN — apúntalo antes de continuar:',
-      continuarUrl: '/',
+      continuarUrl: '/onboarding',
     });
   } catch (err) {
     if (err.code === '23505') {
@@ -405,6 +405,39 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     console.error('Error en registro:', err.message);
     res.status(500).render('registro', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario, especies: IA_ESPECIES });
   }
+});
+
+// rama-onboarding: solo se llega acá desde el link "continuar" de
+// /registro. Si ya se vio (onboarding_visto = TRUE) o el usuario navega
+// acá directo por su cuenta después de terminarlo, redirige a / sin
+// mostrarlo de nuevo.
+app.get('/onboarding', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT onboarding_visto, ia_especie, ia_nombre FROM usuarios WHERE id = $1',
+      [req.usuarioId]
+    );
+    const usuario = rows[0];
+    if (!usuario || usuario.onboarding_visto) {
+      return res.redirect('/');
+    }
+    res.render('onboarding', {
+      especie: usuario.ia_especie || 'monstera',
+      nombreIa: usuario.ia_nombre || 'tu planta',
+    });
+  } catch (err) {
+    console.error('Error mostrando onboarding:', err.message);
+    res.redirect('/');
+  }
+});
+
+app.post('/onboarding/completar', async (req, res) => {
+  try {
+    await pool.query('UPDATE usuarios SET onboarding_visto = TRUE WHERE id = $1', [req.usuarioId]);
+  } catch (err) {
+    console.error('Error marcando onboarding como visto:', err.message);
+  }
+  res.redirect('/');
 });
 
 app.get('/recuperar', (req, res) => {
@@ -484,6 +517,15 @@ async function ensureSchema() {
   `);
   await pool.query(`
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigo_recuperacion_hash TEXT
+  `);
+  // rama-onboarding: decisión documentada en COORDINACION.md — columna
+  // booleana simple en usuarios (mismo criterio que el resto del
+  // esquema), en vez de una tabla aparte. Cuentas viejas (creadas antes
+  // de esta rama) quedan en FALSE por defecto, pero nunca se les fuerza
+  // el onboarding porque nada las redirige a /onboarding automáticamente
+  // — solo el flujo de /registro lo hace.
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS onboarding_visto BOOLEAN NOT NULL DEFAULT FALSE
   `);
   await pool.query(`
     ALTER TABLE pendientes

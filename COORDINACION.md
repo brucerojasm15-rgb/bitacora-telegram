@@ -1011,6 +1011,62 @@
      `google_calendar_tokens`.
 - Commit: pendiente de crear en esta misma sesión.
 
+### rama-tema-jungla
+- Estado: en progreso — este primer tramo es SOLO la combinación de código,
+  todavía sin ningún cambio visual.
+- Tarea: tarea 5 del roadmap 2026-08-12 (rediseño "Jungla/Monstera"). Como
+  esta tarea toca prácticamente todos los `.ejs` y estaba despachada al
+  final a propósito (para no chocar con el resto del roadmap en paralelo),
+  y para cuando se retomó ya había 4 ramas terminadas sin mergear
+  (captura-rápida, chat-general, notificaciones-recordatorios,
+  trazabilidad-social) más una quinta solo esqueleto (google-calendar), el
+  usuario pidió construir el tema sobre TODO ese trabajo combinado en vez
+  de solo sobre `origin/main` — para no tener que rehacer el tema después
+  de cada merge.
+- **Combinación (este commit):** se creó esta rama desde `origin/main`
+  (commit `2c929e6`) y se incorporó el código de las 5 ramas vía
+  `git cherry-pick` de cada commit individual, EN ESTE ORDEN:
+  `rama-captura-rapida` (74e5c3b, 1ad1dcd) → `rama-chat-general` (1bb44dd)
+  → `rama-notificaciones-recordatorios` (68d43d5, 5aa4c0c, 7f0d407) →
+  `rama-trazabilidad-social` (d8685d2) → `rama-google-calendar` (9e34f9a).
+  No se usó `git merge` ni `git rebase` (bloqueados a propósito por
+  `.claude/settings.json`).
+  - `server.js` no tuvo NINGÚN conflicto real en ningún paso — los 5
+    bloques son aditivos en zonas distintas del archivo, incluida la
+    ampliación de `/pendientes/:id/completar` de trazabilidad-social
+    (aplicó limpio porque ya tenía debajo el `server.js` de
+    notificaciones-recordatorios, del cual depende).
+  - `COORDINACION.md` sí tuvo conflicto en cada paso — siempre el mismo
+    patrón ya conocido (cada rama insertando su propia sección `###
+    rama-X` justo antes de `### rama-integracion`): se resolvió
+    conservando AMBOS lados en secuencia, nunca eligiendo uno solo.
+  - Un conflicto de contenido real (no solo de punto de inserción): el
+    ítem de backlog "Chat general" existía duplicado — se había agregado
+    primero en `rama-notificaciones-recordatorios` (commit `5aa4c0c`) y
+    por separado, a mano, en `rama-chat-general` (que no dependía de esa
+    rama). Se dejó una sola copia, con nota explicando el porqué de la
+    duplicación original.
+  - `.claude/settings.json`: se confirmó al final que `curl`/`wget` siguen
+    fuera del `deny` (ya venían así desde el segundo commit de
+    rama-captura-rapida).
+- Verificado: `npm install` sin errores (incluida la dependencia nueva
+  `googleapis` de google-calendar); `node --check server.js` sin errores;
+  grep confirmando que las rutas clave de las 5 ramas existen todas en el
+  `server.js` final (`/captura`, `/chat-general`, `/mensajes-general`,
+  `/suscribir` con `usuario_id`, `enviarPushAUsuario`, `/pendientes/:id/
+  completar` con `OR asignado_a`, `/trazabilidad`, las 4 rutas de
+  `/calendario/*`); `ejs.renderFile(...)` con datos simulados para las 6
+  vistas nuevas o tocadas por cualquiera de las 5 ramas (`index.ejs`,
+  `captura.ejs`, `chat-general.ejs`, `trazabilidad.ejs`, `amigos.ejs`,
+  `recordatorios.ejs`) — las 6 renderizan sin error.
+- **Nada de esto se probó contra la DB real** (ninguna de las 5 ramas
+  originales lo había hecho tampoco, mismo motivo de siempre: sin `.env`
+  en el worktree) — sigue pendiente, ahora acumulado en un solo lugar en
+  vez de en 5 ramas separadas.
+- **Qué sigue:** aplicar el rediseño visual en sí (paleta, íconos SVG
+  reemplazando emojis, ilustración de monstera) sobre esta base ya
+  combinada — es un paso aparte, todavía no arrancado.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -19,10 +19,11 @@
     <form method="POST" action="/captura" id="form-captura" class="captura-form">
       <textarea name="texto" id="captura-texto" rows="3" placeholder="Escribe aquí..." required></textarea>
 
+      <input type="hidden" name="tipo" id="captura-tipo-oculto">
       <div class="captura-tipos" role="group" aria-label="Tipo">
-        <button type="submit" name="tipo" value="pendiente" class="captura-tipo-btn">✅ Pendiente</button>
-        <button type="submit" name="tipo" value="idea" class="captura-tipo-btn">💡 Idea</button>
-        <button type="submit" name="tipo" value="recordatorio" class="captura-tipo-btn" id="btn-recordatorio">⏰ Recordatorio</button>
+        <button type="submit" class="captura-tipo-btn" data-tipo="pendiente">✅ Pendiente</button>
+        <button type="submit" class="captura-tipo-btn" data-tipo="idea">💡 Idea</button>
+        <button type="submit" class="captura-tipo-btn" data-tipo="recordatorio" id="btn-recordatorio">⏰ Recordatorio</button>
       </div>
 
       <div id="campo-cuando" class="captura-cuando" hidden>
@@ -34,30 +35,26 @@
 
   <script>
     // El campo de fecha/hora solo se pide cuando el tipo elegido es
-    // "Recordatorio" — para los otros dos tipos se envía sin tocarlo (queda
-    // vacío y el backend lo ignora porque tipo !== 'recordatorio').
-    const botonRecordatorio = document.getElementById('btn-recordatorio');
+    // "Recordatorio". El submit real se retrasa un instante (form.submit()
+    // en vez de dejar que el botón navegue directo) solo para que el sonido
+    // de "enviar" alcance a sonar antes de que la página cambie.
     const campoCuando = document.getElementById('campo-cuando');
     const inputCuando = document.getElementById('captura-cuando');
     const form = document.getElementById('form-captura');
-
-    botonRecordatorio.addEventListener('click', (e) => {
-      if (campoCuando.hidden) {
-        e.preventDefault();
-        campoCuando.hidden = false;
-        inputCuando.focus();
-      }
-    });
+    const tipoOculto = document.getElementById('captura-tipo-oculto');
 
     form.addEventListener('submit', (e) => {
-      const tipoElegido = document.activeElement && document.activeElement.name === 'tipo'
-        ? document.activeElement.value
-        : null;
-      if (tipoElegido === 'recordatorio' && !inputCuando.value) {
+      const tipo = e.submitter && e.submitter.dataset.tipo;
+      if (tipo === 'recordatorio' && (campoCuando.hidden || !inputCuando.value)) {
         e.preventDefault();
         campoCuando.hidden = false;
         inputCuando.focus();
+        return;
       }
+      e.preventDefault();
+      tipoOculto.value = tipo;
+      reproducirSonido('enviar');
+      setTimeout(() => form.submit(), 180);
     });
   </script>
 <%- include('partials/scripts') %>

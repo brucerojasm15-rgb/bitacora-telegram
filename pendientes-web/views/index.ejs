@@ -158,6 +158,7 @@
             window.location.reload();
             return;
           }
+          reproducirSonido('completar');
           if (!fila) return;
           const celdaAcciones = fila.querySelector('td:last-child');
           if (celdaAcciones) celdaAcciones.innerHTML = '<span class="check-confirm">✔</span>';
@@ -179,6 +180,7 @@
         const fila = form.closest('tr');
         try {
           await fetch(form.action, { method: 'POST', body: new FormData(form) });
+          reproducirSonido('eliminar');
           if (fila) fila.classList.add('fila-saliendo');
           setTimeout(() => quitarFila(fila), 350);
         } catch (err) {

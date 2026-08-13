@@ -697,7 +697,8 @@
   reales desde el mismo IP compartido durante la hora siguiente).
 
 ### rama-captura-rapida
-- Estado: en progreso.
+- Estado: commiteada, lista para probar contra la DB real antes de merge
+  (ver "Qué se verificó" abajo — falta esa prueba end-to-end).
 - Tarea: chat de captura rápida (tarea 3 del roadmap 2026-08-12) — input de
   texto libre con botones Pendiente/Idea/Recordatorio debajo para clasificar
   antes de guardar.
@@ -713,27 +714,48 @@
 - Archivos tocados: server.js (rutas GET/POST /captura), views/captura.ejs
   (nuevo), public/style.css (`.captura-form`, `.captura-tipos`,
   `.captura-cuando`), views/partials/nav.ejs (link nuevo).
-- **Pendiente sin resolver — sonido por acción:** el enunciado pide un sonido
-  corto distinto para enviar/completar/eliminar, con licencia libre
-  verificada (mixkit.co, freesound.org) y la fuente documentada. Esta sesión
-  no tiene acceso de red saliente (permiso de Bash denegado para `curl`), así
-  que no se puede bajar ni verificar la licencia de ningún audio real desde
-  acá — y por instrucción explícita del enunciado, nunca se debe generar uno
-  ni usar uno sin licencia confirmada. Queda sin implementar a propósito.
-  Quien continúe esto con acceso de red: elegir un audio corto de mixkit.co o
-  freesound.org con licencia libre, guardarlo en `public/sonidos/`,
-  documentar acá el nombre del archivo + link de origen + licencia, y
-  reproducirlo desde `captura.ejs` (evento `submit`) y desde los botones
-  completar/eliminar existentes en `index.ejs`.
-- Qué se verificó esta sesión (sin DB real — mismo motivo, sin red saliente):
-  `node --check server.js` sin errores; `ejs.renderFile('views/captura.ejs',
-  ...)` con datos simulados renderiza sin error y contiene las clases CSS
-  nuevas; revisado a mano que las 3 queries INSERT usan las mismas columnas
-  que ya usa el bot/las rutas existentes. Falta la prueba end-to-end contra
-  la DB real de Railway que sí se hizo en ramas anteriores — pendiente para
-  quien tenga esa conexión disponible, o para el usuario antes de mergear.
-- No commiteado todavía (queda para cuando se resuelva o se acepte el hueco
-  del sonido).
+- **Sonido por acción — resuelto.** `Bash(curl*)`/`Bash(wget*)` estaban en el
+  `deny` de `.claude/settings.json` (raíz del proyecto y de este worktree);
+  el usuario confirmó explícitamente que quería habilitarlos para esta tarea,
+  así que se sacaron de la lista (resto de las reglas deny intacto) y se usó
+  el acceso de red para bajar audio real de mixkit.co, categoría "Sound
+  Effects" — licencia "Free License" (mixkit.co/license/#sfxFree: libre para
+  uso personal y comercial, sin atribución requerida). 3 archivos en
+  `public/sonidos/`:
+  - `enviar.mp3` — "Select click", https://mixkit.co/free-sound-effects/click/
+    (id 1109, https://assets.mixkit.co/active_storage/sfx/1109/1109-preview.mp3)
+  - `completar.mp3` — "Correct answer tone", https://mixkit.co/free-sound-effects/correct/
+    (id 2870, https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3)
+  - `eliminar.mp3` — "Fast small sweep transition", https://mixkit.co/free-sound-effects/swoosh/
+    (id 166, https://assets.mixkit.co/active_storage/sfx/166/166-preview.mp3)
+
+  Helper nuevo `public/sonidos.js` (`reproducirSonido(nombre)`, incluido
+  globalmente desde `views/partials/scripts.ejs`). Enganchado en:
+  `index.ejs` (sonido `completar`/`eliminar` dentro de los handlers `fetch`
+  ya existentes — no hubo que tocar la lógica async), y `captura.ejs` (sonido
+  `enviar`). En `captura.ejs` los 3 botones dejaron de tener
+  `name="tipo" value="..."` (ese patrón no deja tiempo de reproducir nada
+  antes de navegar) y pasaron a `data-tipo` + un `<input type="hidden"
+  name="tipo">`: el `submit` ahora se intercepta, dispara el sonido, y recién
+  ahí llama `form.submit()` con ~180ms de margen. De paso esto unificó los
+  dos listeners que había antes (uno para revelar el campo de fecha, otro
+  para validar el submit) en uno solo.
+- Archivos tocados (además de los ya listados arriba): public/sonidos.js
+  (nuevo), public/sonidos/enviar.mp3, public/sonidos/completar.mp3,
+  public/sonidos/eliminar.mp3 (nuevos, binarios), views/partials/scripts.ejs
+  (`<script src="/sonidos.js">`), views/index.ejs (2 líneas,
+  `reproducirSonido(...)` dentro de los handlers de completar/eliminar),
+  views/captura.ejs (markup de los botones + reescritura del submit).
+- Qué se verificó: `node --check server.js` y `node --check` de cada
+  `<script>` inline extraído (captura.ejs, index.ejs, sonidos.js) sin
+  errores; `ejs.renderFile('views/captura.ejs', ...)` con datos simulados
+  renderiza bien y contiene `/sonidos.js` + el input oculto nuevo; los 3 MP3
+  se verificaron con sus primeros bytes (`FF FB` = cabecera MPEG audio
+  válida, no una página de error). Falta la prueba end-to-end contra la DB
+  real de Railway (esta sesión no tenía esa conexión disponible) y
+  confirmar a oído que los 3 sonidos se sienten bien en volumen/duración —
+  pendiente para el usuario antes de mergear.
+- Commit: pendiente de crear en esta misma sesión.
 
 ### rama-integracion
 - Estado: —
@@ -1079,9 +1101,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   freesound.org) — **nunca generarlos ni usar ninguno sin verificar la
   licencia primero**, documentar de dónde salió cada archivo de audio usado.
   Si el tipo elegido es "Recordatorio", pedir fecha/hora antes de guardar. —
-  asignada a: `rama-captura-rapida` (en progreso — falta el sonido por
-  acción, ver su sección en "Estado de ramas") — Depende de: nada, puede
-  arrancar en paralelo con 1/2.
+  asignada a: `rama-captura-rapida` (commiteada, falta prueba end-to-end
+  contra la DB real — ver su sección en "Estado de ramas") — Depende de:
+  nada, puede arrancar en paralelo con 1/2.
 
 - [ ] **4. Notificaciones push para recordatorios.** Depende de la tarea 3
   (necesita que existan recordatorios con fecha/hora capturados desde el

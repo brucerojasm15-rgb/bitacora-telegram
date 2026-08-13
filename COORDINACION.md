@@ -2218,6 +2218,22 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   reales completando tareas asignadas entre sí; una fila con texto muy
   largo en Pendientes se ve rara (preexistente, no introducido por
   este PR). Commit de merge 84a415e.
+- 2026-08-13 — merge de rama-terminos-privacidad-v2 (6489f09) → main vía PR #50:
+  tarea E (términos/privacidad + borrado real de cuenta), probada de punta a punta
+  contra la DB real de Railway (17 verificaciones post-borrado, todas pasaron). Sin
+  conflictos. Diff mostrado y aprobado por el usuario en el hilo principal antes de
+  pushear. Commit de merge 9d252e2.
+- 2026-08-13 — merge de rama-asignacion-texto (3a64bb1) → main vía PR #51: asignación
+  de tareas por texto en captura rápida (@nombre / frases naturales), probada contra
+  la DB real (15 casos). Sin conflictos. CI (`verificar`) en verde. Diff mostrado y
+  aprobado por el usuario antes de pushear. Commit de merge 2a94534.
+- 2026-08-13 — merge de rama-nav-mobile-v2 (4a794a7) → main vía PR #52: rediseño de
+  navegación mobile, reconstruida sobre main actualizado por un conflicto real en
+  `captura.ejs`/`style.css` con rama-asignacion-texto (ya mergeada) — resolución
+  documentada en la sección de la rama. Probada con Playwright contra servidor real +
+  DB real (capturas mobile/desktop, flujo de asignación por texto verificado dentro
+  del layout nuevo). CI en verde. Diff mostrado y aprobado por el usuario antes de
+  pushear. Commit de merge 45405b5.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 

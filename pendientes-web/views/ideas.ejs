@@ -8,7 +8,13 @@
 <%- include('partials/nav') %>
     <h1><%- include('partials/icono', { nombre: 'bombilla' }) %> Ideas</h1>
 
-<%- include('partials/filtro-rango', { rango }) %>
+<%- include('partials/filtro-rango', { rango, q }) %>
+    <form method="GET" action="/ideas" class="filtro-rango">
+      <input type="hidden" name="rango" value="<%= rango %>">
+      <input type="text" name="q" value="<%= q %>" placeholder="Buscar ideas...">
+      <button type="submit">Buscar</button>
+      <% if (q) { %><a href="/ideas?rango=<%= rango %>" class="btn-link">Limpiar</a><% } %>
+    </form>
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else if (ideas.length === 0) { %>

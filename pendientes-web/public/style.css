@@ -871,6 +871,20 @@ tr.fila-saliendo {
   white-space: nowrap;
 }
 
+.badge-completado {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success-strong);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-completado svg { width: 0.9rem; height: 0.9rem; }
+
 .asignado-actual {
   color: var(--text-muted);
 }

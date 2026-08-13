@@ -21,20 +21,25 @@
       <button type="submit">Agregar</button>
     </form>
 
-    <div class="filtro">
-      <label for="filtro-categoria">Categoría:</label>
-      <select id="filtro-categoria" onchange="window.location.href = this.value ? '?categoria=' + this.value : '/'">
-        <option value="" <%= !categoriaFiltro ? 'selected' : '' %>>Todas</option>
+    <%
+      // rama-busqueda-filtros: los 3 filtros (texto, categoría, estado) van en
+      // un solo form GET para que se combinen entre sí — antes categoría
+      // navegaba sola con onchange y pisaba el "q" de la búsqueda (y viceversa).
+    %>
+    <form method="GET" action="/" class="filtro">
+      <input type="text" name="q" value="<%= q %>" placeholder="Buscar pendientes...">
+      <select name="categoria" aria-label="Filtrar por categoría">
+        <option value="" <%= !categoriaFiltro ? 'selected' : '' %>>Todas las categorías</option>
         <% categorias.forEach((c) => { %>
           <option value="<%= c %>" <%= categoriaFiltro === c ? 'selected' : '' %>>#<%= c %></option>
         <% }) %>
       </select>
-    </div>
-
-    <form method="GET" action="/" class="filtro-rango">
-      <input type="text" name="q" value="<%= q %>" placeholder="Buscar pendientes...">
-      <button type="submit">Buscar</button>
-      <% if (q) { %><a href="/" class="btn-link">Limpiar</a><% } %>
+      <select name="estado" aria-label="Filtrar por estado">
+        <option value="pendiente" <%= estadoFiltro === 'pendiente' ? 'selected' : '' %>>Pendientes</option>
+        <option value="completado" <%= estadoFiltro === 'completado' ? 'selected' : '' %>>Completados</option>
+      </select>
+      <button type="submit">Filtrar</button>
+      <% if (q || categoriaFiltro || estadoFiltro !== 'pendiente') { %><a href="/" class="btn-link">Limpiar</a><% } %>
     </form>
 
     <div id="lista">
@@ -71,7 +76,21 @@
                 <td><%= p.categoria ? '#' + p.categoria : '-' %></td>
                 <td><%= new Date(p.creado).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
                 <td>
-                  <% if (esAsignado) { %>
+                  <% if (p.hecho) { %>
+                    <%
+                      // rama-busqueda-filtros: el filtro de estado="completado" es la
+                      // primera vez que esta tabla muestra pendientes ya hechos — Completar
+                      // y Posponer no tienen sentido acá, solo Editar/Eliminar siguen
+                      // aplicando (el borrado es lógico igual que para los activos).
+                    %>
+                    <div class="acciones">
+                      <span class="badge-completado"><%- include('partials/icono', { nombre: 'check' }) %> Completado</span>
+                      <a href="/pendientes/<%= p.id %>/editar" class="btn-link"><%- include('partials/icono', { nombre: 'lapiz' }) %> Editar</a>
+                      <form method="POST" action="/pendientes/<%= p.id %>/eliminar" class="eliminar-form">
+                        <button type="submit"><%- include('partials/icono', { nombre: 'papelera' }) %> Eliminar</button>
+                      </form>
+                    </div>
+                  <% } else if (esAsignado) { %>
                     <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-asignado-form">
                       <input type="text" name="comentario" placeholder="Comentario (opcional)">
                       <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Completar</button>

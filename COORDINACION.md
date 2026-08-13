@@ -1622,6 +1622,61 @@
   conteo de ocurrencias de cada símbolo nuevo (24 en la original, 24 en la
   reconstruida).
 
+### rama-busqueda-filtros
+- Estado: commiteada, lista para revisión (regla 8: espera diff completo +
+  "aprobado" antes de push/PR/merge — no la pusheo yo).
+- Tarea: tarea F de "Ronda — pulido y detalles de producto" — búsqueda de
+  texto y filtros en pendientes/ideas.
+- Decisiones (tomadas al implementar):
+  1. **Helper compartido `agregarFiltroTexto(consulta, params, columna, q)`**
+     entre `GET /` y `GET /ideas`, en vez de un builder de query unificado
+     para las dos rutas — lo único realmente común entre ambas consultas es
+     el `ILIKE` con su manejo de índice de parámetro (`$N`); el resto
+     (joins, categoría, estado, rango de fecha) es específico de cada una
+     y forzarlo a un solo builder hubiera complicado más de lo que
+     simplificaba.
+  2. **Filtro de estado en `GET /`:** antes `p.hecho = FALSE` estaba
+     hardcodeado (la tabla nunca mostraba completados). Nuevo query param
+     `estado` (`pendiente`/`completado`), con `'pendiente'` como default
+     — preserva el comportamiento actual para cualquiera que no toque el
+     filtro nuevo.
+  3. **Consecuencia real de poder listar completados:** las acciones
+     "Completar"/"Posponer" no tienen sentido sobre un pendiente ya hecho.
+     Agregué una rama nueva en `views/index.ejs` (`<% if (p.hecho) %>`)
+     que muestra un badge "Completado" + Editar/Eliminar en vez de los
+     botones de acción activa. No es scope creep — es una consecuencia
+     directa de la nueva capacidad de filtrar por estado, no una feature
+     aparte.
+  4. **Los 3 filtros de `/` (texto, categoría, estado) se unificaron en un
+     solo `<form method="GET">`.** Antes categoría navegaba sola con
+     `onchange` y pisaba el `q` de la búsqueda (y viceversa, la búsqueda
+     no preservaba la categoría). Corregido de paso porque tocaba
+     exactamente esa zona para agregar el filtro de estado — no hubiera
+     tenido sentido agregar un tercer filtro que se pisara con los otros
+     dos igual que ya se pisaban entre sí.
+  5. **`/ideas` gana búsqueda por texto** (columna `idea`, no tiene
+     categoría en el esquema así que ese filtro no aplica ahí). El select
+     de rango (`partials/filtro-rango.ejs`, compartido con
+     `/recordatorios` y `/hechos`) ahora preserva `q` al cambiar de rango
+     SI la vista que lo incluye pasa `q` — las otras dos vistas no lo
+     pasan y siguen exactamente igual que antes (verificado con render).
+- Archivos tocados: `server.js` (helper nuevo, `GET /` y `GET /ideas`
+  reescritas), `views/index.ejs` (form unificado + rama de completados),
+  `views/ideas.ejs` (form de búsqueda nuevo), `views/partials/filtro-rango.ejs`
+  (preserva `q` si existe), `public/style.css` (`.badge-completado`,
+  mismo patrón visual que `.badge-asignado` ya existente).
+- Qué se verificó: `node --check server.js` limpio. `ejs.renderFile` de
+  `index.ejs` en 3 estados (vacío, con datos activos, con datos
+  completados — este último ejercitando la rama nueva de acciones) y de
+  `ideas.ejs` en 2 estados (sin `q`, con `q`) — todos OK. Confirmé que
+  `recordatorios.ejs`/`hechos.ejs` (que comparten `filtro-rango.ejs` pero
+  no pasan `q`) siguen renderizando igual que antes. Grep de emoji sobre
+  todo el proyecto en cero. **Sin probar contra la DB real** — este
+  worktree no tiene `.env`.
+- Nota de reconstrucción: reconstruida sobre `main` actualizado (chocaba
+  con A en `index.ejs`/`COORDINACION.md`) — los 5 archivos tocados
+  aplicaron con `git apply` limpio, sin necesidad de resolución manual.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2268,9 +2323,10 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   query ya existente en `GET /`** (que ya arma la consulta con `categoriaFiltro`/`q` de
   forma incremental) **en vez de duplicar la lógica** — extenderlo o extraerlo a un
   helper compartido si `/ideas` también lo necesita, decidir cuál de las dos y
-  documentarlo. — asignada a: sin asignar — Depende de: nada (categorías y búsqueda en
-  pendientes ya existen; esto es extender el filtro de estado y llevar el mismo patrón a
-  `/ideas`).
+  documentarlo. — asignada a: `rama-busqueda-filtros` (commiteada, sin
+  probar contra la DB real — ver su sección en "Estado de ramas") — Depende de: nada
+  (categorías y búsqueda en pendientes ya existen; esto es extender el filtro de
+  estado y llevar el mismo patrón a `/ideas`).
 
 - [ ] **G. PWA instalable de verdad.** `manifest.json` ya existe — revisar si falta algo
   (`start_url`, `display`, `theme_color` ya actualizado a la paleta Jungla/Monstera —

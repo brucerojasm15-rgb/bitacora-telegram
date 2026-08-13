@@ -205,7 +205,10 @@
   esta rama nueva.
 
 ### rama-tema-chat
-- Estado: ✅ MERGEADA a main vía PR #8 (commit de merge e694dee).
+- Estado: ✅ MERGEADA a main vía PR #8 (commit de merge e694dee). CERRADA:
+  rama local eliminada el 2026-08-13 (`git branch -d rama-tema-chat`, sin
+  forzar — se confirmó primero que no había commits sin mergear con
+  `git log origin/main..HEAD` vacío). No existía rama remota que borrar.
 - Tarea: aplicar tema visual oscuro a views/chat.ejs (último ítem del
   backlog original). Antes, chat.ejs no tenía ningún estilo propio más
   allá de lo agregado por rama-notificaciones (.notificacion, .no-leido,

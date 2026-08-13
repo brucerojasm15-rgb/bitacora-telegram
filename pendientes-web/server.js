@@ -783,27 +783,41 @@ async function usuarioPerteneceAmistad(usuarioId, amistadId) {
   return rows.length > 0;
 }
 
+// rama-busqueda-filtros: decisión documentada en COORDINACION.md — helper
+// chico compartido entre GET / y GET /ideas en vez de duplicar el ILIKE con
+// su manejo de índice de parámetro ($N), que es lo único realmente común
+// entre esas dos consultas (el resto — categoría, estado, joins — es
+// específico de cada una y no vale la pena forzarlo a un solo builder).
+function agregarFiltroTexto(consulta, params, columna, q) {
+  if (!q) return consulta;
+  params.push(`%${q}%`);
+  return consulta + ` AND ${columna} ILIKE $${params.length}`;
+}
+
+// Antes el estado estaba hardcodeado (WHERE p.hecho = FALSE, solo activos).
+// 'pendiente' como default preserva ese comportamiento para quien no toque
+// el filtro nuevo.
+const ESTADOS_PENDIENTE_VALIDOS = ['pendiente', 'completado'];
+
 app.get('/', async (req, res) => {
   const categoriaFiltro = CATEGORIAS_VALIDAS.includes(req.query.categoria) ? req.query.categoria : null;
   const q = (req.query.q || '').trim();
+  const estadoFiltro = ESTADOS_PENDIENTE_VALIDOS.includes(req.query.estado) ? req.query.estado : 'pendiente';
   try {
     // rama-tareas-compartidas: además de los propios, trae los pendientes
     // que un amigo le asignó (asignado_a = usuarioId). Se trae el nombre de
     // quien lo creó para mostrar "Asignado por @fulano" en esos casos.
-    const params = [req.usuarioId];
+    const params = [req.usuarioId, estadoFiltro === 'completado'];
     let consulta = `SELECT p.id, p.texto, p.creado, p.necesita_reflexion, p.categoria, p.usuario_id, p.asignado_a,
               uc.nombre_usuario AS creador_nombre
        FROM pendientes p
        LEFT JOIN usuarios uc ON uc.id = p.usuario_id
-       WHERE p.hecho = FALSE AND p.eliminado = FALSE AND (p.usuario_id = $1 OR p.asignado_a = $1)`;
+       WHERE p.hecho = $2 AND p.eliminado = FALSE AND (p.usuario_id = $1 OR p.asignado_a = $1)`;
     if (categoriaFiltro) {
       params.push(categoriaFiltro);
       consulta += ` AND p.categoria = $${params.length}`;
     }
-    if (q) {
-      params.push(`%${q}%`);
-      consulta += ` AND p.texto ILIKE $${params.length}`;
-    }
+    consulta = agregarFiltroTexto(consulta, params, 'p.texto', q);
     consulta += ' ORDER BY p.creado ASC';
     const { rows } = await pool.query(consulta, params);
     res.render('index', {
@@ -812,6 +826,7 @@ app.get('/', async (req, res) => {
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
       categorias: CATEGORIAS_VALIDAS,
       categoriaFiltro,
+      estadoFiltro,
       q,
       usuarioId: req.usuarioId,
     });
@@ -823,6 +838,7 @@ app.get('/', async (req, res) => {
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
       categorias: CATEGORIAS_VALIDAS,
       categoriaFiltro,
+      estadoFiltro,
       q,
       usuarioId: req.usuarioId,
     });
@@ -1433,15 +1449,17 @@ app.post('/captura', async (req, res) => {
 
 app.get('/ideas', async (req, res) => {
   const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
+  const q = (req.query.q || '').trim();
   try {
-    const { rows } = await pool.query(
-      `SELECT id, fecha, idea, estado FROM ideas WHERE usuario_id = $1 ${whereRango(rango, 'fecha::timestamptz')} ORDER BY id DESC`,
-      [req.usuarioId]
-    );
-    res.render('ideas', { ideas: rows, error: null, rango });
+    const params = [req.usuarioId];
+    let consulta = `SELECT id, fecha, idea, estado FROM ideas WHERE usuario_id = $1 ${whereRango(rango, 'fecha::timestamptz')}`;
+    consulta = agregarFiltroTexto(consulta, params, 'idea', q);
+    consulta += ' ORDER BY id DESC';
+    const { rows } = await pool.query(consulta, params);
+    res.render('ideas', { ideas: rows, error: null, rango, q });
   } catch (err) {
     console.error('Error consultando ideas:', err.message);
-    res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', rango });
+    res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', rango, q });
   }
 });
 

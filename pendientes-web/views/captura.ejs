@@ -15,9 +15,37 @@
     <% if (typeof guardado !== 'undefined' && guardado) { %>
       <p class="notificacion">Guardado.</p>
     <% } %>
+    <% if (typeof avisoAsignacion !== 'undefined' && avisoAsignacion) { %>
+      <p class="aviso-asignacion"><%= avisoAsignacion %></p>
+    <% } %>
 
+    <% if (typeof confirmarAsignacion !== 'undefined' && confirmarAsignacion) { %>
+      <!-- rama-asignacion-texto: paso de confirmación — se detectó un
+           nombre de amigo en el texto y coincide con exactamente un amigo
+           actual. Nunca se guarda con asignado_a seteado sin pasar por
+           acá primero (ver COORDINACION.md). -->
+      <div class="aviso-asignacion">
+        <p>Vas a guardar este pendiente:</p>
+        <p><strong>&ldquo;<%= confirmarAsignacion.texto %>&rdquo;</strong></p>
+        <p>Se asignará a <strong>@<%= confirmarAsignacion.nombre %></strong> en vez de guardarse como tarea propia.</p>
+      </div>
+      <form method="POST" action="/captura" class="captura-form">
+        <input type="hidden" name="texto" value="<%= confirmarAsignacion.texto %>">
+        <input type="hidden" name="tipo" value="pendiente">
+        <input type="hidden" name="confirmar_asignacion" value="1">
+        <input type="hidden" name="confirmar_asignacion_id" value="<%= confirmarAsignacion.id %>">
+        <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Confirmar: asignar a @<%= confirmarAsignacion.nombre %></button>
+      </form>
+      <form method="POST" action="/captura" class="captura-form">
+        <input type="hidden" name="texto" value="<%= confirmarAsignacion.texto %>">
+        <input type="hidden" name="tipo" value="pendiente">
+        <input type="hidden" name="cancelar_asignacion" value="1">
+        <button type="submit">Guardar como tarea propia (sin asignar)</button>
+      </form>
+      <p><a href="/captura?texto=<%= encodeURIComponent(confirmarAsignacion.texto) %>">&larr; Corregir el texto</a></p>
+    <% } else { %>
     <form method="POST" action="/captura" id="form-captura" class="captura-form">
-      <textarea name="texto" id="captura-texto" rows="3" placeholder="Escribe aquí..." required></textarea>
+      <textarea name="texto" id="captura-texto" rows="3" placeholder="Escribe aquí..." required><%= typeof textoPrefill !== 'undefined' ? textoPrefill : '' %></textarea>
 
       <input type="hidden" name="tipo" id="captura-tipo-oculto">
       <div class="captura-tipos" role="group" aria-label="Tipo">
@@ -31,6 +59,7 @@
         <input type="datetime-local" name="cuando" id="captura-cuando">
       </div>
     </form>
+    <% } %>
   </main>
 
   <script>
@@ -43,19 +72,24 @@
     const form = document.getElementById('form-captura');
     const tipoOculto = document.getElementById('captura-tipo-oculto');
 
-    form.addEventListener('submit', (e) => {
-      const tipo = e.submitter && e.submitter.dataset.tipo;
-      if (tipo === 'recordatorio' && (campoCuando.hidden || !inputCuando.value)) {
+    // rama-asignacion-texto: en la pantalla de confirmación de asignación
+    // no existe #form-captura (son 2 forms simples de confirmar/cancelar,
+    // sin selector de tipo ni campo de fecha) — nada que enganchar acá.
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        const tipo = e.submitter && e.submitter.dataset.tipo;
+        if (tipo === 'recordatorio' && (campoCuando.hidden || !inputCuando.value)) {
+          e.preventDefault();
+          campoCuando.hidden = false;
+          inputCuando.focus();
+          return;
+        }
         e.preventDefault();
-        campoCuando.hidden = false;
-        inputCuando.focus();
-        return;
-      }
-      e.preventDefault();
-      tipoOculto.value = tipo;
-      reproducirSonido('enviar');
-      setTimeout(() => form.submit(), 180);
-    });
+        tipoOculto.value = tipo;
+        reproducirSonido('enviar');
+        setTimeout(() => form.submit(), 180);
+      });
+    }
   </script>
 <%- include('partials/scripts') %>
 </body>

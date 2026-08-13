@@ -783,6 +783,66 @@ async function usuariosSonAmigos(usuarioIdA, usuarioIdB) {
   return rows.length > 0;
 }
 
+// rama-asignacion-texto: detecta un intento de asignar la tarea a un amigo
+// dentro del texto libre de "captura rápida" (documentado en detalle en
+// COORDINACION.md). Dos patrones, con este orden de precedencia fijo:
+//   1) "@nombre" en cualquier parte del texto — sintaxis explícita, gana
+//      siempre que aparezca aunque el texto también tenga una frase
+//      natural. Si hay varias "@menciones", se usa la primera (más a la
+//      izquierda).
+//   2) Si no hay "@", frases naturales, revisadas EN ESTE ORDEN: "recuérdale
+//      a X" / "asígnale a X" (verbos explícitos de asignar, poco ambiguos)
+//      antes que "para X" (mucho más genérico — "comprar pan para la cena"
+//      no debería leerse como asignación; el paso siguiente, que exige
+//      coincidencia exacta con un amigo real, descarta solo la enorme
+//      mayoría de estos falsos positivos).
+// El nombre candidato se normaliza (minúsculas, sin tildes) antes de
+// compararlo, porque nombre_usuario solo admite [a-zA-Z0-9_] (ver
+// NOMBRE_USUARIO_REGEX) — nunca tiene tildes ni espacios, así que basta con
+// tomar la primera "palabra" después del patrón.
+function extraerNombreCandidatoAsignacion(texto) {
+  const normalizado = texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const arroba = normalizado.match(/@([a-z0-9_]{3,20})/);
+  if (arroba) return arroba[1];
+  // Candidato acotado a {3,20} (igual que NOMBRE_USUARIO_REGEX): descarta
+  // sin consultar la DB palabras cortas frecuentísimas después de "para"
+  // ("para la", "para el", "para mí"...) que nunca podrían ser un
+  // nombre_usuario real de todas formas.
+  const frasesNaturales = [
+    /\brecuerdale a ([a-z0-9_]{3,20})/,
+    /\basignale a ([a-z0-9_]{3,20})/,
+    /\bpara ([a-z0-9_]{3,20})/,
+  ];
+  for (const regex of frasesNaturales) {
+    const coincidencia = normalizado.match(regex);
+    if (coincidencia) return coincidencia[1];
+  }
+  return null;
+}
+
+// Busca el nombre candidato entre los amigos ACTUALES (amistad
+// estado='aceptada') del usuario, case-insensitive. nombre_usuario es
+// UNIQUE en toda la tabla `usuarios` (y ya se guarda en minúsculas, ver
+// /registro) así que hoy una coincidencia exacta nunca puede devolver más
+// de una fila — el llamador igual maneja `rows.length > 1` como
+// "ambigüedad" (lo que pide el enunciado), por robustez ante un futuro
+// cambio de esquema (ej. un apodo no-único), aunque no sea alcanzable con
+// el esquema actual.
+async function buscarAmigoPorNombre(usuarioId, nombreCandidato) {
+  const { rows } = await pool.query(
+    `SELECT u.id, u.nombre_usuario
+     FROM amistades a
+     JOIN usuarios u ON u.id = CASE WHEN a.usuario_a_id = $1 THEN a.usuario_b_id ELSE a.usuario_a_id END
+     WHERE a.estado = 'aceptada' AND (a.usuario_a_id = $1 OR a.usuario_b_id = $1)
+       AND lower(u.nombre_usuario) = $2`,
+    [usuarioId, nombreCandidato]
+  );
+  return rows;
+}
+
 async function usuarioPerteneceAmistad(usuarioId, amistadId) {
   const { rows } = await pool.query(
     "SELECT 1 FROM amistades WHERE id = $1 AND estado = 'aceptada' AND (usuario_a_id = $2 OR usuario_b_id = $2)",
@@ -1418,24 +1478,94 @@ app.get('/estadisticas', async (req, res) => {
 // usuario_id desde ramas anteriores.
 const TIPOS_CAPTURA_VALIDOS = ['pendiente', 'idea', 'recordatorio'];
 
+// rama-asignacion-texto: locals que captura.ejs necesita en TODAS las
+// respuestas (siguiendo el mismo estilo que el resto del archivo, que pasa
+// el set completo de locals en cada res.render en vez de confiar en
+// defaults de la plantilla) — evita "no está definida" en EJS según por
+// qué rama del código se llegó a cada render.
+function localsCaptura(extra) {
+  return Object.assign(
+    { error: null, guardado: false, confirmarAsignacion: null, avisoAsignacion: null, textoPrefill: '' },
+    extra
+  );
+}
+
 app.get('/captura', (req, res) => {
-  res.render('captura', { error: null, guardado: req.query.guardado === '1' });
+  res.render('captura', localsCaptura({
+    guardado: req.query.guardado === '1',
+    avisoAsignacion: req.query.aviso || null,
+    textoPrefill: req.query.texto || '',
+  }));
 });
 
 app.post('/captura', async (req, res) => {
   const texto = (req.body.texto || '').trim();
   const tipo = req.body.tipo;
   if (!texto || !TIPOS_CAPTURA_VALIDOS.includes(tipo)) {
-    return res.status(400).render('captura', { error: 'Escribe algo y elige un tipo válido.' });
+    return res.status(400).render('captura', localsCaptura({ error: 'Escribe algo y elige un tipo válido.' }));
   }
   if (tipo === 'recordatorio' && !req.body.cuando) {
-    return res.status(400).render('captura', { error: 'Los recordatorios necesitan fecha y hora.' });
+    return res.status(400).render('captura', localsCaptura({ error: 'Los recordatorios necesitan fecha y hora.' }));
   }
+
+  // rama-asignacion-texto: solo aplica a "pendiente" (es la única de las 3
+  // tablas de /captura con columna asignado_a). El parseo es 100%
+  // server-side (nunca se confía en un id/nombre mandado por el cliente sin
+  // revalidar la amistad contra la DB) — ver COORDINACION.md para el porqué
+  // de que esto viva acá y no en JS del navegador.
+  let asignarA = null; // id de usuario destino del pendiente, si corresponde
+  let avisoAsignacion = null;
+  if (tipo === 'pendiente') {
+    const confirmarId = Number(req.body.confirmar_asignacion_id);
+    if (req.body.confirmar_asignacion === '1' && Number.isInteger(confirmarId)) {
+      // Paso 2 del flujo de confirmación: el usuario ya vio "Se asignará a
+      // X" (paso 1, más abajo) y apretó "Confirmar". Se revalida la
+      // amistad de nuevo acá (no se confía en que siga siendo cierta solo
+      // porque lo era en el paso 1 — pudo deshacerse la amistad justo
+      // entre medio) antes de guardar con asignado_a seteado.
+      const sonAmigos = await usuariosSonAmigos(req.usuarioId, confirmarId);
+      if (sonAmigos) {
+        asignarA = confirmarId;
+      } else {
+        avisoAsignacion = 'Esa amistad ya no es válida; se guardó como tarea propia.';
+      }
+    } else if (req.body.cancelar_asignacion !== '1') {
+      // Paso 1: primer submit del formulario (todavía no confirmado ni
+      // cancelado). Se detecta un candidato en el texto y, si coincide con
+      // EXACTAMENTE un amigo actual, se corta acá — se re-renderiza la
+      // misma vista en modo "confirmar", sin guardar nada todavía, tal
+      // como pide el enunciado ("nunca asignar sin mostrarlo antes").
+      const candidato = extraerNombreCandidatoAsignacion(texto);
+      if (candidato) {
+        const coincidencias = await buscarAmigoPorNombre(req.usuarioId, candidato);
+        if (coincidencias.length === 1) {
+          return res.render('captura', localsCaptura({
+            confirmarAsignacion: { nombre: coincidencias[0].nombre_usuario, id: coincidencias[0].id, texto },
+          }));
+        } else if (coincidencias.length === 0) {
+          avisoAsignacion = `No tienes un amigo llamado "${candidato}"; se guardó como tarea propia.`;
+        } else {
+          // Ver comentario en buscarAmigoPorNombre: no alcanzable con el
+          // esquema actual (nombre_usuario es UNIQUE), pero el enunciado
+          // pide manejar el caso igual.
+          avisoAsignacion = `Hay más de un amigo que coincide con "${candidato}"; se guardó como tarea propia.`;
+        }
+      }
+    }
+    // cancelar_asignacion === '1': el usuario eligió explícitamente
+    // "guardar como propia" desde la pantalla de confirmación — sigue de
+    // largo sin aviso (no hace falta explicarle una decisión que él mismo
+    // tomó).
+  }
+
   try {
     if (tipo === 'pendiente') {
+      // asignado_en solo se setea junto con asignado_a (mismo criterio que
+      // POST /pendientes/:id/asignar, que también los actualiza juntos).
       await pool.query(
-        'INSERT INTO pendientes (texto, creado, hecho, usuario_id) VALUES ($1, now(), FALSE, $2)',
-        [texto, req.usuarioId]
+        `INSERT INTO pendientes (texto, creado, hecho, usuario_id, asignado_a, asignado_en)
+         VALUES ($1, now(), FALSE, $2, $3, CASE WHEN $3::integer IS NULL THEN NULL ELSE now() END)`,
+        [texto, req.usuarioId, asignarA]
       );
     } else if (tipo === 'idea') {
       await pool.query(
@@ -1450,9 +1580,11 @@ app.post('/captura', async (req, res) => {
     }
   } catch (err) {
     console.error('Error guardando captura rápida:', err.message);
-    return res.status(500).render('captura', { error: 'No se pudo guardar. Intenta de nuevo.' });
+    return res.status(500).render('captura', localsCaptura({ error: 'No se pudo guardar. Intenta de nuevo.' }));
   }
-  res.redirect('/captura?guardado=1');
+  const params = new URLSearchParams({ guardado: '1' });
+  if (avisoAsignacion) params.set('aviso', avisoAsignacion);
+  res.redirect('/captura?' + params.toString());
 });
 
 app.get('/ideas', async (req, res) => {

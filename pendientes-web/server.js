@@ -1369,7 +1369,16 @@ cron.schedule('* * * * *', revisarYNotificarRecordatoriosPendientes, {
   timezone: 'America/Lima',
 });
 
+// Restringida al usuario dueño del proyecto: no existe un concepto de
+// rol/admin en el esquema todavía, así que se compara directo contra el
+// nombre de usuario guardado en la sesión (mismo campo que ya setea
+// POST /login, siempre en minúsculas). Ruta de prueba manual de Web Push,
+// sin uso de cara al usuario final -- no tiene sentido que cualquier
+// cuenta pueda spamear una notificación real a todos los usuarios.
 app.post('/notificar-prueba', async (req, res) => {
+  if (req.session.nombre_usuario !== 'bruce') {
+    return res.status(403).send('No autorizado.');
+  }
   try {
     const { enviadas, total } = await enviarPushATodos({ title: 'Bitácora', body: 'Hola desde tu bitácora' });
     res.send(`Notificaciones enviadas: ${enviadas}/${total}`);

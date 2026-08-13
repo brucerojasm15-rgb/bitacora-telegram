@@ -1455,6 +1455,25 @@
   `usuarios.saldo_moneda`/`tema`, `google_calendar_tokens`, etc.) corren
   limpio contra Railway, y mirar el rediseño visual en un navegador de
   verdad por primera vez. Commit de merge f6a2847.
+- 2026-08-13 — merge de rama-tema-jungla (segunda tanda, 03d3929) → main
+  vía PR #37 (mergeStateStatus CLEAN): tarea 7 (moneda virtual), tarea 8
+  (IA compañera visual — Fase 1), una limpieza de duplicación entre
+  `enviarPushATodos`/`enviarPushAUsuario`, y un fix real encontrado
+  recién en esta ronda — el campo de fecha de Captura rápida se
+  mostraba siempre en vez de solo al elegir "Recordatorio" (`.captura-
+  cuando { display: flex }` le ganaba al atributo `hidden` en la
+  cascada). **A diferencia del merge anterior (f6a2847), este sí se
+  probó contra la DB real y en un navegador de verdad**, con
+  capturas de pantalla: login, Pendientes, Captura rápida, Mi planta,
+  Chat general, Recordatorios, Amigos y Estadísticas, en claro y
+  oscuro, con la cuenta real de producción. Health-check post-merge:
+  `/login` → 200. Pendiente: confirmar a mano que el campo de fecha
+  aparece al tocar "Recordatorio" (la prueba automatizada de esa
+  interacción puntual no pudo completarse por un problema de
+  herramientas, no del código); probar la moneda/IA con dos usuarios
+  reales completando tareas asignadas entre sí; una fila con texto muy
+  largo en Pendientes se ve rara (preexistente, no introducido por
+  este PR). Commit de merge 84a415e.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 

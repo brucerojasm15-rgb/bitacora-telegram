@@ -2249,6 +2249,56 @@ con el usuario de vuelta, cada uno con su diff mostrado y su "aprobado" explíci
 `COORDINACION.md`). Este commit puntual que estás leyendo sí es solo-doc y por eso
 se pushea directo.
 
+## Eliminación del bot de Telegram (`bot_bitacora_sqlite.py`) — diagnóstico y estado (2026-08-13)
+
+**Contexto:** se pidió eliminar "el canal de Telegram para recordatorios",
+asumiendo una integración dentro de `server.js` (función `enviarTelegram()`,
+columna `chat_id`, llamada desde `revisarYNotificarRecordatoriosPendientes`).
+**Esa integración no existe** — grep completo de `server.js` no encontró nada
+funcional, solo un comentario de paso. Lo que sí existe es un bot de Telegram
+completamente separado, `bot_bitacora_sqlite.py` en la raíz del repo, desplegado
+como su propio proceso worker (`Procfile.txt`), de un solo usuario
+(`MI_TELEGRAM_ID`), sin ninguna relación de código con `pendientes-web`.
+
+**Diagnóstico de riesgo de datos compartidos — CONFIRMADO, no solo sospechado:**
+
+1. **Comparación de esquema** (código del bot vs. `information_schema.columns`
+   real en Postgres, vía un script Node descartable con el `pg` ya usado por
+   `server.js`): las tablas `pendientes`/`ideas`/`recordatorios`/`hechos` en la
+   DB real tienen EXACTAMENTE las columnas que crea el bot (`CREATE TABLE IF
+   NOT EXISTS`) más las que `server.js` les agrega encima vía `ALTER TABLE ...
+   ADD COLUMN IF NOT EXISTS` (`usuario_id` en las 4, y varias más en
+   `pendientes`). Confirmado además que `ensureSchema()` en `server.js`
+   **nunca tiene un `CREATE TABLE` para esas 4 tablas** — solo las altera,
+   asumiendo que ya existen. La app Node se construyó literalmente encima del
+   esquema que crea el bot.
+2. **Confirmación directa en Railway** (CLI instalado con `npm install -g
+   @railway/cli`, autenticado por el usuario vía login sin navegador, sesión
+   cerrada al terminar): el proyecto real es `tender-upliftment`, con 3
+   servicios — `bitacora-telegram` (la app Node, corriendo), `worker` (el bot,
+   corriendo, repo `BITACORA-INTELIGENTE`, deploy activo desde 2026-08-07), y
+   un único `Postgres` compartido. Se comparó la variable `DATABASE_URL` de
+   `bitacora-telegram` contra la de `worker` con un script Node (comparación
+   `===` sobre el valor completo, luego el archivo con los valores crudos se
+   borró) — **son idénticas byte a byte**:
+   `postgresql://postgres:***@postgres.railway.internal:5432/railway`.
+   (Hay un segundo proyecto, `faithful-enchantment`, con un servicio "worker"
+   homónimo pero completamente vacío — sin variables propias, sin ningún
+   deployment jamás — no es el bot real, es ruido/un intento viejo abandonado.)
+
+**Conclusión: el riesgo era real y está activo en producción ahora mismo.** El
+bot corre contra la MISMA base de datos que la app multiusuario, y sus queries
+(`listar_pendientes`, `marcar_pendiente_hecho`, etc.) no filtran por
+`usuario_id` en ningún lado — el usuario de Telegram puede estar viendo/
+modificando pendientes de TODOS los usuarios de la app, no solo los propios.
+
+**Estado de la eliminación:** diff preparado (borra `bot_bitacora_sqlite.py`,
+`Procfile.txt`, `requirements.txt` — nada más en el repo los referencia,
+confirmado) y mostrado al usuario en el hilo principal — regla 8 aplica
+completo, **NO PUSHEADO, esperando "aprobado"**. La columna `usuario_id` no
+existe en el bot (nunca la tuvo, no hay nada de esquema que preservar para un
+paso posterior — ese punto de la tarea original queda sin objeto).
+
 ## Historial de merges a main
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
@@ -2808,6 +2858,38 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   sesión que la construya. — asignada a: sin asignar, NO tomar hasta nuevo
   aviso — Depende de: decisión de negocio externa (modelo de ingresos), no
   de otra tarea de este backlog.
+
+  **Enfoque técnico definido (2026-08-13), sigue BLOQUEADA — esto documenta el
+  CÓMO para cuando se decida el CUÁNDO/CON QUÉ SE PAGA, no autoriza a empezar
+  a construir:**
+
+  **RAG, no chatbot genérico.** La IA compañera no debe responder de memoria
+  genérica ni inventar contexto — debe consultar los datos reales del usuario
+  (pendientes, ideas, recordatorios, hechos, historial de "Mi planta") antes
+  de responder, para que las respuestas estén ancladas a lo que el usuario
+  realmente escribió, no una alucinación con tono amable.
+
+  Piezas necesarias:
+  1. **Recuperación:** al recibir un mensaje del usuario, traer del Postgres
+     existente los registros relevantes (últimos pendientes/ideas/
+     recordatorios, filtrados por `usuario_id`) — reusar los mismos patrones
+     de query que ya existen en `server.js`, NO una base de datos vectorial
+     nueva por ahora; el volumen de datos por usuario es chico, no hace falta
+     esa complejidad todavía.
+  2. **Contexto al modelo:** armar el prompt incluyendo esos registros como
+     contexto explícito antes de la pregunta del usuario.
+  3. **Respuesta:** llamada a la API de Claude con ese contexto, mostrada en
+     una interfaz de chat — reusar el patrón visual del chat general o el
+     chat de amistad ya existentes, no diseñar uno nuevo desde cero.
+
+  **Instrumentación desde el día 1 (LLM Ops básico, sin herramienta paga
+  todavía)** — esto es lo que permite decidir el modelo de ingresos con datos
+  reales de costo por usuario, en vez de adivinar entre suscripción/moneda
+  comprable/premium (que es justo la decisión pendiente que bloquea esta
+  tarea):
+  - Loggear costo real por llamada (tokens de entrada/salida × precio del
+    modelo) en una tabla propia, por `usuario_id`.
+  - Loggear latencia por respuesta.
 
 - [x] **10. Integración con Google Calendar.** OAuth explícito, mismo patrón
   que cualquier conector tipo Claude (pantalla de consentimiento clara,

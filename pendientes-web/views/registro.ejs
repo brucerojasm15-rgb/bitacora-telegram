@@ -11,8 +11,14 @@
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } %>
+    <% if (invitadoPor) { %>
+      <p class="notificacion"><%- include('partials/icono', { nombre: 'personas' }) %> Te invitó <strong>@<%= invitadoPor %></strong> — al crear tu cuenta le va a llegar una solicitud de amistad.</p>
+    <% } %>
 
     <form method="POST" action="/registro" class="login-form">
+      <% if (codigoInvitacion) { %>
+        <input type="hidden" name="invitacion" value="<%= codigoInvitacion %>">
+      <% } %>
       <input type="text" name="nombre_usuario" placeholder="Usuario" value="<%= nombreUsuario %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" minlength="3" maxlength="20" required autofocus>
       <input type="password" name="pin" placeholder="PIN (4 a 6 dígitos)" inputmode="numeric" pattern="\d{4,6}" required>
       <input type="password" name="confirmar_pin" placeholder="Repite el PIN" inputmode="numeric" pattern="\d{4,6}" required>

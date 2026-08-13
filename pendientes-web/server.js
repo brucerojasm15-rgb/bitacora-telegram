@@ -251,6 +251,17 @@ function generarCodigoRecuperacion() {
   return `${codigo.slice(0, 5)}-${codigo.slice(5)}`;
 }
 
+// rama-invitar-amigos: código de invitación por usuario. Distinto criterio
+// del código de recuperación a propósito (documentado en COORDINACION.md):
+// no se hashea (no es un secreto que desbloquee una cuenta, solo resuelve
+// a un usuario_id para pre-cargar una solicitud de amistad) y no es de un
+// solo uso (vive mientras el usuario no lo regenere). Se comparte como
+// link, no se transcribe a mano, así que no hace falta un alfabeto sin
+// ambigüedades — base64url es más corto y ya es seguro para URLs.
+function generarCodigoInvitacion() {
+  return crypto.randomBytes(9).toString('base64url');
+}
+
 // rama-google-calendar: los tokens de Google (access + refresh) nunca se
 // guardan en texto plano. AES-256-GCM en vez de un modo sin autenticación
 // (ECB/CBC) porque GCM detecta si el texto cifrado fue alterado. IV
@@ -347,11 +358,31 @@ app.post('/logout', (req, res) => {
   });
 });
 
-app.get('/registro', (req, res) => {
+// rama-invitar-amigos: resuelve un código de invitación al usuario dueño,
+// sin filtrar nada si no existe (registro sigue funcionando normal, solo
+// sin el banner "te invitó @fulano" ni la solicitud pre-cargada).
+async function resolverInvitador(codigo) {
+  if (!codigo) return null;
+  const { rows } = await pool.query(
+    'SELECT id, nombre_usuario FROM usuarios WHERE codigo_invitacion = $1',
+    [codigo]
+  );
+  return rows[0] || null;
+}
+
+app.get('/registro', async (req, res) => {
   if (req.session && req.session.usuario_id) {
     return res.redirect('/');
   }
-  res.render('registro', { error: null, nombreUsuario: '', especies: IA_ESPECIES });
+  const codigoInvitacion = typeof req.query.invitacion === 'string' ? req.query.invitacion : '';
+  const invitador = await resolverInvitador(codigoInvitacion).catch(() => null);
+  res.render('registro', {
+    error: null,
+    nombreUsuario: '',
+    especies: IA_ESPECIES,
+    codigoInvitacion,
+    invitadoPor: invitador ? invitador.nombre_usuario : null,
+  });
 });
 
 app.post('/registro', limitarIntentos('registro'), async (req, res) => {
@@ -359,25 +390,30 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
   const pin = req.body.pin || '';
   const confirmarPin = req.body.confirmar_pin || '';
   const especie = IA_ESPECIES.includes(req.body.especie) ? req.body.especie : IA_ESPECIES[0];
+  const codigoInvitacion = (req.body.invitacion || '').trim();
 
   if (!NOMBRE_USUARIO_REGEX.test(nombreUsuario)) {
     return res.render('registro', {
       error: 'El usuario debe tener entre 3 y 20 caracteres (letras, números o _).',
       nombreUsuario,
       especies: IA_ESPECIES,
+      codigoInvitacion,
+      invitadoPor: null,
     });
   }
   if (!PIN_REGEX.test(pin)) {
-    return res.render('registro', { error: 'El PIN debe ser numérico, de 4 a 6 dígitos.', nombreUsuario, especies: IA_ESPECIES });
+    return res.render('registro', { error: 'El PIN debe ser numérico, de 4 a 6 dígitos.', nombreUsuario, especies: IA_ESPECIES, codigoInvitacion, invitadoPor: null });
   }
   if (pin !== confirmarPin) {
-    return res.render('registro', { error: 'El PIN y su confirmación no coinciden.', nombreUsuario, especies: IA_ESPECIES });
+    return res.render('registro', { error: 'El PIN y su confirmación no coinciden.', nombreUsuario, especies: IA_ESPECIES, codigoInvitacion, invitadoPor: null });
   }
   if (limiteRegistrosAlcanzado(req.ip)) {
     return res.render('registro', {
       error: 'Se alcanzó el límite de cuentas nuevas desde esta red en la última hora. Intenta de nuevo más tarde.',
       nombreUsuario,
       especies: IA_ESPECIES,
+      codigoInvitacion,
+      invitadoPor: null,
     });
   }
 
@@ -390,9 +426,30 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
       'INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash, ia_especie, ia_nombre) VALUES ($1, $2, $3, $4, $5) RETURNING id',
       [nombreUsuario, pinHash, codigoRecuperacionHash, especie, nombreIaPorDefecto]
     );
+    const nuevoUsuarioId = rows[0].id;
     registrarAltaExitosa(req.ip);
-    req.session.usuario_id = rows[0].id;
+    req.session.usuario_id = nuevoUsuarioId;
     req.session.nombre_usuario = nombreUsuario;
+
+    // rama-invitar-amigos: si el código resuelve a un usuario real, se
+    // pre-carga la solicitud de amistad (nuevo usuario -> quien invitó),
+    // mismo INSERT que usa POST /amigos/solicitar. Falla en silencio (solo
+    // log) si el código ya no es válido o algo sale mal — no debe romper
+    // el registro, que ya ocurrió.
+    if (codigoInvitacion) {
+      try {
+        const invitador = await resolverInvitador(codigoInvitacion);
+        if (invitador) {
+          await pool.query(
+            `INSERT INTO amistades (usuario_a_id, usuario_b_id, estado, fecha) VALUES ($1, $2, 'pendiente', now())`,
+            [nuevoUsuarioId, invitador.id]
+          );
+        }
+      } catch (err) {
+        console.error('Error pre-cargando solicitud de amistad por invitación:', err.message);
+      }
+    }
+
     res.render('codigo-recuperacion', {
       codigo: codigoRecuperacion,
       mensaje: 'Cuenta creada. Este es tu código de recuperación de PIN — apúntalo antes de continuar:',
@@ -400,10 +457,10 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     });
   } catch (err) {
     if (err.code === '23505') {
-      return res.render('registro', { error: 'Ese nombre de usuario ya está en uso.', nombreUsuario, especies: IA_ESPECIES });
+      return res.render('registro', { error: 'Ese nombre de usuario ya está en uso.', nombreUsuario, especies: IA_ESPECIES, codigoInvitacion, invitadoPor: null });
     }
     console.error('Error en registro:', err.message);
-    res.status(500).render('registro', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario, especies: IA_ESPECIES });
+    res.status(500).render('registro', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario, especies: IA_ESPECIES, codigoInvitacion, invitadoPor: null });
   }
 });
 
@@ -484,6 +541,13 @@ async function ensureSchema() {
   `);
   await pool.query(`
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigo_recuperacion_hash TEXT
+  `);
+  // rama-invitar-amigos: código de invitación, decisión documentada en
+  // COORDINACION.md — a diferencia de codigo_recuperacion_hash, este NO se
+  // guarda hasheado ni es de un solo uso (otro modelo de amenaza: no
+  // desbloquea ninguna cuenta, solo pre-carga una solicitud de amistad).
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigo_invitacion TEXT UNIQUE
   `);
   await pool.query(`
     ALTER TABLE pendientes
@@ -1646,9 +1710,21 @@ app.get('/exportar', async (req, res) => {
 // fecha agregadas arriba con ALTER TABLE. Convención propia de esta rama,
 // documentada en COORDINACION.md: usuario_a_id = quien envía la solicitud,
 // usuario_b_id = quien la recibe; estado ∈ {pendiente, aceptada, rechazada}.
+// rama-invitar-amigos: se genera perezosamente (la primera vez que hace
+// falta) en vez de en /registro, para no tocar esa ruta más de lo
+// necesario y porque cuentas ya existentes también necesitan poder
+// invitar sin haberse registrado de nuevo.
+async function obtenerOCrearCodigoInvitacion(usuarioId) {
+  const { rows } = await pool.query('SELECT codigo_invitacion FROM usuarios WHERE id = $1', [usuarioId]);
+  if (rows[0] && rows[0].codigo_invitacion) return rows[0].codigo_invitacion;
+  const codigo = generarCodigoInvitacion();
+  await pool.query('UPDATE usuarios SET codigo_invitacion = $1 WHERE id = $2', [codigo, usuarioId]);
+  return codigo;
+}
+
 app.get('/amigos', async (req, res) => {
   try {
-    const [amigos, recibidas, enviadas] = await Promise.all([
+    const [amigos, recibidas, enviadas, codigoInvitacion] = await Promise.all([
       pool.query(
         `SELECT a.id AS amistad_id, u.id AS usuario_id, u.nombre_usuario
          FROM amistades a
@@ -1673,11 +1749,13 @@ app.get('/amigos', async (req, res) => {
          ORDER BY a.fecha DESC`,
         [req.usuarioId]
       ),
+      obtenerOCrearCodigoInvitacion(req.usuarioId),
     ]);
     res.render('amigos', {
       amigos: amigos.rows,
       recibidas: recibidas.rows,
       enviadas: enviadas.rows,
+      codigoInvitacion,
       error: null,
     });
   } catch (err) {
@@ -1686,6 +1764,7 @@ app.get('/amigos', async (req, res) => {
       amigos: [],
       recibidas: [],
       enviadas: [],
+      codigoInvitacion: null,
       error: 'No se pudo leer la base de datos.',
     });
   }

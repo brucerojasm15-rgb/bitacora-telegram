@@ -919,6 +919,96 @@
   `eventos_completado` se llena una sola vez por completado, que
   `/trazabilidad` solo muestra eventos de esa amistad específica (no de
   otras), y que el push le llega al usuario correcto.
+
+### rama-google-calendar
+- Estado: **ESQUELETO SIN PROBAR.** Compila y renderiza, pero nunca corrió
+  contra la API real de Google — no hay `client_id`/`client_secret` todavía.
+  No mergear a producción hasta confirmar el flujo real con credenciales
+  verdaderas.
+- Tarea: integración con Google Calendar (tarea 10 del roadmap 2026-08-12).
+  Depende solo de la tarea 4 (notificaciones push) — NO depende de la tarea
+  6 (trazabilidad social), que se desarrolló en paralelo en otro
+  worktree/rama (`rama-trazabilidad-social`); no se tocó nada de eso desde
+  acá. Creada desde `rama-notificaciones-recordatorios` (commit `68d43d5`,
+  no `origin/main`) en worktree nuevo
+  (`a-worktrees/rama-google-calendar`) — hereda `push_subscriptions.
+  usuario_id` y `enviarPushAUsuario`, aunque esta tarea en concreto no los
+  usa todavía (el botón de crear evento es manual, no dispara push).
+- Decisiones de esquema (tomadas al implementar):
+  1. **Tabla propia `google_calendar_tokens`, 1 fila por usuario** (no por
+     dispositivo, a diferencia de `push_subscriptions`): el refresh_token es
+     por cuenta de Google, no por navegador/sesión. `PRIMARY KEY
+     (usuario_id)` en vez de `id SERIAL` — no hace falta más de una fila por
+     usuario nunca.
+  2. **Cifrado AES-256-GCM** (`crypto.createCipheriv`, ya se usaba `crypto`
+     en el archivo para el hash del PIN) en vez de un modo sin autenticación
+     — GCM detecta si el texto cifrado fue alterado, no solo lo oculta. IV
+     aleatorio de 12 bytes por fila (recomendado para GCM), guardado junto
+     con el `auth_tag` y el texto cifrado en columnas separadas. Clave en
+     `GOOGLE_TOKEN_ENCRYPTION_KEY` (`.env`, 32 bytes en hex) — a propósito
+     NO se reusa `SESSION_SECRET` (son secretos con propósitos distintos,
+     rotarlos por separado sin arrastrar el otro).
+  3. **`access_token` y `refresh_token` se cifran juntos como un solo JSON**
+     (`cifrarTokensGoogle`/`descifrarTokensGoogle` reciben/devuelven el
+     objeto completo que da la librería `googleapis`, no un token a la vez)
+     — un solo cipher por guardado, más simple que cifrar cada campo aparte.
+  4. **Renovación de `access_token`:** `obtenerClienteCalendarPara(usuarioId)`
+     crea un cliente OAuth2 con las credenciales del usuario y escucha el
+     evento `'tokens'` del SDK de `googleapis` — si Google renueva el
+     access_token solo (pasa automático cuando expira), se vuelve a cifrar y
+     guardar. Sin esto, la integración se rompería en silencio después del
+     primer vencimiento (~1 hora, típico en tokens de Google).
+  5. **Revocación al desconectar:** `POST /calendario/desconectar` intenta
+     `googleOAuthClient.revokeToken(...)` contra Google antes de borrar la
+     fila local, pero es "mejor esfuerzo" — si falla (red, token ya
+     inválido, etc.) se borra igual localmente. No se probó nunca de verdad
+     (necesita credenciales reales).
+  6. **Botón manual, no automático:** como la tarea 8 (IA) no existe
+     todavía, `POST /recordatorios/:id/crear-evento-calendar` es un botón
+     que aparece en `views/recordatorios.ejs` por cada fila SOLO si el
+     usuario ya conectó Calendar. Duración fija de 30 minutos por evento
+     (`inicio` = `recordatorios.cuando`, `fin` = +30 min) — no hay UI para
+     cambiarla, documentado como límite conocido, no bug.
+  7. **`state` del flujo OAuth = `usuarioId`** (no un token CSRF aparte):
+     `/calendario/callback` valida que el `state` que vuelve de Google
+     coincida con `req.usuarioId` de la sesión actual, para no aceptar un
+     callback armado a mano contra la cuenta de otro usuario.
+- Archivos tocados: server.js (cliente OAuth condicional, funciones de
+  cifrado/descifrado, `obtenerClienteCalendarPara`, tabla
+  `google_calendar_tokens`, rutas `/calendario/conectar`,
+  `/calendario/callback`, `/calendario/desconectar`,
+  `/recordatorios/:id/crear-evento-calendar`, `GET /recordatorios` ahora
+  pasa `googleConfigurado`/`googleConectado` a la vista),
+  views/recordatorios.ejs (botones conectar/desconectar/crear evento),
+  package.json (`googleapis` nuevo), .env.example (`GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`,
+  `GOOGLE_TOKEN_ENCRYPTION_KEY`, documentadas con el link a Google Cloud
+  Console y el comando para generar la clave de cifrado).
+- Qué se verificó: `node --check server.js` sin errores;
+  `ejs.renderFile('views/recordatorios.ejs', ...)` con datos simulados para
+  los 3 estados posibles (sin configurar / configurado sin conectar /
+  conectado) — los botones correctos aparecen en cada uno. **Nunca se probó
+  contra la API real de Google** (no hay credenciales) — ni el flujo OAuth
+  completo, ni la creación de un evento real, ni la renovación de
+  access_token, ni la revocación. Tampoco se probó contra la DB real de
+  Railway (este worktree tampoco tiene `pendientes-web/.env`).
+- **Para que esto funcione de verdad, el dueño del proyecto necesita:**
+  1. Crear un proyecto en Google Cloud Console (console.cloud.google.com),
+     habilitar la "Google Calendar API".
+  2. Configurar la pantalla de consentimiento OAuth (tipo Externo si la
+     cuenta de Google no es Workspace; agregar el scope
+     `calendar.events`).
+  3. Crear credenciales OAuth 2.0 tipo "Aplicación web", con
+     `GOOGLE_REDIRECT_URI` (una URL por entorno: local y la de Railway en
+     producción) como URI de redireccionamiento autorizado.
+  4. Copiar `client_id`/`client_secret` a `.env` (local) y a las variables
+     de entorno del servicio en Railway (producción) — nunca comitearlos.
+  5. Generar `GOOGLE_TOKEN_ENCRYPTION_KEY` con el comando que ya está en
+     `.env.example`.
+  6. Recién ahí probar el flujo completo: conectar → crear un recordatorio
+     de prueba → botón "Crear evento" → confirmar que aparece en Google
+     Calendar → desconectar → confirmar que la fila se borra de
+     `google_calendar_tokens`.
 - Commit: pendiente de crear en esta misma sesión.
 
 ### rama-integracion
@@ -1428,8 +1518,10 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   ya usa `usuarioPerteneceAmistad()` (nunca confiar en un id que venga del
   cliente sin cruzarlo contra la sesión). Esta es la primera de una fase
   futura de integraciones — Gmail y Spotify quedan explícitamente para
-  después, no se abren en esta tarea. — asignada a: sin asignar (sugerido:
-  `rama-google-calendar`) — Depende de: tarea 4 (notificaciones push). Puede
+  después, no se abren en esta tarea. — asignada a: `rama-google-calendar`
+  (ESQUELETO SIN PROBAR, ver su sección en "Estado de ramas" — falta que el
+  dueño del proyecto genere credenciales reales de Google Cloud Console) —
+  Depende de: tarea 4 (notificaciones push). Puede
   correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
   no depende de ellas.
 

@@ -8,6 +8,19 @@
 <%- include('partials/nav') %>
     <h1>⏰ Recordatorios</h1>
 
+    <% if (typeof googleConfigurado !== 'undefined' && googleConfigurado) { %>
+      <p class="count">
+        <% if (googleConectado) { %>
+          📅 Google Calendar conectado.
+          <form method="POST" action="/calendario/desconectar" style="display:inline">
+            <button type="submit" class="secundario">Desconectar</button>
+          </form>
+        <% } else { %>
+          <a href="/calendario/conectar"><button type="button" class="secundario">📅 Conectar Google Calendar</button></a>
+        <% } %>
+      </p>
+    <% } %>
+
 <%- include('partials/filtro-rango', { rango }) %>
     <% if (error) { %>
       <p class="error"><%= error %></p>
@@ -22,6 +35,9 @@
             <th>Texto</th>
             <th>Cuándo</th>
             <th>Avisado</th>
+            <% if (typeof googleConectado !== 'undefined' && googleConectado) { %>
+              <th></th>
+            <% } %>
           </tr>
         </thead>
         <tbody>
@@ -31,6 +47,13 @@
               <td><%= r.texto %></td>
               <td><%= new Date(r.cuando).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
               <td><%= r.avisado ? 'Sí' : 'No' %></td>
+              <% if (typeof googleConectado !== 'undefined' && googleConectado) { %>
+                <td>
+                  <form method="POST" action="/recordatorios/<%= r.id %>/crear-evento-calendar" style="display:inline">
+                    <button type="submit" class="secundario">📅 Crear evento</button>
+                  </form>
+                </td>
+              <% } %>
             </tr>
           <% }) %>
         </tbody>

@@ -7,6 +7,7 @@ const pgSession = require('connect-pg-simple')(session);
 const { Pool } = require('pg');
 const webpush = require('web-push');
 const cron = require('node-cron');
+const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +24,19 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     process.env.VAPID_PRIVATE_KEY
   );
 }
+
+// rama-google-calendar (tarea 10 del roadmap, esqueleto sin probar — ver
+// COORDINACION.md): sin GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/
+// GOOGLE_REDIRECT_URI en .env, googleOAuthClient queda en null y las rutas
+// de /calendario/* devuelven 500 "no configurada" en vez de fallar feo.
+const googleOAuthClient =
+  process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI
+    ? new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+      )
+    : null;
 
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
@@ -198,6 +212,64 @@ function generarCodigoRecuperacion() {
     codigo += ALFABETO_CODIGO_RECUPERACION[bytes[i] % ALFABETO_CODIGO_RECUPERACION.length];
   }
   return `${codigo.slice(0, 5)}-${codigo.slice(5)}`;
+}
+
+// rama-google-calendar: los tokens de Google (access + refresh) nunca se
+// guardan en texto plano. AES-256-GCM en vez de un modo sin autenticación
+// (ECB/CBC) porque GCM detecta si el texto cifrado fue alterado. IV
+// aleatorio de 12 bytes por fila (recomendado para GCM, no reusar IV entre
+// filas). Clave separada de SESSION_SECRET a propósito — GOOGLE_TOKEN_
+// ENCRYPTION_KEY en .env, 32 bytes en hex (ver .env.example).
+const GOOGLE_TOKEN_ALGORITMO = 'aes-256-gcm';
+
+function cifrarTokensGoogle(objetoTokens) {
+  const clave = Buffer.from(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY, 'hex');
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(GOOGLE_TOKEN_ALGORITMO, clave, iv);
+  const cifrado = Buffer.concat([cipher.update(JSON.stringify(objetoTokens), 'utf8'), cipher.final()]);
+  return { iv: iv.toString('hex'), authTag: cipher.getAuthTag().toString('hex'), datos: cifrado.toString('hex') };
+}
+
+function descifrarTokensGoogle(fila) {
+  const clave = Buffer.from(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY, 'hex');
+  const decipher = crypto.createDecipheriv(GOOGLE_TOKEN_ALGORITMO, clave, Buffer.from(fila.iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(fila.auth_tag, 'hex'));
+  const descifrado = Buffer.concat([
+    decipher.update(Buffer.from(fila.datos_cifrados, 'hex')),
+    decipher.final(),
+  ]);
+  return JSON.parse(descifrado.toString('utf8'));
+}
+
+// Cliente autorizado para UN usuario puntual (nunca el googleOAuthClient
+// global, que no tiene credenciales de nadie todavía). Si Google renueva el
+// access_token solo (evento 'tokens' del SDK), se vuelve a cifrar y guardar
+// — si no se hiciera esto, la sesión de Calendar se rompería silenciosamente
+// después de que expire el primer access_token.
+async function obtenerClienteCalendarPara(usuarioId) {
+  if (!googleOAuthClient) return null;
+  const { rows } = await pool.query('SELECT * FROM google_calendar_tokens WHERE usuario_id = $1', [usuarioId]);
+  if (rows.length === 0) return null;
+  const tokens = descifrarTokensGoogle(rows[0]);
+  const cliente = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+  cliente.setCredentials(tokens);
+  cliente.on('tokens', async (tokensNuevos) => {
+    try {
+      const combinados = { ...tokens, ...tokensNuevos };
+      const { iv, authTag, datos } = cifrarTokensGoogle(combinados);
+      await pool.query(
+        'UPDATE google_calendar_tokens SET iv = $1, auth_tag = $2, datos_cifrados = $3, actualizado = now() WHERE usuario_id = $4',
+        [iv, authTag, datos, usuarioId]
+      );
+    } catch (err) {
+      console.error('No se pudo guardar el token renovado de Google Calendar:', err.message);
+    }
+  });
+  return cliente;
 }
 
 const NOMBRE_USUARIO_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
@@ -409,6 +481,19 @@ async function ensureSchema() {
   // diario genérico) no tienen dueño y siguen funcionando igual.
   await pool.query(`
     ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+  `);
+  // rama-google-calendar: 1 fila por usuario (no por dispositivo, a
+  // diferencia de push_subscriptions) — el refresh_token de Google es por
+  // cuenta de Google, no por navegador. iv/auth_tag/datos_cifrados en vez
+  // de columnas de texto plano — ver cifrarTokensGoogle/descifrarTokensGoogle.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS google_calendar_tokens (
+      usuario_id INT PRIMARY KEY REFERENCES usuarios(id),
+      iv TEXT NOT NULL,
+      auth_tag TEXT NOT NULL,
+      datos_cifrados TEXT NOT NULL,
+      actualizado TIMESTAMP DEFAULT now()
+    )
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS amistades (
@@ -1001,10 +1086,126 @@ app.get('/recordatorios', async (req, res) => {
       `SELECT id, texto, cuando, avisado FROM recordatorios WHERE usuario_id = $1 ${whereRango(rango, 'cuando')} ORDER BY id DESC`,
       [req.usuarioId]
     );
-    res.render('recordatorios', { recordatorios: rows, error: null, rango });
+    const conectado = await pool.query('SELECT 1 FROM google_calendar_tokens WHERE usuario_id = $1', [
+      req.usuarioId,
+    ]);
+    res.render('recordatorios', {
+      recordatorios: rows,
+      error: null,
+      rango,
+      googleConfigurado: Boolean(googleOAuthClient),
+      googleConectado: conectado.rows.length > 0,
+    });
   } catch (err) {
     console.error('Error consultando recordatorios:', err.message);
-    res.status(500).render('recordatorios', { recordatorios: [], error: 'No se pudo leer la base de datos.', rango });
+    res.status(500).render('recordatorios', {
+      recordatorios: [],
+      error: 'No se pudo leer la base de datos.',
+      rango,
+      googleConfigurado: Boolean(googleOAuthClient),
+      googleConectado: false,
+    });
+  }
+});
+
+// rama-google-calendar (tarea 10, esqueleto sin probar): las 4 rutas de
+// abajo nunca corrieron contra la API real de Google en esta sesión — no
+// hay client_id/client_secret todavía. Ver COORDINACION.md.
+app.get('/calendario/conectar', (req, res) => {
+  if (!googleOAuthClient) {
+    return res.status(500).send('Integración con Google Calendar no configurada (faltan variables de entorno).');
+  }
+  const url = googleOAuthClient.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent', // fuerza a Google a reemitir refresh_token aunque el usuario ya haya autorizado antes
+    scope: ['https://www.googleapis.com/auth/calendar.events'],
+    state: String(req.usuarioId),
+  });
+  res.redirect(url);
+});
+
+app.get('/calendario/callback', async (req, res) => {
+  if (!googleOAuthClient) {
+    return res.status(500).send('Integración con Google Calendar no configurada.');
+  }
+  const { code, state } = req.query;
+  // state = usuarioId de cuando se generó la URL en /calendario/conectar — si no
+  // coincide con la sesión actual, alguien está reusando/falsificando el callback.
+  if (!code || Number(state) !== req.usuarioId) {
+    return res.status(400).send('Callback de Google inválido.');
+  }
+  try {
+    const { tokens } = await googleOAuthClient.getToken(code);
+    const { iv, authTag, datos } = cifrarTokensGoogle(tokens);
+    await pool.query(
+      `INSERT INTO google_calendar_tokens (usuario_id, iv, auth_tag, datos_cifrados)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (usuario_id) DO UPDATE SET iv = $2, auth_tag = $3, datos_cifrados = $4, actualizado = now()`,
+      [req.usuarioId, iv, authTag, datos]
+    );
+    res.redirect('/recordatorios?google=conectado');
+  } catch (err) {
+    console.error('Error en callback de Google Calendar:', err.message);
+    res.status(500).send('No se pudo conectar con Google Calendar.');
+  }
+});
+
+app.post('/calendario/desconectar', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM google_calendar_tokens WHERE usuario_id = $1', [
+      req.usuarioId,
+    ]);
+    if (rows.length > 0 && googleOAuthClient) {
+      // Mejor esfuerzo: si revocar contra Google falla, se borra igual localmente
+      // (el usuario pidió desconectar, no queremos dejarlo "conectado" a la fuerza).
+      try {
+        const tokens = descifrarTokensGoogle(rows[0]);
+        if (tokens.access_token) await googleOAuthClient.revokeToken(tokens.access_token);
+      } catch (err) {
+        console.error('No se pudo revocar el token en Google (se borra igual localmente):', err.message);
+      }
+    }
+    await pool.query('DELETE FROM google_calendar_tokens WHERE usuario_id = $1', [req.usuarioId]);
+  } catch (err) {
+    console.error('Error desconectando Google Calendar:', err.message);
+  }
+  res.redirect('/recordatorios');
+});
+
+// Botón manual (tarea 8 / IA todavía no existe) para crear un evento a
+// partir de un recordatorio puntual.
+app.post('/recordatorios/:id/crear-evento-calendar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, texto, cuando FROM recordatorios WHERE id = $1 AND usuario_id = $2',
+      [id, req.usuarioId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).send('Recordatorio no encontrado.');
+    }
+    const cliente = await obtenerClienteCalendarPara(req.usuarioId);
+    if (!cliente) {
+      return res.status(400).send('Primero conectá tu Google Calendar.');
+    }
+    const calendar = google.calendar({ version: 'v3', auth: cliente });
+    const inicio = new Date(rows[0].cuando);
+    const fin = new Date(inicio.getTime() + 30 * 60 * 1000); // 30 min de duración por defecto, sin UI para cambiarla todavía
+    await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: rows[0].texto,
+        start: { dateTime: inicio.toISOString() },
+        end: { dateTime: fin.toISOString() },
+      },
+    });
+    res.redirect('/recordatorios?evento=creado');
+  } catch (err) {
+    console.error('Error creando evento en Google Calendar:', err.message);
+    res.status(500).send('No se pudo crear el evento en Google Calendar.');
   }
 });
 

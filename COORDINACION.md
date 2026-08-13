@@ -28,6 +28,31 @@
 6. Si detectas un hueco de seguridad o bug en OTRA rama, documéntalo en su sección,
    no lo arregles tú mismo salvo que el usuario lo autorice explícitamente.
 7. No borres el historial de otras ramas en este archivo. Solo agrega o actualiza tu sección.
+8. **[Agregada 2026-08-13, tras un incidente real] Antes de combinar ramas y llevarlas a
+   producción, mostrá el diff completo resultante y esperá un "aprobado" explícito del
+   usuario.** Esto aplica a CUALQUIER forma de combinar código de más de una rama —
+   `git merge`, `git cherry-pick`, o reconstrucción manual con la herramienta de edición
+   (la receta de abajo) — antes de que ese resultado se pushee y/o se mergee a `main`.
+   Concretamente:
+   - Después de combinar (y antes de pushear/mergear), mostrale al usuario el diff real
+     y completo contra el punto de partida (`git diff <base>..HEAD`), no un resumen en
+     prosa de "qué se combinó". Si el diff es muy largo, mostralo en partes, pero mostralo
+     — no lo reemplaces por una descripción.
+   - Esperá una respuesta que diga explícitamente **"aprobado"** (o equivalente inequívoco
+     y específico a ESE diff) antes de pushear o mergear.
+   - **Una instrucción general dada ANTES de ver el diff — como "mergea", "constrúyelo
+     sobre todo lo pendiente", o similar — NO cuenta como esa aprobación**, aunque haya
+     sido dicha con la intención de autorizar el trabajo. La aprobación tiene que venir
+     DESPUÉS de mostrar el diff completo, sobre ese diff específico.
+   - Esto aplica en cadena: si combinás rama A y B, mostrás el diff y te aprueban, y
+     DESPUÉS agregás una rama C encima, hace falta un nuevo diff + nueva aprobación antes
+     de pushear/mergear esa versión ampliada — la aprobación de A+B no cubre A+B+C.
+   - Por qué existe esta regla: una sesión combinó 5 ramas (incluida una — "chat general" —
+     que el usuario había pedido agregar al backlog y construir, pero nunca vio como diff
+     antes de que se mergeara) usando `git cherry-pick` (no bloqueado por
+     `.claude/settings.json`, a diferencia de `git merge`/`rebase`) sin pedir esta
+     confirmación puntual, interpretando una instrucción general anterior como suficiente.
+     El usuario no había visto el resultado combinado antes de que llegara a `main`.
 
 ## Estado de ramas
 
@@ -1469,10 +1494,15 @@ rama entera desde main actualizado:
 7. Prueba end-to-end contra la DB real SOLO si tienes `.env` en ese worktree (los worktrees no lo
    traen por defecto, está en `.gitignore` a propósito). Si no lo tienes, dilo explícitamente al
    reportar en vez de saltarte la prueba en silencio, y que el usuario decida si mergea igual.
-8. Commit, push, `gh pr close <viejo> --comment "..."`, `gh pr create`, verifica
+8. **Commit local, pero todavía NO push ni PR.** Primero mostrale al usuario el diff completo
+   (`git diff <punto-de-partida>..HEAD`, no un resumen) de lo que vas a llevar a producción, y
+   esperá un "aprobado" explícito sobre ESE diff (ver regla 8 de "Reglas para cualquier sesión",
+   arriba — una instrucción general dada antes de ver el diff no alcanza). Si combinaste más de
+   una rama en este proceso, este es el diff de la combinación completa, no de una rama sola.
+9. Recién con el "aprobado": push, `gh pr close <viejo> --comment "..."`, `gh pr create`, verifica
    `gh pr view <nuevo> --json mergeable,mergeStateStatus` da CLEAN/MERGEABLE, luego
    `gh pr merge <nuevo> --merge --delete-branch=false`.
-9. Registra el merge en "Historial de merges a main" (arriba) con el hash del commit de merge.
+10. Registra el merge en "Historial de merges a main" (arriba) con el hash del commit de merge.
 
 ### Para varias ramas en conflicto entre sí (delegación en paralelo)
 
@@ -1489,6 +1519,11 @@ infla el costo en tokens. Mejor:
   originalmente (según su propia sección en COORDINACION.md), y que siga esta receta.
 - El hilo principal (rama-integracion) solo necesita el resumen de cada uno para decidir el
   siguiente paso, no los diffs ni las pruebas completas.
+- **El paso 8/9 de la receta (mostrar el diff completo y esperar "aprobado" antes de
+  push/PR/merge) lo hace el hilo principal, con el usuario, no cada subagente por su
+  cuenta.** Un subagente puede commitear localmente, pero no debe pushear, abrir PR, ni
+  mergear — eso queda para cuando el hilo principal junte el resultado final (de una rama
+  o de varias combinadas) y lo muestre completo al usuario.
 
 ## Onboarding para una sesión nueva (nuevo "trabajador")
 

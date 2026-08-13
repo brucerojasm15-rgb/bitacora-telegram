@@ -11,6 +11,9 @@
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } %>
+    <% if (typeof cuentaEliminada !== 'undefined' && cuentaEliminada) { %>
+      <p class="notificacion">Tu cuenta se eliminó. Gracias por haber usado la app.</p>
+    <% } %>
 
     <form method="POST" action="/login" class="login-form">
       <input type="text" name="nombre_usuario" placeholder="Usuario" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required autofocus>

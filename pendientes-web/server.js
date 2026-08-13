@@ -102,8 +102,10 @@ app.use((req, res, next) => {
 // Middleware de autenticación por sesión (Paso 3). Deja pasar /login y
 // /registro sin exigir sesión (si no, nadie podría loguearse ni crear
 // cuenta); todo lo demás requiere una sesión activa o redirige/rechaza.
+// rama-terminos-privacidad: /terminos también queda público -- se enlaza
+// desde /registro, que se visita sin sesión.
 app.use((req, res, next) => {
-  if (req.path === '/login' || req.path === '/registro' || req.path === '/recuperar') return next();
+  if (req.path === '/login' || req.path === '/registro' || req.path === '/recuperar' || req.path === '/terminos') return next();
   if (req.session && req.session.usuario_id) {
     req.usuarioId = req.session.usuario_id;
     return next();
@@ -323,11 +325,17 @@ async function obtenerClienteCalendarPara(usuarioId) {
 const NOMBRE_USUARIO_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const PIN_REGEX = /^\d{4,6}$/;
 
+// rama-terminos-privacidad: página estática, pública (ver middleware de
+// sesión arriba). Sin datos dinámicos -- no hace falta pool.query acá.
+app.get('/terminos', (req, res) => {
+  res.render('terminos', {});
+});
+
 app.get('/login', (req, res) => {
   if (req.session && req.session.usuario_id) {
     return res.redirect('/');
   }
-  res.render('login', { error: null });
+  res.render('login', { error: null, cuentaEliminada: req.query.cuenta_eliminada === '1' });
 });
 
 app.post('/login', limitarIntentos('login'), async (req, res) => {
@@ -2204,6 +2212,150 @@ app.post('/ajustes/notificaciones', async (req, res) => {
     return res.status(500).send('No se pudo desactivar.');
   }
   res.redirect('/ajustes?guardado=notificaciones');
+});
+
+// rama-terminos-privacidad (tarea E, parte 2): borrado REAL de cuenta, no
+// lógico (a diferencia de `pendientes.eliminado` en el resto de la app) —
+// es a pedido explícito del dueño de los datos. Plan completo, orden de
+// DELETE y los 3 casos con decisión propia documentados en COORDINACION.md,
+// confirmados por el usuario antes de escribir esto. Exige el PIN actual
+// (mismo criterio que /recuperar: una acción destructiva no debería
+// alcanzar con tener la sesión abierta). Todo en una transacción — si
+// cualquier paso falla, no se borra nada.
+async function auxiliarErrorAjustes(req, res, mensajeError) {
+  const { rows } = await pool.query(
+    'SELECT nombre_usuario, ia_especie FROM usuarios WHERE id = $1',
+    [req.usuarioId]
+  );
+  const usuario = rows[0];
+  const { rows: pushRows } = await pool.query(
+    'SELECT 1 FROM push_subscriptions WHERE usuario_id = $1 LIMIT 1',
+    [req.usuarioId]
+  );
+  res.status(400).render('ajustes', {
+    nombreUsuario: usuario ? usuario.nombre_usuario : '',
+    especieActual: usuario && usuario.ia_especie ? usuario.ia_especie : 'monstera',
+    especies: IA_ESPECIES,
+    notificacionesActivas: pushRows.length > 0,
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+    error: mensajeError,
+    guardado: null,
+  });
+}
+
+app.post('/ajustes/eliminar-cuenta', async (req, res) => {
+  const pin = req.body.pin || '';
+  const confirmacion = (req.body.confirmar || '').trim().toUpperCase();
+  if (confirmacion !== 'ELIMINAR') {
+    return auxiliarErrorAjustes(req, res, 'Escribe ELIMINAR (en mayúsculas) para confirmar. Tu cuenta no se eliminó.');
+  }
+
+  const usuarioId = req.usuarioId;
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query('SELECT pin_hash FROM usuarios WHERE id = $1', [usuarioId]);
+    const usuario = rows[0];
+    if (!usuario || !verificarPin(pin, usuario.pin_hash)) {
+      client.release();
+      return auxiliarErrorAjustes(req, res, 'PIN incorrecto. Tu cuenta no se eliminó.');
+    }
+
+    await client.query('BEGIN');
+
+    // 1. Eventos de trazabilidad a borrar: los que este usuario completó,
+    // O los que pertenecen a un pendiente propio (lo haya completado un
+    // amigo asignado). Caso C confirmado: se pierden sin alternativa.
+    const { rows: eventosRows } = await client.query(
+      `SELECT e.id FROM eventos_completado e
+       LEFT JOIN pendientes p ON p.id = e.pendiente_id
+       WHERE e.completado_por = $1 OR p.usuario_id = $1`,
+      [usuarioId]
+    );
+    const idsEventos = eventosRows.map((r) => r.id);
+
+    // 2. moneda_transacciones: las propias, más cualquiera que apunte a un
+    // evento_completado del paso 1 (puede ser de OTRO usuario — ver el
+    // hallazgo documentado en COORDINACION.md).
+    await client.query(
+      'DELETE FROM moneda_transacciones WHERE usuario_id = $1 OR evento_completado_id = ANY($2::int[])',
+      [usuarioId, idsEventos]
+    );
+
+    // 3. eventos_completado.
+    await client.query('DELETE FROM eventos_completado WHERE id = ANY($1::int[])', [idsEventos]);
+
+    // 4. historial_ediciones de pendientes propios.
+    await client.query(
+      'DELETE FROM historial_ediciones WHERE pendiente_id IN (SELECT id FROM pendientes WHERE usuario_id = $1)',
+      [usuarioId]
+    );
+
+    // 5. reflexiones propias o de pendientes propios.
+    await client.query(
+      'DELETE FROM reflexiones WHERE usuario_id = $1 OR pendiente_id IN (SELECT id FROM pendientes WHERE usuario_id = $1)',
+      [usuarioId]
+    );
+
+    // 6. Caso A confirmado: desasignar (no borrar) pendientes ajenos que
+    // este usuario tenía asignados.
+    await client.query(
+      'UPDATE pendientes SET asignado_a = NULL, asignado_en = NULL WHERE asignado_a = $1 AND usuario_id != $1',
+      [usuarioId]
+    );
+
+    // 7. Amistades donde participa.
+    const { rows: amistadesRows } = await client.query(
+      'SELECT id FROM amistades WHERE usuario_a_id = $1 OR usuario_b_id = $1',
+      [usuarioId]
+    );
+    const idsAmistades = amistadesRows.map((r) => r.id);
+
+    // 8. Caso B confirmado: se borran los mensajes de AMBOS lados de cada
+    // amistad donde participa (no solo los propios), porque `mensajes`
+    // tiene FK a `amistades`, que se borra en el paso 13.
+    await client.query(
+      'DELETE FROM mensajes WHERE autor_id = $1 OR amistad_id = ANY($2::int[])',
+      [usuarioId, idsAmistades]
+    );
+
+    // 9. Mensajes de la sala general.
+    await client.query('DELETE FROM mensajes_generales WHERE autor_id = $1', [usuarioId]);
+
+    // 10-12. Suscripciones push, tokens de Google Calendar, protecciones de racha.
+    await client.query('DELETE FROM push_subscriptions WHERE usuario_id = $1', [usuarioId]);
+    await client.query('DELETE FROM google_calendar_tokens WHERE usuario_id = $1', [usuarioId]);
+    await client.query('DELETE FROM racha_protecciones WHERE usuario_id = $1', [usuarioId]);
+
+    // 13. Amistades.
+    await client.query('DELETE FROM amistades WHERE id = ANY($1::int[])', [idsAmistades]);
+
+    // 14. Pendientes propios (los ajenos ya se desasignaron en el paso 6).
+    await client.query('DELETE FROM pendientes WHERE usuario_id = $1', [usuarioId]);
+
+    // 15. Ideas, recordatorios, hechos.
+    await client.query('DELETE FROM ideas WHERE usuario_id = $1', [usuarioId]);
+    await client.query('DELETE FROM recordatorios WHERE usuario_id = $1', [usuarioId]);
+    await client.query('DELETE FROM hechos WHERE usuario_id = $1', [usuarioId]);
+
+    // 16. La cuenta misma.
+    await client.query('DELETE FROM usuarios WHERE id = $1', [usuarioId]);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+    console.error('Error eliminando cuenta:', err.message);
+    return auxiliarErrorAjustes(req, res, 'No se pudo eliminar la cuenta. No se borró nada.');
+  }
+  client.release();
+
+  // 17. Destruir la sesión actual. Limitación conocida y documentada en
+  // COORDINACION.md: sesiones abiertas en otro dispositivo quedan
+  // huérfanas en la tabla `session` hasta que expiren solas (30 días).
+  req.session.destroy((err) => {
+    if (err) console.error('Error destruyendo sesión tras eliminar cuenta:', err.message);
+    res.redirect('/login?cuenta_eliminada=1');
+  });
 });
 
 // Vista y rutas de chat. Todavía no está enlazada al menú de navegación

@@ -1677,6 +1677,154 @@
   con A en `index.ejs`/`COORDINACION.md`) — los 5 archivos tocados
   aplicaron con `git apply` limpio, sin necesidad de resolución manual.
 
+### rama-terminos-privacidad
+- Estado: PARTE 1 (términos/privacidad) ya mergeada a `main` como parte de
+  la reconstrucción de esta ronda. **PARTE 2 (eliminar cuenta): el usuario
+  confirmó las 3 decisiones abiertas (2026-08-13) — implementando ahora.**
+  Decisiones confirmadas: Caso A → desasignar el pendiente ajeno. Caso B →
+  borrar los mensajes de ambos lados del chat, completos. Caso C → aceptar
+  que el evento de trazabilidad se pierda sin alternativa.
+- Tarea: ítem E de "Ronda — pulido y detalles de producto".
+
+**Parte 1 — Términos y privacidad (implementada):**
+- Ruta `GET /terminos`, pública (agregada al allowlist del middleware de
+  sesión junto a `/login`/`/registro`/`/recuperar`, porque se enlaza desde
+  `/registro`, que se visita sin sesión).
+- Página estática (`views/terminos.ejs`) que lista qué se guarda (cuenta,
+  pendientes/ideas/recordatorios/hechos, mensajes, amistades, suscripción
+  push, moneda/planta, tokens de Google Calendar) y aclara explícitamente
+  que las notificaciones push **no** comparten ubicación geográfica real
+  (para no sobre-declarar).
+- Enlazada desde `views/registro.ejs`.
+
+**Parte 2 — Eliminar cuenta (PLAN CONFIRMADO, implementación en curso):**
+
+Mapeo completo del esquema actual (`grep`-eado de `ensureSchema()` en
+`server.js`, no de memoria) — todas las tablas que referencian a un
+usuario, y con qué columna:
+
+| Tabla | Columna(s) que referencia al usuario |
+|---|---|
+| `pendientes` | `usuario_id` (dueño), `asignado_a` (nullable) |
+| `ideas`, `recordatorios`, `hechos` | `usuario_id` |
+| `reflexiones` | `usuario_id`, y `pendiente_id` → `pendientes` |
+| `push_subscriptions` | `usuario_id` (nullable) |
+| `google_calendar_tokens` | `usuario_id` (PRIMARY KEY) |
+| `amistades` | `usuario_a_id`, `usuario_b_id` |
+| `mensajes` | `autor_id`, y `amistad_id` → `amistades` |
+| `mensajes_generales` | `autor_id` |
+| `historial_ediciones` | sin columna de usuario propia — solo `pendiente_id` → `pendientes` |
+| `eventos_completado` | `completado_por`, y `pendiente_id` → `pendientes` |
+| `moneda_transacciones` | `usuario_id`, y `evento_completado_id` → `eventos_completado` |
+| `racha_protecciones` | `usuario_id` |
+| `session` (de `connect-pg-simple`) | no tiene columna consultable — el `usuario_id` vive adentro del JSON `sess`, no hay forma limpia de buscarla por SQL |
+
+**Hallazgo no obvio, por trazar las FK con cuidado:** `moneda_transacciones`
+tiene una FK a `eventos_completado`, y `eventos_completado.completado_por`
+puede ser un usuario DISTINTO al dueño del pendiente (porque el asignado
+completa la tarea de otro). Esto significa que borrar la cuenta de
+alguien puede obligar a borrar también una transacción de moneda que
+ganó OTRO usuario (el dueño del pendiente, que recibe el 30% cuando su
+amigo le completa una tarea) — porque esa transacción apunta a un
+`eventos_completado` que hay que borrar. El usuario confirmó que acepta
+este efecto colateral.
+
+**Orden de DELETE (de hijos a padres, respetando FKs) — implementado tal
+cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
+1. Identificar el conjunto de `eventos_completado` a borrar: los que
+   tienen `completado_por = <usuario>` O `pendiente_id` en los pendientes
+   propios del usuario.
+2. `DELETE FROM moneda_transacciones WHERE usuario_id = <usuario> OR
+   evento_completado_id IN (<conjunto del paso 1>)` — incluye la
+   transacción ajena descrita arriba.
+3. `DELETE FROM eventos_completado WHERE id IN (<conjunto del paso 1>)`.
+4. `DELETE FROM historial_ediciones WHERE pendiente_id IN (SELECT id FROM
+   pendientes WHERE usuario_id = <usuario>)`.
+5. `DELETE FROM reflexiones WHERE usuario_id = <usuario> OR pendiente_id
+   IN (pendientes propios)`.
+6. `UPDATE pendientes SET asignado_a = NULL WHERE asignado_a = <usuario>
+   AND usuario_id != <usuario>` — **Caso A, confirmado: desasignar.**
+7. Identificar `amistades` donde participa el usuario (`usuario_a_id` o
+   `usuario_b_id`).
+8. `DELETE FROM mensajes WHERE autor_id = <usuario> OR amistad_id IN
+   (<amistades del paso 7>)` — **Caso B, confirmado: se borra la
+   conversación completa de ambos lados.**
+9. `DELETE FROM mensajes_generales WHERE autor_id = <usuario>`.
+10. `DELETE FROM push_subscriptions WHERE usuario_id = <usuario>`.
+11. `DELETE FROM google_calendar_tokens WHERE usuario_id = <usuario>`.
+12. `DELETE FROM racha_protecciones WHERE usuario_id = <usuario>`.
+13. `DELETE FROM amistades WHERE id IN (<amistades del paso 7>)`.
+14. `DELETE FROM pendientes WHERE usuario_id = <usuario>` (los propios;
+    los ajenos ya se desasignaron en el paso 6, no se tocan).
+15. `DELETE FROM ideas/recordatorios/hechos WHERE usuario_id = <usuario>`.
+16. `DELETE FROM usuarios WHERE id = <usuario>`.
+17. `req.session.destroy()` de la sesión actual. Limitación conocida, sin
+    resolver: si el usuario tenía sesión abierta en otro dispositivo, esa
+    fila de `session` queda huérfana hasta que expire sola (30 días) — no
+    hay forma limpia de encontrarla por SQL (el `usuario_id` vive adentro
+    del JSON `sess`). Impacto bajo: la sesión ya no puede leer nada útil.
+
+**Casos confirmados por el usuario (2026-08-13):**
+- **Caso A** — pendiente ajeno asignado a este usuario: **desasignar**
+  (`asignado_a = NULL`), el amigo lo ve libre de nuevo.
+- **Caso B** — mensajes de una amistad donde el otro usuario sigue activo:
+  **se borran los mensajes de AMBOS lados**, completos.
+- **Caso C** — evento de trazabilidad que otro usuario ve en su feed: **se
+  acepta la pérdida**, sin alternativa (requeriría cambiar el esquema para
+  permitir `completado_por NULL`).
+
+**Implementación (2026-08-13):**
+- Ruta `POST /ajustes/eliminar-cuenta`, enlazada desde una sección nueva
+  "zona de peligro" en `views/ajustes.ejs`. Exige PIN actual (mismo
+  `verificarPin` que usa `/login`) + escribir literalmente "ELIMINAR" en un
+  campo de texto — dos confirmaciones server-side, más un `confirm()` de
+  JS en el cliente como tercer freno contra un click accidental. Las 17
+  operaciones del plan van dentro de una sola transacción
+  `BEGIN`/`COMMIT`/`ROLLBACK` (mismo patrón que `POST
+  /pendientes/:id/completar`) — si cualquier paso falla, no se borra nada.
+  Al terminar: `req.session.destroy()` y redirect a
+  `/login?cuenta_eliminada=1`, que muestra un aviso de despedida
+  (`login.ejs` gana el local opcional `cuentaEliminada`, con guardia
+  `typeof` para no romper las otras 3 llamadas a `res.render('login', ...)`
+  que no lo pasan).
+- **Probado de punta a punta contra la DB real de Railway**, no solo con
+  render simulado — con dos cuentas descartables reales (`test_borrar_*` /
+  `test_amigo_*`, generadas con sufijo aleatorio, registradas vía
+  `POST /registro` de verdad):
+  1. B crea un pendiente y se lo asigna a A (vía SQL directo, más rápido
+     que recorrer el formulario — el dato final es idéntico al que
+     produciría el flujo real).
+  2. A completa esa tarea **a través de la ruta real** `POST
+     /pendientes/:id/completar` (no simulado) — genera 1 `eventos_completado`
+     y 2 `moneda_transacciones` (70% para A, 30% para B), exactamente el
+     escenario del "hallazgo no obvio".
+  3. Amistad aceptada entre A y B, con un mensaje de cada lado.
+  4. Se llama a la ruta real `POST /ajustes/eliminar-cuenta` con la cookie
+     de sesión de A, PIN real, confirmación "ELIMINAR".
+  5. **17 verificaciones automáticas contra la DB real después del
+     borrado — las 17 pasaron:** usuario A ya no existe; el pendiente de B
+     sigue existiendo pero quedó desasignado (Caso A); los mensajes de la
+     amistad desaparecieron de ambos lados (Caso B); el `eventos_completado`
+     se borró (Caso C); **la transacción de moneda de B (la ajena, 30%) se
+     borró también, confirmando el hallazgo documentado arriba**; el saldo
+     ya acumulado de B (`usuarios.saldo_moneda`) no se tocó (el borrado del
+     log no revierte un saldo ya sumado — comportamiento esperado, no un
+     bug: `saldo_moneda` es un contador de lectura rápida, no se recalcula
+     desde el log); B pudo seguir usando la app con normalidad (`GET /` →
+     200) después de perder a su amigo. Cuenta de prueba de B borrada al
+     final para no dejar residuos (la de A ya se autolimpió, era el objeto
+     de la prueba).
+- Archivos tocados en esta parte: `server.js` (ruta nueva +
+  `auxiliarErrorAjustes`), `views/ajustes.ejs` (sección "zona de peligro"),
+  `views/login.ejs` (aviso de despedida), `public/style.css`
+  (`.ajustes-peligro`, `.ajustes-boton-peligro`, reusa el token `--danger`
+  ya existente).
+- Qué se verificó además de la prueba real: `node --check server.js`
+  limpio, CSS balanceado, `ejs.renderFile` de `ajustes.ejs` (con y sin
+  error) y `login.ejs` (con y sin `cuentaEliminada`) sin errores.
+- **NO PUSHEADO, SIN PR** — regla 8: el hilo principal muestra el diff
+  completo al usuario y espera su "aprobado" antes de pushear/mergear.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2315,8 +2463,10 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   keys existentes (o si hace falta `ON DELETE CASCADE` nuevo en alguna, documentarlo) y
   qué pasa con mensajes/pendientes que OTROS usuarios referencian de este usuario borrado
   (ej. un pendiente que este usuario tenía asignado por un amigo — decidir si se
-  desasigna o si el pendiente se borra igual, documentar el criterio). — asignada a: sin
-  asignar — Depende de: nada, pero tocar esto con cuidado por ser destructivo de verdad.
+  desasigna o si el pendiente se borra igual, documentar el criterio). — asignada a:
+  `rama-terminos-privacidad` (commiteada, probada de punta a punta contra la DB real
+  con dos cuentas descartables — ver su sección en "Estado de ramas") — Depende de: nada,
+  pero tocar esto con cuidado por ser destructivo de verdad.
 
 - [ ] **F. Búsqueda y filtros en pendientes/ideas.** Buscar por texto, filtrar por
   categoría existente, y filtrar por estado (completado/pendiente). **Reusar el patrón de

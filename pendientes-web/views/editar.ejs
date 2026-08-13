@@ -6,7 +6,7 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>✏️ Editar pendiente</h1>
+    <h1><%- include('partials/icono', { nombre: 'lapiz' }) %> Editar pendiente</h1>
 
     <form method="POST" action="/pendientes/<%= pendiente.id %>/editar" class="editar-form">
       <textarea name="texto" rows="6" required><%= pendiente.texto %></textarea>

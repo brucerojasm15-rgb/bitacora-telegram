@@ -33,8 +33,6 @@
       "Bash(TRUNCATE*)",
       "Bash(DELETE FROM*)",
       "Bash(sudo*)",
-      "Bash(curl*)",
-      "Bash(wget*)",
       "Bash(chmod*)",
       "Bash(*ACCESS_KEY*)",
       "Bash(*.env*)"

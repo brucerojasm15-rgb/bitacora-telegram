@@ -6,7 +6,7 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>✅ Hechos</h1>
+    <h1><%- include('partials/icono', { nombre: 'check' }) %> Hechos</h1>
 
 <%- include('partials/filtro-rango', { rango }) %>
     <% if (error) { %>

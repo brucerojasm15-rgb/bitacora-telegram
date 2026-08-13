@@ -6,13 +6,13 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>📊 Estadísticas</h1>
+    <h1><%- include('partials/icono', { nombre: 'grafico' }) %> Estadísticas</h1>
 
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else { %>
 
-      <h2>🔥 Racha actual</h2>
+      <h2><%- include('partials/icono', { nombre: 'llama' }) %> Racha actual</h2>
       <p class="count">
         <% if (racha === 0) { %>
           Sin racha activa todavía — completa algo hoy para empezar una.
@@ -21,7 +21,7 @@
         <% } %>
       </p>
 
-      <h2>⏰ Pendientes vencidos</h2>
+      <h2><%- include('partials/icono', { nombre: 'reloj' }) %> Pendientes vencidos</h2>
       <p class="count">
         <%= vencidos.length %> pendiente(s) sin completar, creado(s) hace más de <%= vencidoDias %> días.
       </p>
@@ -48,7 +48,7 @@
         </table>
       <% } %>
 
-      <h2>✅ Completadas por semana</h2>
+      <h2><%- include('partials/icono', { nombre: 'check' }) %> Completadas por semana</h2>
       <% if (porSemana.length === 0) { %>
         <p class="empty">Todavía no hay pendientes completados.</p>
       <% } else { %>

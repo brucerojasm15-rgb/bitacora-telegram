@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Actividad compartida' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'grafico' }) %> Actividad compartida</h1>
+    <p class="count"><%- include('partials/icono', { nombre: 'moneda' }) %> Tu saldo: <%= saldoMoneda %> monedas</p>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+      <% if (conteoSemana.length === 0) { %>
+        <p class="count">Nadie completó tareas asignadas esta semana todavía.</p>
+      <% } else { %>
+        <ul class="chat-mensajes">
+          <% conteoSemana.forEach((c) => { %>
+            <li>
+              <span class="autor">Usuario #<%= c.completado_por %></span>
+              <span class="texto"><%= c.cantidad %> tarea(s) completada(s) esta semana</span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+
+      <h2>Últimos <%= eventos.length ? '7 días' : '7 días (sin actividad)' %></h2>
+      <% if (eventos.length === 0) { %>
+        <p class="empty">No hay tareas compartidas completadas en los últimos 7 días.</p>
+      <% } else { %>
+        <ul class="chat-mensajes">
+          <% eventos.forEach((e) => { %>
+            <li>
+              <span class="autor">@<%= e.completado_por_nombre %></span>
+              <span class="texto">
+                Completó "<%= e.texto %>"
+                <% if (e.comentario) { %> — <em><%= e.comentario %></em><% } %>
+              </span>
+              <span class="fecha"><%= new Date(e.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></span>
+            </li>
+          <% }) %>
+        </ul>
+        <div class="filtro-rango">
+          <% if (pagina > 0) { %>
+            <a href="/trazabilidad?amistad_id=<%= amistadId %>&pagina=<%= pagina - 1 %>" class="btn-link"><%- include('partials/icono', { nombre: 'flecha-izq' }) %> Más recientes</a>
+          <% } %>
+          <% if (eventos.length === paginaTamano) { %>
+            <a href="/trazabilidad?amistad_id=<%= amistadId %>&pagina=<%= pagina + 1 %>" class="btn-link">Más antiguas <%- include('partials/icono', { nombre: 'flecha-der' }) %></a>
+          <% } %>
+        </div>
+      <% } %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

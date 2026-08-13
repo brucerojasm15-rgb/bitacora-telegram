@@ -696,6 +696,532 @@
   agotó el cupo completo de 5/hora a propósito, para no bloquear registros
   reales desde el mismo IP compartido durante la hora siguiente).
 
+### rama-captura-rapida
+- Estado: commiteada, lista para probar contra la DB real antes de merge
+  (ver "Qué se verificó" abajo — falta esa prueba end-to-end).
+- Tarea: chat de captura rápida (tarea 3 del roadmap 2026-08-12) — input de
+  texto libre con botones Pendiente/Idea/Recordatorio debajo para clasificar
+  antes de guardar.
+- Decisión de esquema (tomada al implementar, como pide el enunciado): se
+  reusan las 3 tablas ya existentes `pendientes`/`ideas`/`recordatorios` (las
+  mismas que llena el bot de Telegram) en vez de crear una tabla única con
+  columna `tipo`. Motivo: las 3 ya tienen `usuario_id` (agregado por
+  rama-categorias/rama-tareas-compartidas) y ya las leen `/`, `/ideas`,
+  `/recordatorios` y `/exportar` tal cual — una tabla nueva hubiera obligado
+  a mantener dos representaciones del mismo dato. `POST /captura` valida el
+  `tipo` contra `TIPOS_CAPTURA_VALIDOS` e inserta en la tabla que
+  corresponde; si el tipo es `recordatorio` exige `cuando` antes de guardar.
+- Archivos tocados: server.js (rutas GET/POST /captura), views/captura.ejs
+  (nuevo), public/style.css (`.captura-form`, `.captura-tipos`,
+  `.captura-cuando`), views/partials/nav.ejs (link nuevo).
+- **Sonido por acción — resuelto.** `Bash(curl*)`/`Bash(wget*)` estaban en el
+  `deny` de `.claude/settings.json` (raíz del proyecto y de este worktree);
+  el usuario confirmó explícitamente que quería habilitarlos para esta tarea,
+  así que se sacaron de la lista (resto de las reglas deny intacto) y se usó
+  el acceso de red para bajar audio real de mixkit.co, categoría "Sound
+  Effects" — licencia "Free License" (mixkit.co/license/#sfxFree: libre para
+  uso personal y comercial, sin atribución requerida). 3 archivos en
+  `public/sonidos/`:
+  - `enviar.mp3` — "Select click", https://mixkit.co/free-sound-effects/click/
+    (id 1109, https://assets.mixkit.co/active_storage/sfx/1109/1109-preview.mp3)
+  - `completar.mp3` — "Correct answer tone", https://mixkit.co/free-sound-effects/correct/
+    (id 2870, https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3)
+  - `eliminar.mp3` — "Fast small sweep transition", https://mixkit.co/free-sound-effects/swoosh/
+    (id 166, https://assets.mixkit.co/active_storage/sfx/166/166-preview.mp3)
+
+  Helper nuevo `public/sonidos.js` (`reproducirSonido(nombre)`, incluido
+  globalmente desde `views/partials/scripts.ejs`). Enganchado en:
+  `index.ejs` (sonido `completar`/`eliminar` dentro de los handlers `fetch`
+  ya existentes — no hubo que tocar la lógica async), y `captura.ejs` (sonido
+  `enviar`). En `captura.ejs` los 3 botones dejaron de tener
+  `name="tipo" value="..."` (ese patrón no deja tiempo de reproducir nada
+  antes de navegar) y pasaron a `data-tipo` + un `<input type="hidden"
+  name="tipo">`: el `submit` ahora se intercepta, dispara el sonido, y recién
+  ahí llama `form.submit()` con ~180ms de margen. De paso esto unificó los
+  dos listeners que había antes (uno para revelar el campo de fecha, otro
+  para validar el submit) en uno solo.
+- Archivos tocados (además de los ya listados arriba): public/sonidos.js
+  (nuevo), public/sonidos/enviar.mp3, public/sonidos/completar.mp3,
+  public/sonidos/eliminar.mp3 (nuevos, binarios), views/partials/scripts.ejs
+  (`<script src="/sonidos.js">`), views/index.ejs (2 líneas,
+  `reproducirSonido(...)` dentro de los handlers de completar/eliminar),
+  views/captura.ejs (markup de los botones + reescritura del submit).
+- Qué se verificó: `node --check server.js` y `node --check` de cada
+  `<script>` inline extraído (captura.ejs, index.ejs, sonidos.js) sin
+  errores; `ejs.renderFile('views/captura.ejs', ...)` con datos simulados
+  renderiza bien y contiene `/sonidos.js` + el input oculto nuevo; los 3 MP3
+  se verificaron con sus primeros bytes (`FF FB` = cabecera MPEG audio
+  válida, no una página de error). Falta la prueba end-to-end contra la DB
+  real de Railway (esta sesión no tenía esa conexión disponible) y
+  confirmar a oído que los 3 sonidos se sienten bien en volumen/duración —
+  pendiente para el usuario antes de mergear.
+
+### rama-chat-general
+- Estado: commiteada, sin probar contra la DB real (ver "Qué se verificó").
+- Tarea: chat general — una sola sala compartida por todos los usuarios
+  registrados, sin necesidad de amistad. Pedido directo del usuario el
+  2026-08-12, agregado al backlog (ver nota en esa entrada sobre por qué se
+  portó a mano desde `rama-notificaciones-recordatorios`). Creada desde
+  `origin/main` (PR #35, commit 2c929e6) — no depende de ninguna rama del
+  roadmap grande.
+- Decisiones de esquema (tomadas al implementar):
+  1. **Tabla propia `mensajes_generales`** (id, autor_id, texto, fecha) — no
+     se reusó `mensajes`, que está atada a `amistad_id` y no tiene sentido
+     sin una amistad de por medio.
+  2. **No-leídos con timestamp, no columna `leido` por mensaje.** El chat
+     1-a-1 marca `leido` por fila porque solo hay 2 participantes; acá
+     potencialmente participan todos los usuarios de la app, así que marcar
+     "visto" por mensaje y por usuario sería una tabla de cruce que crece
+     como (mensajes × usuarios). Se agregó una sola columna,
+     `usuarios.chat_general_visto_hasta TIMESTAMP`, que se actualiza a
+     `now()` cada vez que el usuario abre `/chat-general`. `GET
+     /notificaciones` cuenta mensajes de otros con `fecha >
+     chat_general_visto_hasta` para el badge de no-leídos.
+  3. **`noLeidosGeneral` aparte de `noLeidos` en `GET /notificaciones`**, no
+     sumado — para no cambiar en silencio el significado de un campo que ya
+     consume el frontend del chat 1-a-1 (que además tiene semántica
+     distinta: "sin leer" ahí es por mensaje, acá es "desde que abriste la
+     sala").
+  4. **Paginación: 50 mensajes por vez**, cursor `?antes=<id>` (el mensaje
+     más viejo ya cargado) para pedir la tanda anterior — elegido porque es
+     el mismo orden de magnitud que "todo el historial visible de un
+     vistazo" sin cargar una sala que, a diferencia del chat 1-a-1, puede
+     acumular mensajes de varios usuarios a la vez.
+  5. **Se muestra el nombre de usuario real (`nombre_usuario`), no
+     "Usuario <id>"** como hace el chat 1-a-1 — en una sala con más de 2
+     personas, saber quién escribió cada mensaje deja de ser algo obvio por
+     contexto.
+- Archivos tocados: `server.js` (tabla `mensajes_generales`, columna
+  `usuarios.chat_general_visto_hasta`, rutas `GET /chat-general` y `POST
+  /mensajes-general`, extensión de `GET /notificaciones`),
+  `views/chat-general.ejs` (nuevo, reusa las clases `.chat-mensajes`/
+  `.mensaje-propio`/`.mensaje-otro`/`.btn-link`/`.nuevo` ya existentes —
+  no hizo falta tocar `style.css`), `views/partials/nav.ejs` (link nuevo).
+- Qué se verificó: `node --check server.js` sin errores; `ejs.renderFile`
+  de `chat-general.ejs` para 3 estados (vacío, con mensajes, error) sin
+  errores. **No se probó contra la DB real** — este worktree no tiene
+  `pendientes-web/.env` (gitignored, `git worktree add` no lo copia).
+  Pendiente antes de mergear: confirmar que el `ALTER TABLE` corre limpio,
+  que un mensaje nuevo de un usuario aparece para los demás, que
+  `chat_general_visto_hasta` efectivamente baja el contador de
+  `noLeidosGeneral` a 0 al abrir la sala, y que la paginación con `?antes=`
+  trae la tanda correcta.
+
+### rama-notificaciones-recordatorios
+- Estado: commiteada, sin probar contra la DB real (ver "Qué se verificó").
+- Tarea: notificaciones push para recordatorios (tarea 4 del roadmap
+  2026-08-12) — depende de la tarea 3 (rama-captura-rapida, commiteada
+  74e5c3b/1ad1dcd, todavía no mergeada a main). Creada desde
+  `origin/main` actualizado (PR #35, commit 2c929e6) en un worktree nuevo
+  (`a-worktrees/rama-notificaciones-recordatorios`) — NO incluye todavía el
+  código de rama-captura-rapida porque esa rama no está mergeada; la tabla
+  `recordatorios` que necesita esta tarea ya existe desde antes (la crea el
+  bot), así que no hay bloqueo real.
+- Decisiones de esquema (tomadas al implementar):
+  1. **No se separa la suscripción push por función.** Ya existe un botón
+     "Activar notificaciones" en `index.ejs` que suscribe al navegador
+     contra `push_subscriptions` y ya se usa para el aviso diario genérico
+     (`revisarYNotificarSiNoHayHechosHoy`). Se reusa la misma suscripción
+     para recordatorios en vez de pedir un segundo permiso/botón — un
+     usuario que ya activó notificaciones no debería tener que activarlas
+     de nuevo para que le avisen sus recordatorios.
+  2. **`push_subscriptions` sí necesitaba `usuario_id`.** Antes no lo tenía
+     — `enviarPushATodos()` manda a *todas* las suscripciones sin filtrar,
+     lo cual está bien para el aviso diario genérico pero mandaría el
+     recordatorio de un usuario a los navegadores de todos los demás. Se
+     agrega `ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS
+     usuario_id INT REFERENCES usuarios(id)` (nullable — las suscripciones
+     viejas quedan sin dueño y se siguen usando solo para el aviso
+     genérico, no para recordatorios) y `/suscribir` ahora guarda
+     `req.usuarioId` en el INSERT (y lo actualiza si el endpoint ya
+     existía, por si el mismo navegador quedó suscrito con otra sesión
+     antes).
+  3. **Cron nuevo, cada minuto:** seguí el mismo patrón que
+     `revisarYNotificarSiNoHayHechosHoy` (node-cron, ya en package.json).
+     `revisarYNotificarRecordatoriosPendientes()` busca
+     `recordatorios` con `avisado = FALSE AND cuando <= now() AND
+     usuario_id IS NOT NULL` (los que no tienen dueño no se pueden
+     dirigir a nadie, se ignoran), manda el push con
+     `enviarPushAUsuario(usuario_id, ...)` (función nueva, mismo código
+     que `enviarPushATodos` pero filtrado por `usuario_id`), y marca
+     `avisado = TRUE` después de intentarlo — no reintenta si el push falla,
+     mismo criterio de "mejor esfuerzo" que ya usa el resto del sistema de
+     push (no hay cola de reintentos en ningún lado).
+- Archivos tocados: server.js (ALTER TABLE, `/suscribir`, nueva función
+  `enviarPushAUsuario`, nuevo cron `revisarYNotificarRecordatoriosPendientes`
+  cada minuto). No hizo falta tocar `sw.js` (el `push` handler ya es
+  genérico: título/cuerpo/acciones desde el payload) ni el botón de
+  `index.ejs` (ya manda la suscripción con
+  sesión activa).
+- Qué se verificó: `node --check server.js` sin errores. **No se probó
+  contra la DB real** — este worktree nuevo no tiene `pendientes-web/.env`
+  (está en `.gitignore`, `git worktree add` no lo copia) y el usuario pidió
+  seguir sin resolver eso por ahora. Falta antes de mergear: confirmar que
+  el `ALTER TABLE` corre limpio, que `/suscribir` guarda `usuario_id`
+  correctamente, y sobre todo probar el cron end-to-end (crear un
+  recordatorio con `cuando` en el pasado desde `/captura` — o directo por
+  SQL — y confirmar que en el siguiente minuto llega el push solo al
+  usuario dueño, no a otras suscripciones, y que `avisado` queda en TRUE).
+- Commit: pendiente de crear en esta misma sesión.
+
+### rama-trazabilidad-social
+- Estado: commiteada, sin probar contra la DB real (ver "Qué se verificó").
+- Tarea: tareas asignadas — completar + trazabilidad social (tarea 6 del
+  roadmap 2026-08-12). Depende de la tarea 4: creada desde
+  `rama-notificaciones-recordatorios` (rama local, commit `68d43d5`, NO
+  desde `origin/main`) porque necesita `enviarPushAUsuario()` y
+  `push_subscriptions.usuario_id` de esa rama — tampoco mergeada a main
+  todavía. Cadena de dependencias del roadmap, no un descuido: tarea 3 → 4 →
+  6, ninguna de las tres está en main aún.
+- Decisiones de esquema (tomadas al implementar):
+  1. **`POST /pendientes/:id/completar` se amplía, no se duplica.** Pasa a
+     aceptar `usuario_id = $2 OR asignado_a = $2`. Es la misma acción
+     (marcar `hecho=TRUE`); una ruta nueva hubiera significado mantener el
+     mismo UPDATE en dos lugares. Lo único condicionado al caso compartido
+     (evento de trazabilidad + notificación push) es si la tarea tenía
+     `asignado_a IS NOT NULL` — no quién la completó.
+  2. **Comentario y trazabilidad en tabla nueva `eventos_completado`**
+     (`pendiente_id`, `completado_por`, `comentario`, `fecha`), no columnas
+     en `pendientes`. Mismo criterio que `historial_ediciones`: un evento de
+     completado es un hecho inmutable separado del estado actual del
+     pendiente. Se registra sin importar si completó el dueño o la persona
+     asignada (visible para ambos).
+  3. **Feed: últimos 7 días, paginado de a 20**
+     (`TRAZABILIDAD_DIAS`/`TRAZABILIDAD_PAGINA_TAMANO`, constantes
+     nombradas junto a `VENCIDO_DIAS`/`LIMITE_INTENTOS`). 7 días en vez de
+     14 para que el feed se sienta "reciente" y no una lista larga —
+     consistente con el criterio semanal que ya usa `/estadisticas`.
+     Paginación simple `LIMIT/OFFSET` vía `?pagina=N`.
+  4. **Contador semanal por persona:** mismo criterio de "semana" que
+     `GET /estadisticas` (`date_trunc('week', ... AT TIME ZONE
+     'America/Lima')`), aplicado a `eventos_completado.fecha` en vez de a
+     `pendientes.creado` — no se pudo reusar el código literal porque es
+     otra tabla, pero sí el criterio de corte de semana.
+  5. **Notificación:** al completar una tarea compartida, se notifica al
+     OTRO miembro (si completó el dueño, se avisa al asignado, y
+     viceversa) con `enviarPushAUsuario()`.
+- Archivos tocados: server.js (tabla `eventos_completado`, `/pendientes/:id/
+  completar` ampliada, ruta nueva `GET /trazabilidad`), views/index.ejs
+  (botón "Completar" + comentario opcional reemplazando el antiguo "Solo
+  lectura" para tareas asignadas), views/trazabilidad.ejs (nuevo),
+  views/amigos.ejs (link "📊 Actividad" junto al de chat),
+  public/style.css (`.completar-asignado-form` reusa las reglas de
+  `.reflexion-form` por selector compartido; se borró `.solo-lectura`, que
+  quedó sin ningún uso tras el cambio de `index.ejs`).
+- Qué se verificó: `node --check server.js` sin errores; `ejs.renderFile`
+  con datos simulados (sin DB) para `trazabilidad.ejs` (caso con eventos y
+  caso de error 403), `index.ejs` (con una tarea asignada, confirmando que
+  aparece `completar-asignado-form` y ya no `solo-lectura`) y `amigos.ejs`
+  (confirmando el link nuevo). **No se probó contra la DB real** — este
+  worktree tampoco tiene `pendientes-web/.env` (mismo motivo de siempre).
+  Falta antes de mergear: crear una amistad y una tarea asignada de
+  prueba, completarla desde ambos roles (dueño y asignado), confirmar que
+  `eventos_completado` se llena una sola vez por completado, que
+  `/trazabilidad` solo muestra eventos de esa amistad específica (no de
+  otras), y que el push le llega al usuario correcto.
+
+### rama-google-calendar
+- Estado: **ESQUELETO SIN PROBAR.** Compila y renderiza, pero nunca corrió
+  contra la API real de Google — no hay `client_id`/`client_secret` todavía.
+  No mergear a producción hasta confirmar el flujo real con credenciales
+  verdaderas.
+- Tarea: integración con Google Calendar (tarea 10 del roadmap 2026-08-12).
+  Depende solo de la tarea 4 (notificaciones push) — NO depende de la tarea
+  6 (trazabilidad social), que se desarrolló en paralelo en otro
+  worktree/rama (`rama-trazabilidad-social`); no se tocó nada de eso desde
+  acá. Creada desde `rama-notificaciones-recordatorios` (commit `68d43d5`,
+  no `origin/main`) en worktree nuevo
+  (`a-worktrees/rama-google-calendar`) — hereda `push_subscriptions.
+  usuario_id` y `enviarPushAUsuario`, aunque esta tarea en concreto no los
+  usa todavía (el botón de crear evento es manual, no dispara push).
+- Decisiones de esquema (tomadas al implementar):
+  1. **Tabla propia `google_calendar_tokens`, 1 fila por usuario** (no por
+     dispositivo, a diferencia de `push_subscriptions`): el refresh_token es
+     por cuenta de Google, no por navegador/sesión. `PRIMARY KEY
+     (usuario_id)` en vez de `id SERIAL` — no hace falta más de una fila por
+     usuario nunca.
+  2. **Cifrado AES-256-GCM** (`crypto.createCipheriv`, ya se usaba `crypto`
+     en el archivo para el hash del PIN) en vez de un modo sin autenticación
+     — GCM detecta si el texto cifrado fue alterado, no solo lo oculta. IV
+     aleatorio de 12 bytes por fila (recomendado para GCM), guardado junto
+     con el `auth_tag` y el texto cifrado en columnas separadas. Clave en
+     `GOOGLE_TOKEN_ENCRYPTION_KEY` (`.env`, 32 bytes en hex) — a propósito
+     NO se reusa `SESSION_SECRET` (son secretos con propósitos distintos,
+     rotarlos por separado sin arrastrar el otro).
+  3. **`access_token` y `refresh_token` se cifran juntos como un solo JSON**
+     (`cifrarTokensGoogle`/`descifrarTokensGoogle` reciben/devuelven el
+     objeto completo que da la librería `googleapis`, no un token a la vez)
+     — un solo cipher por guardado, más simple que cifrar cada campo aparte.
+  4. **Renovación de `access_token`:** `obtenerClienteCalendarPara(usuarioId)`
+     crea un cliente OAuth2 con las credenciales del usuario y escucha el
+     evento `'tokens'` del SDK de `googleapis` — si Google renueva el
+     access_token solo (pasa automático cuando expira), se vuelve a cifrar y
+     guardar. Sin esto, la integración se rompería en silencio después del
+     primer vencimiento (~1 hora, típico en tokens de Google).
+  5. **Revocación al desconectar:** `POST /calendario/desconectar` intenta
+     `googleOAuthClient.revokeToken(...)` contra Google antes de borrar la
+     fila local, pero es "mejor esfuerzo" — si falla (red, token ya
+     inválido, etc.) se borra igual localmente. No se probó nunca de verdad
+     (necesita credenciales reales).
+  6. **Botón manual, no automático:** como la tarea 8 (IA) no existe
+     todavía, `POST /recordatorios/:id/crear-evento-calendar` es un botón
+     que aparece en `views/recordatorios.ejs` por cada fila SOLO si el
+     usuario ya conectó Calendar. Duración fija de 30 minutos por evento
+     (`inicio` = `recordatorios.cuando`, `fin` = +30 min) — no hay UI para
+     cambiarla, documentado como límite conocido, no bug.
+  7. **`state` del flujo OAuth = `usuarioId`** (no un token CSRF aparte):
+     `/calendario/callback` valida que el `state` que vuelve de Google
+     coincida con `req.usuarioId` de la sesión actual, para no aceptar un
+     callback armado a mano contra la cuenta de otro usuario.
+- Archivos tocados: server.js (cliente OAuth condicional, funciones de
+  cifrado/descifrado, `obtenerClienteCalendarPara`, tabla
+  `google_calendar_tokens`, rutas `/calendario/conectar`,
+  `/calendario/callback`, `/calendario/desconectar`,
+  `/recordatorios/:id/crear-evento-calendar`, `GET /recordatorios` ahora
+  pasa `googleConfigurado`/`googleConectado` a la vista),
+  views/recordatorios.ejs (botones conectar/desconectar/crear evento),
+  package.json (`googleapis` nuevo), .env.example (`GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`,
+  `GOOGLE_TOKEN_ENCRYPTION_KEY`, documentadas con el link a Google Cloud
+  Console y el comando para generar la clave de cifrado).
+- Qué se verificó: `node --check server.js` sin errores;
+  `ejs.renderFile('views/recordatorios.ejs', ...)` con datos simulados para
+  los 3 estados posibles (sin configurar / configurado sin conectar /
+  conectado) — los botones correctos aparecen en cada uno. **Nunca se probó
+  contra la API real de Google** (no hay credenciales) — ni el flujo OAuth
+  completo, ni la creación de un evento real, ni la renovación de
+  access_token, ni la revocación. Tampoco se probó contra la DB real de
+  Railway (este worktree tampoco tiene `pendientes-web/.env`).
+- **Para que esto funcione de verdad, el dueño del proyecto necesita:**
+  1. Crear un proyecto en Google Cloud Console (console.cloud.google.com),
+     habilitar la "Google Calendar API".
+  2. Configurar la pantalla de consentimiento OAuth (tipo Externo si la
+     cuenta de Google no es Workspace; agregar el scope
+     `calendar.events`).
+  3. Crear credenciales OAuth 2.0 tipo "Aplicación web", con
+     `GOOGLE_REDIRECT_URI` (una URL por entorno: local y la de Railway en
+     producción) como URI de redireccionamiento autorizado.
+  4. Copiar `client_id`/`client_secret` a `.env` (local) y a las variables
+     de entorno del servicio en Railway (producción) — nunca comitearlos.
+  5. Generar `GOOGLE_TOKEN_ENCRYPTION_KEY` con el comando que ya está en
+     `.env.example`.
+  6. Recién ahí probar el flujo completo: conectar → crear un recordatorio
+     de prueba → botón "Crear evento" → confirmar que aparece en Google
+     Calendar → desconectar → confirmar que la fila se borra de
+     `google_calendar_tokens`.
+- Commit: pendiente de crear en esta misma sesión.
+
+### rama-tema-jungla
+- Estado: commiteada, sin probar contra la DB real ni en un navegador de
+  verdad (ver "Verificación del rediseño visual" más abajo).
+- Tarea: tarea 5 del roadmap 2026-08-12 (rediseño "Jungla/Monstera"). Como
+  esta tarea toca prácticamente todos los `.ejs` y estaba despachada al
+  final a propósito (para no chocar con el resto del roadmap en paralelo),
+  y para cuando se retomó ya había 4 ramas terminadas sin mergear
+  (captura-rápida, chat-general, notificaciones-recordatorios,
+  trazabilidad-social) más una quinta solo esqueleto (google-calendar), el
+  usuario pidió construir el tema sobre TODO ese trabajo combinado en vez
+  de solo sobre `origin/main` — para no tener que rehacer el tema después
+  de cada merge.
+- **Combinación (este commit):** se creó esta rama desde `origin/main`
+  (commit `2c929e6`) y se incorporó el código de las 5 ramas vía
+  `git cherry-pick` de cada commit individual, EN ESTE ORDEN:
+  `rama-captura-rapida` (74e5c3b, 1ad1dcd) → `rama-chat-general` (1bb44dd)
+  → `rama-notificaciones-recordatorios` (68d43d5, 5aa4c0c, 7f0d407) →
+  `rama-trazabilidad-social` (d8685d2) → `rama-google-calendar` (9e34f9a).
+  No se usó `git merge` ni `git rebase` (bloqueados a propósito por
+  `.claude/settings.json`).
+  - `server.js` no tuvo NINGÚN conflicto real en ningún paso — los 5
+    bloques son aditivos en zonas distintas del archivo, incluida la
+    ampliación de `/pendientes/:id/completar` de trazabilidad-social
+    (aplicó limpio porque ya tenía debajo el `server.js` de
+    notificaciones-recordatorios, del cual depende).
+  - `COORDINACION.md` sí tuvo conflicto en cada paso — siempre el mismo
+    patrón ya conocido (cada rama insertando su propia sección `###
+    rama-X` justo antes de `### rama-integracion`): se resolvió
+    conservando AMBOS lados en secuencia, nunca eligiendo uno solo.
+  - Un conflicto de contenido real (no solo de punto de inserción): el
+    ítem de backlog "Chat general" existía duplicado — se había agregado
+    primero en `rama-notificaciones-recordatorios` (commit `5aa4c0c`) y
+    por separado, a mano, en `rama-chat-general` (que no dependía de esa
+    rama). Se dejó una sola copia, con nota explicando el porqué de la
+    duplicación original.
+  - `.claude/settings.json`: se confirmó al final que `curl`/`wget` siguen
+    fuera del `deny` (ya venían así desde el segundo commit de
+    rama-captura-rapida).
+- Verificado: `npm install` sin errores (incluida la dependencia nueva
+  `googleapis` de google-calendar); `node --check server.js` sin errores;
+  grep confirmando que las rutas clave de las 5 ramas existen todas en el
+  `server.js` final (`/captura`, `/chat-general`, `/mensajes-general`,
+  `/suscribir` con `usuario_id`, `enviarPushAUsuario`, `/pendientes/:id/
+  completar` con `OR asignado_a`, `/trazabilidad`, las 4 rutas de
+  `/calendario/*`); `ejs.renderFile(...)` con datos simulados para las 6
+  vistas nuevas o tocadas por cualquiera de las 5 ramas (`index.ejs`,
+  `captura.ejs`, `chat-general.ejs`, `trazabilidad.ejs`, `amigos.ejs`,
+  `recordatorios.ejs`) — las 6 renderizan sin error.
+- **Nada de esto se probó contra la DB real** (ninguna de las 5 ramas
+  originales lo había hecho tampoco, mismo motivo de siempre: sin `.env`
+  en el worktree) — sigue pendiente, ahora acumulado en un solo lugar en
+  vez de en 5 ramas separadas.
+- **Rediseño visual (este commit):** aplicado sobre la combinación de
+  arriba. Paleta y tokens derivados ya habían sido aprobados por el usuario
+  en un mockup aparte antes de tocar código real (mismos valores acá, para
+  que el mockup y la app real no diverjan):
+  - Claro: fondo `#F4F1E8`, verde (ahora `--accent`) `#2D5A3D`, acento cálido
+    nuevo (`--tono`) `#D4A574`. Oscuro: fondo `#1A2620`, verde `#7CB88F`,
+    mismo `--tono`. El resto de los tokens (superficie, texto, bordes,
+    semánticos danger/success/warning) se derivaron para buen contraste en
+    los dos modos — quedaron documentados como comentario arriba del
+    `:root` en `public/style.css`.
+  - Se reusaron los NOMBRES de variable que ya existían (`--accent`,
+    `--bg-elevated`, `--radius`, etc.) para no tener que tocar cada regla
+    del archivo — solo los valores cambiaron. `--radius`/`--radius-sm`
+    subieron de 10px/8px a 20px/14px ("bordes redondeados generosos").
+    Reemplaza al tema oscuro anterior (rama-tema-chat/rama-visual) a
+    propósito, como pide el enunciado — no quedaron los dos en paralelo.
+  - **Toggle claro/oscuro: columna `usuarios.tema` (no localStorage).**
+    Decisión: persiste entre dispositivos de la misma cuenta, y permite que
+    el HTML salga del servidor ya con el `data-theme` correcto (script
+    inline al principio de `partials/head.ejs`, antes del `<link
+    rel="stylesheet">`) sin parpadeo del tema equivocado — con
+    `localStorage` eso no es posible porque el servidor no sabe la
+    preferencia al renderizar. Middleware nuevo expone `tema` a todas las
+    vistas vía `res.locals` (una consulta liviana más por request
+    logueado). Ruta nueva `POST /preferencia-tema`. Botón en
+    `partials/nav.ejs` (ícono sol/luna según el tema ACTUAL, no el que se
+    va a activar).
+  - **Íconos SVG nuevos** (`views/partials/icono.ejs`, un solo set
+    reusado en todo el proyecto, estilo lucide/heroicons outline 24x24):
+    🔔→campana, 🗑️→papelera, ✔→check, ✓✓→doble-check, ❌→x, 🔐→candado,
+    ✏️→lápiz, 🔥→llama, 📋→portapapeles, 💡→bombilla, ⚡→rayo, 🤝→personas,
+    💬→chat, 📊→gráfico, 📥→descarga, 📅→calendario, ⏰→reloj, ⏳→arena
+    (hourglass — distinto de "reloj" a propósito: posponer no es lo mismo
+    que un recordatorio con hora fija), ← →→flecha-izq/flecha-der, más
+    sol/luna para el toggle. **`●` (punto de "mensaje sin leer" en
+    `chat.ejs`) se dejó como texto a propósito, no es emoji real** — es un
+    carácter geométrico simple que ya hereda `var(--accent)` como
+    cualquier texto, sin la inconsistencia visual entre plataformas que sí
+    tienen los emoji de verdad (que es la razón real de reemplazarlos).
+  - **Ilustración de monstera** (`views/partials/monstera.ejs`, un
+    `<path>` de la hoja + `<mask>` con elipses para las fenestraciones) en
+    los 3 lugares pedidos: estado vacío de pendientes (`index.ejs`, tanto
+    el render inicial como el que arma el JS al completar el último
+    pendiente — ver bug de abajo), `login.ejs`, `registro.ejs`. Favicon
+    nuevo en `public/favicon.svg` (versión standalone, sin depender de
+    variables CSS ya que un favicon se carga fuera del contexto de la
+    página). **Los íconos PWA existentes (`public/icons/icon-192.png`,
+    `icon-512.png`, PNG rasterizados) NO se regeneraron** — no es viable
+    sin herramientas de imagen desde acá. Quedan pendientes de actualizar
+    a mano con la ilustración nueva; mientras tanto el `manifest.json`
+    sigue apuntando a los viejos (funcionan, solo no tienen el estilo
+    nuevo).
+  - Nombres de sección sin tocar (Pendientes, Ideas, Recordatorios, etc.)
+    en las 15 vistas, incluidas las 6 que trajeron las otras ramas
+    (`captura.ejs`, `chat-general.ejs`, `trazabilidad.ejs`,
+    `recordatorios.ejs` con Google Calendar, etc.) — no eran parte del
+    alcance original de la tarea 5 (se escribió antes de que existieran)
+    pero quedarían visualmente a medias si no se tocaban también.
+  - **Bug real encontrado y corregido durante la verificación (no por el
+    render de EJS, que no lo detecta):** el estado vacío que arma
+    `index.ejs` por JS (cuando se completa el último pendiente sin
+    recargar la página) insertaba el SVG multi-línea de la monstera
+    dentro de un string JS con comillas simples — comillas simples no
+    aceptan saltos de línea crudos, así que el JS quedaba con un
+    "Unterminated string literal" en el navegador aunque EJS lo renderizara
+    sin error del lado del servidor. Se cambió esa asignación a un
+    template literal (backticks). Después de esto, se extrajeron y
+    validaron con `node --check` los 47 bloques `<script>` inline de las
+    15 vistas (no solo la sintaxis EJS/HTML) para no repetir la misma
+    clase de bug en otro lado.
+  - Otro bug real, distinto (de EJS, no de JS): un comentario de
+    documentación dentro de `views/partials/icono.ejs` incluía, como
+    texto de ejemplo, la sintaxis literal `<%- include(...) %>` — el
+    parser de EJS no entiende comentarios, así que interpretó eso como
+    una tag real y rompió el balance de tags de TODO archivo que
+    incluyera este partial (`Could not find matching close tag`). Se
+    corrigió reescribiendo el comentario sin mostrar la sintaxis literal.
+- **Verificación del rediseño visual:** `node --check server.js` limpio.
+  Grep final de emoji (rango Unicode ampliado, no solo los 4 del
+  enunciado original — la primera pasada con un rango más angosto se
+  había comido ⏰/⏳ silenciosamente) sobre `server.js` y las 15 `.ejs`:
+  cero coincidencias reales (el único resultado es el `●` documentado
+  arriba). `ejs.renderFile(...)` con datos simulados para las 15 vistas,
+  cubriendo también sus variantes de error/vacío/con-datos donde aplica:
+  las 20 combinaciones renderizan sin error. Los 47 `<script>` inline
+  resultantes se extrajeron y pasaron `node --check` uno por uno (detectó
+  el bug del template literal, ver arriba). **Lo que NO se pudo probar**:
+  contra la DB real (sigue sin `.env` en este worktree) y en un navegador
+  de verdad — el toggle, el favicon, y que el `data-theme` server-side
+  efectivamente evite el parpadeo, son cosas que solo se confirman
+  mirando la app corriendo. Recomendado antes de mergear: abrir la app
+  localmente, tocar el toggle unas cuantas veces, y mirar las 3
+  ilustraciones de monstera.
+
+### rama-moneda-virtual
+- Estado: commiteada (sobre `rama-tema-jungla`, no rama propia), sin
+  probar contra la DB real.
+- Tarea: sistema de moneda virtual (tarea 7 del roadmap 2026-08-12) —
+  depende de la tarea 6 (trazabilidad social), ya en esta misma rama.
+- Decisiones numéricas (constantes nombradas en `server.js`, junto a la
+  ruta `POST /pendientes/:id/completar`):
+  - `MONEDA_POR_TAREA_ASIGNADA = 10`: monto base por tarea asignada
+    completada. Número redondo, fácil de razonar; con esta base + bonus de
+    racha, un día activo entre dos amigos (2-5 tareas) queda cómodo debajo
+    del límite diario sin agotarlo de entrada.
+  - `REPARTO_COMPLETA_PCT = 0.7` / `REPARTO_ASIGNO_PCT = 0.3`: tal cual pide
+    el enunciado. En el código, la parte de quien asignó se calcula como
+    `total - parteCompleta` (no `total * 0.3`) para que la suma de las dos
+    partes nunca pierda una moneda por redondeo — verificado a mano con
+    varios valores de racha (0, 1, 3, 7 días) antes de commitear.
+  - `BONUS_MONEDA_POR_DIA_RACHA = 2`: se suma al pozo ANTES de repartir
+    70/30 (no solo a quien completa), para que también le convenga a quien
+    asigna sostener una racha real con su amigo. Racha reusa
+    `calcularRacha`/`formatearDiaLima` ya existentes en `/estadisticas`,
+    pero contada sobre `eventos_completado.fecha` (fecha de completado) en
+    vez de `pendientes.creado`, con su propia columna
+    `eventos_completado.cuenta_para_racha` (ver anti-granjeo abajo).
+  - `LIMITE_MONEDA_DIARIA = 100` monedas ganadas por día por usuario
+    (`origen = 'ganada'` solamente). Con la base+bonus de arriba, hacen
+    falta varias tareas seguidas con racha alta en el mismo día para
+    acercarse al límite — deja margen para un día muy activo sin ser
+    efectivamente ilimitado. `pagarMoneda()` paga parcial si el límite ya
+    está casi consumido, nunca niega la transacción entera.
+  - `UMBRAL_ANTI_GRANJEO_MINUTOS = 10`: si se completa una tarea asignada
+    antes de que pasen 10 minutos desde que `asignado_en` se marcó (columna
+    nueva en `pendientes`, se setea en `POST /pendientes/:id/asignar`), se
+    paga el monto base igual pero con bonus de racha en 0 y
+    `cuenta_para_racha = FALSE` (no participa en el cálculo de racha
+    futuro) — mismo espíritu que `VENCIDO_DIAS`: un número que ningún uso
+    legítimo rural/familiar rozaría por accidente, pero que sí frena
+    asignar-y-completar-al-toque para farmear.
+- Modelo de datos: tabla nueva `moneda_transacciones` (log inmutable:
+  usuario_id, cantidad, `origen` TEXT `'ganada'`/`'comprada'`, motivo,
+  `evento_completado_id` opcional, fecha) MÁS `usuarios.saldo_moneda INT`
+  (acumulado de lectura rápida, no hay que sumar el log cada vez). La
+  columna `origen` ya distingue `ganada` de `comprada` desde ahora — eso lo
+  pide explícitamente la tarea 8 más adelante ("modelo de datos preparado
+  para compra futura con dinero real"), y no cuesta nada agregarla ya en
+  vez de una migración después; nada de esta tarea escribe `'comprada'`
+  todavía, queda reservado.
+- Superficie visible (fuera del pedido explícito de la tarea, pero sin
+  esto el sistema es invisible/no verificable): se agregó el saldo propio
+  en `/trazabilidad` ("Tu saldo: N monedas", ícono nuevo `moneda` en
+  `partials/icono.ejs`). La vista real de saldo/planta es tarea de la
+  tarea 8, esto es solo un número de referencia.
+- Archivos tocados: `server.js` (schema en `ensureSchema`, `asignado_en`
+  en `/asignar`, constantes + helpers `rachaTareasAsignadas`/
+  `monedaGanadaHoy`/`pagarMoneda`, `POST /pendientes/:id/completar`
+  reescrita para pagar dentro de la misma transacción que ya insertaba en
+  `eventos_completado`), `views/trazabilidad.ejs`, `views/partials/icono.ejs`.
+- Qué se verificó: `node --check server.js` limpio; `ejs.renderFile` de
+  `trazabilidad.ejs` en los 2 estados (con datos y con error) incluyendo el
+  saldo nuevo; grep de emoji sobre todo `server.js` + `.ejs` en cero;
+  matemática del reparto 70/30 verificada a mano para 4 valores de racha
+  distintos, sin pérdida de redondeo en ningún caso. **No probado contra la
+  DB real** (sin `.env` en este worktree) — falta confirmar en producción
+  que el `ALTER TABLE`/`CREATE TABLE` corre limpio y que completar una
+  tarea asignada de verdad acredita el saldo a las dos personas.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -901,6 +1427,35 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   cuenta si olvida el PIN (ya casi pasó una vez en esta sesión). Sin tocar el
   rate limiting ya existente (`limitarIntentos`) ni las rutas /login o /registro
   más allá de lo necesario para generar el código. — tomada por rama-recuperacion-pin
+- [ ] **Chat general: una sola sala para todos los usuarios registrados.**
+  Distinto del chat 1-a-1 que ya existe (`amistades`/`mensajes`,
+  `usuarioPerteneceAmistad`): acá NO hace falta ser amigos para verse — todo
+  usuario logueado participa en la misma sala. Pedido por el usuario el
+  2026-08-12, no depende de ninguna tarea del roadmap grande de esa misma
+  fecha (puede arrancar en cualquier momento, en paralelo con cualquier otra
+  rama activa) y tampoco está incluido en ese "Plan de despacho" — es un
+  ítem aparte.
+  - Esquema sugerido (decidir y documentar al implementar, mismo criterio
+    que el resto del roadmap): tabla nueva `mensajes_generales` (id,
+    autor_id, texto, fecha) — NO reusar `mensajes`, que está atada a
+    `amistad_id` y no tiene sentido para una sala sin amistad de por medio.
+  - Decidir si hay o no indicador de "no leídos" para la sala general (el
+    chat 1-a-1 lo tiene vía columna `leido` por mensaje — con potencialmente
+    todos los usuarios de la app en una sola sala, marcar leído por mensaje
+    y por usuario puede no escalar igual; una alternativa más simple es un
+    timestamp `visto_hasta` por usuario y contar mensajes más nuevos que
+    eso). Documentar la elección y el porqué.
+  - Decidir paginación/límite de mensajes mostrados (una sala compartida por
+    todos crece más rápido que un chat 1-a-1) — no cargar el historial
+    completo siempre.
+  - Reusar el estilo visual ya existente de `views/chat.ejs` (burbujas,
+    tema oscuro de rama-tema-chat) en vez de reinventar un diseño nuevo.
+  — asignada a: `rama-chat-general` (commiteada, sin probar contra la DB
+  real — ver su sección en "Estado de ramas") — Depende de: nada.
+  - Nota: este ítem se agregó primero en `rama-notificaciones-recordatorios`
+    (commit 5aa4c0c) y por separado, a mano, en `rama-chat-general` (que no
+    dependía de esa rama) — al combinar todo en `rama-tema-jungla` quedó
+    una sola copia, ya no hace falta la nota de duplicación.
 
 ### Ronda nueva (2026-08-11) — propuesta por el usuario, mejoras a definir por rama
 
@@ -1040,7 +1595,8 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   freesound.org) — **nunca generarlos ni usar ninguno sin verificar la
   licencia primero**, documentar de dónde salió cada archivo de audio usado.
   Si el tipo elegido es "Recordatorio", pedir fecha/hora antes de guardar. —
-  asignada a: sin asignar (sugerido: `rama-captura-rapida`) — Depende de:
+  asignada a: `rama-captura-rapida` (commiteada, falta prueba end-to-end
+  contra la DB real — ver su sección en "Estado de ramas") — Depende de:
   nada, puede arrancar en paralelo con 1/2.
 
 - [ ] **4. Notificaciones push para recordatorios.** Depende de la tarea 3
@@ -1057,8 +1613,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   si alcanza o hace falta asociarla a `usuario_id`), y un proceso (cron,
   mismo patrón que `revisarYNotificarSiNoHayHechosHoy` con `node-cron`) que
   revise recordatorios pendientes y dispare la notificación a la hora
-  indicada. — asignada a: sin asignar (sugerido:
-  `rama-notificaciones-recordatorios`) — Depende de: tarea 3.
+  indicada. — asignada a: `rama-notificaciones-recordatorios` (commiteada,
+  sin probar contra la DB real — ver su sección en "Estado de ramas") —
+  Depende de: tarea 3.
 
 - [ ] **5. Rediseño visual "Jungla/Monstera".** Paleta modo claro (fondo
   `#F4F1E8`, verde `#2D5A3D`, acento `#D4A574`) y modo oscuro (fondo
@@ -1077,8 +1634,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   o con un grep de emojis antes de dar la tarea por terminada. **NO
   reemplazar el tema oscuro ya existente (de rama-tema-chat/rama-visual) sin
   coordinarlo — esta tarea lo reemplaza/actualiza a propósito, no es un
-  conflicto, es la continuación esperada.** — asignada a: sin asignar
-  (sugerido: `rama-tema-jungla`) — Depende de: nada funcionalmente, pero
+  conflicto, es la continuación esperada.** — asignada a: `rama-tema-jungla`
+  (commiteada, sin probar en navegador ni contra DB real — ver su sección
+  en "Estado de ramas") — Depende de: nada funcionalmente, pero
   **despachar al final** (ver "Plan de despacho" arriba, razón documentada
   ahí).
 
@@ -1099,8 +1657,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   completar: cuando alguien completa una tarea que otro le asignó, quien
   asignó recibe una notificación reusando `enviarPushATodos` (o una variante
   que envíe a un solo usuario en vez de a todos — probablemente hace falta
-  esa variante, evaluar). — asignada a: sin asignar (sugerido:
-  `rama-trazabilidad-social`) — Depende de: tarea 4 (notificaciones push).
+  esa variante, evaluar). — asignada a: `rama-trazabilidad-social`
+  (commiteada, sin probar contra la DB real — ver su sección en "Estado de
+  ramas") — Depende de: tarea 4 (notificaciones push).
 
 - [ ] **7. Sistema de moneda virtual.** Moneda ganada al completar una tarea
   asignada (no una tarea propia — solo las que vienen de `asignado_a`, para
@@ -1116,8 +1675,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   un tiempo sospechosamente corto desde que fueron asignadas — decidir el
   umbral de tiempo mínimo y documentarlo (con el mismo espíritu que
   `VENCIDO_DIAS` en estadísticas: una constante nombrada y explicada). —
-  asignada a: sin asignar (sugerido: `rama-moneda-virtual`) — Depende de:
-  tarea 6.
+  asignada a: `rama-moneda-virtual` (commiteada sobre `rama-tema-jungla`,
+  sin probar contra la DB real — ver su sección en "Estado de ramas") —
+  Depende de: tarea 6.
 
 - [ ] **8. IA compañera visual — Fase 1.** Selección de especie de planta al
   registrarse (monstera, cactus, ficus, suculenta — mínimo 4 opciones), cada
@@ -1171,8 +1731,10 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   ya usa `usuarioPerteneceAmistad()` (nunca confiar en un id que venga del
   cliente sin cruzarlo contra la sesión). Esta es la primera de una fase
   futura de integraciones — Gmail y Spotify quedan explícitamente para
-  después, no se abren en esta tarea. — asignada a: sin asignar (sugerido:
-  `rama-google-calendar`) — Depende de: tarea 4 (notificaciones push). Puede
+  después, no se abren en esta tarea. — asignada a: `rama-google-calendar`
+  (ESQUELETO SIN PROBAR, ver su sección en "Estado de ramas" — falta que el
+  dueño del proyecto genere credenciales reales de Google Cloud Console) —
+  Depende de: tarea 4 (notificaciones push). Puede
   correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
   no depende de ellas.
 

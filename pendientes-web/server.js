@@ -7,6 +7,7 @@ const pgSession = require('connect-pg-simple')(session);
 const { Pool } = require('pg');
 const webpush = require('web-push');
 const cron = require('node-cron');
+const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +24,19 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     process.env.VAPID_PRIVATE_KEY
   );
 }
+
+// rama-google-calendar (tarea 10 del roadmap, esqueleto sin probar — ver
+// COORDINACION.md): sin GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/
+// GOOGLE_REDIRECT_URI en .env, googleOAuthClient queda en null y las rutas
+// de /calendario/* devuelven 500 "no configurada" en vez de fallar feo.
+const googleOAuthClient =
+  process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI
+    ? new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+      )
+    : null;
 
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
@@ -98,6 +112,43 @@ app.use((req, res, next) => {
     return res.redirect('/login');
   }
   return res.status(401).end();
+});
+
+// rama-tema-jungla: expone `tema` a TODAS las vistas vía res.locals (así
+// partials/head.ejs puede fijar data-theme en el <html> sin parpadeo, sin
+// que cada ruta tenga que acordarse de pasarlo). Una consulta liviana más
+// por request logueado — aceptable para el tamaño de esta app.
+app.use(async (req, res, next) => {
+  if (!req.usuarioId) {
+    res.locals.tema = null;
+    return next();
+  }
+  try {
+    const { rows } = await pool.query('SELECT tema FROM usuarios WHERE id = $1', [req.usuarioId]);
+    res.locals.tema = rows[0] ? rows[0].tema : null;
+  } catch (err) {
+    res.locals.tema = null;
+  }
+  next();
+});
+
+const TEMAS_VALIDOS = ['claro', 'oscuro', 'sistema'];
+
+app.post('/preferencia-tema', async (req, res) => {
+  const tema = req.body.tema;
+  if (!TEMAS_VALIDOS.includes(tema)) {
+    return res.status(400).end();
+  }
+  try {
+    await pool.query('UPDATE usuarios SET tema = $1 WHERE id = $2', [
+      tema === 'sistema' ? null : tema,
+      req.usuarioId,
+    ]);
+  } catch (err) {
+    console.error('Error guardando preferencia de tema:', err.message);
+    return res.status(500).end();
+  }
+  res.status(204).end();
 });
 
 // Límite de intentos por IP (fuerza bruta en /login y /registro). En memoria:
@@ -198,6 +249,64 @@ function generarCodigoRecuperacion() {
     codigo += ALFABETO_CODIGO_RECUPERACION[bytes[i] % ALFABETO_CODIGO_RECUPERACION.length];
   }
   return `${codigo.slice(0, 5)}-${codigo.slice(5)}`;
+}
+
+// rama-google-calendar: los tokens de Google (access + refresh) nunca se
+// guardan en texto plano. AES-256-GCM en vez de un modo sin autenticación
+// (ECB/CBC) porque GCM detecta si el texto cifrado fue alterado. IV
+// aleatorio de 12 bytes por fila (recomendado para GCM, no reusar IV entre
+// filas). Clave separada de SESSION_SECRET a propósito — GOOGLE_TOKEN_
+// ENCRYPTION_KEY en .env, 32 bytes en hex (ver .env.example).
+const GOOGLE_TOKEN_ALGORITMO = 'aes-256-gcm';
+
+function cifrarTokensGoogle(objetoTokens) {
+  const clave = Buffer.from(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY, 'hex');
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(GOOGLE_TOKEN_ALGORITMO, clave, iv);
+  const cifrado = Buffer.concat([cipher.update(JSON.stringify(objetoTokens), 'utf8'), cipher.final()]);
+  return { iv: iv.toString('hex'), authTag: cipher.getAuthTag().toString('hex'), datos: cifrado.toString('hex') };
+}
+
+function descifrarTokensGoogle(fila) {
+  const clave = Buffer.from(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY, 'hex');
+  const decipher = crypto.createDecipheriv(GOOGLE_TOKEN_ALGORITMO, clave, Buffer.from(fila.iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(fila.auth_tag, 'hex'));
+  const descifrado = Buffer.concat([
+    decipher.update(Buffer.from(fila.datos_cifrados, 'hex')),
+    decipher.final(),
+  ]);
+  return JSON.parse(descifrado.toString('utf8'));
+}
+
+// Cliente autorizado para UN usuario puntual (nunca el googleOAuthClient
+// global, que no tiene credenciales de nadie todavía). Si Google renueva el
+// access_token solo (evento 'tokens' del SDK), se vuelve a cifrar y guardar
+// — si no se hiciera esto, la sesión de Calendar se rompería silenciosamente
+// después de que expire el primer access_token.
+async function obtenerClienteCalendarPara(usuarioId) {
+  if (!googleOAuthClient) return null;
+  const { rows } = await pool.query('SELECT * FROM google_calendar_tokens WHERE usuario_id = $1', [usuarioId]);
+  if (rows.length === 0) return null;
+  const tokens = descifrarTokensGoogle(rows[0]);
+  const cliente = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+  cliente.setCredentials(tokens);
+  cliente.on('tokens', async (tokensNuevos) => {
+    try {
+      const combinados = { ...tokens, ...tokensNuevos };
+      const { iv, authTag, datos } = cifrarTokensGoogle(combinados);
+      await pool.query(
+        'UPDATE google_calendar_tokens SET iv = $1, auth_tag = $2, datos_cifrados = $3, actualizado = now() WHERE usuario_id = $4',
+        [iv, authTag, datos, usuarioId]
+      );
+    } catch (err) {
+      console.error('No se pudo guardar el token renovado de Google Calendar:', err.message);
+    }
+  });
+  return cliente;
 }
 
 const NOMBRE_USUARIO_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
@@ -362,6 +471,13 @@ async function ensureSchema() {
       creado TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-tema-jungla: preferencia de tema en la cuenta (no localStorage)
+  // para que persista entre dispositivos y el HTML salga ya con el data-
+  // theme correcto desde el servidor, sin parpadeo del tema equivocado.
+  // NULL = sigue la preferencia del sistema operativo (prefers-color-scheme).
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tema TEXT
+  `);
   await pool.query(`
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigo_recuperacion_hash TEXT
   `);
@@ -404,6 +520,25 @@ async function ensureSchema() {
       creado TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-notificaciones-recordatorios: decisión de esquema documentada en
+  // COORDINACION.md — nullable porque las suscripciones viejas (aviso
+  // diario genérico) no tienen dueño y siguen funcionando igual.
+  await pool.query(`
+    ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+  `);
+  // rama-google-calendar: 1 fila por usuario (no por dispositivo, a
+  // diferencia de push_subscriptions) — el refresh_token de Google es por
+  // cuenta de Google, no por navegador. iv/auth_tag/datos_cifrados en vez
+  // de columnas de texto plano — ver cifrarTokensGoogle/descifrarTokensGoogle.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS google_calendar_tokens (
+      usuario_id INT PRIMARY KEY REFERENCES usuarios(id),
+      iv TEXT NOT NULL,
+      auth_tag TEXT NOT NULL,
+      datos_cifrados TEXT NOT NULL,
+      actualizado TIMESTAMP DEFAULT now()
+    )
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS amistades (
       id SERIAL PRIMARY KEY,
@@ -429,12 +564,60 @@ async function ensureSchema() {
       leido BOOLEAN DEFAULT false
     )
   `);
+  // rama-chat-general: sala única para todos los usuarios, sin amistad_id
+  // de por medio (decisión documentada en COORDINACION.md).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mensajes_generales (
+      id SERIAL PRIMARY KEY,
+      autor_id INT REFERENCES usuarios(id),
+      texto TEXT,
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS chat_general_visto_hasta TIMESTAMP
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS historial_ediciones (
       id SERIAL PRIMARY KEY,
       pendiente_id INT REFERENCES pendientes(id),
       texto_anterior TEXT,
       editado TIMESTAMP DEFAULT now()
+    )
+  `);
+  // rama-trazabilidad-social: decisión de esquema documentada en
+  // COORDINACION.md — tabla nueva en vez de columna en `pendientes`, porque
+  // un evento de completado es inmutable y separado del estado actual del
+  // pendiente (mismo espíritu que historial_ediciones arriba).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS eventos_completado (
+      id SERIAL PRIMARY KEY,
+      pendiente_id INT REFERENCES pendientes(id),
+      completado_por INT REFERENCES usuarios(id),
+      comentario TEXT,
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
+  // rama-moneda-virtual (tarea 7 del roadmap): decisión de esquema
+  // documentada en COORDINACION.md.
+  await pool.query(`
+    ALTER TABLE eventos_completado ADD COLUMN IF NOT EXISTS cuenta_para_racha BOOLEAN NOT NULL DEFAULT TRUE
+  `);
+  await pool.query(`
+    ALTER TABLE pendientes ADD COLUMN IF NOT EXISTS asignado_en TIMESTAMP
+  `);
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS saldo_moneda INT NOT NULL DEFAULT 0
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS moneda_transacciones (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      cantidad INT NOT NULL,
+      origen TEXT NOT NULL DEFAULT 'ganada',
+      motivo TEXT,
+      evento_completado_id INT REFERENCES eventos_completado(id),
+      fecha TIMESTAMP DEFAULT now()
     )
   `);
 }
@@ -529,18 +712,125 @@ app.post('/pendientes', async (req, res) => {
   res.redirect('/');
 });
 
+// rama-trazabilidad-social: decisión documentada en COORDINACION.md — se
+// amplía esta ruta con "OR asignado_a = $2" en vez de crear una ruta nueva
+// para completar tareas asignadas. Es la misma acción (marcar hecho=TRUE);
+// duplicarla en dos rutas hubiera significado mantener la misma UPDATE en
+// dos lugares. El único comportamiento extra para el caso asignado es el
+// evento de trazabilidad + la notificación, ambos condicionados a que la
+// tarea tuviera `asignado_a` (es decir, que fuera una tarea compartida).
+// rama-moneda-virtual (tarea 7 del roadmap): decisiones documentadas en
+// COORDINACION.md — moneda base por tarea asignada completada, reparto
+// 70/30 entre quien completa y quien asignó (redondeado sobre el total ya
+// con bonus, para que la suma de las dos partes nunca "pierda" una
+// moneda por redondeo), bonus por racha de días consecutivos completando
+// tareas asignadas, límite diario por persona, y umbral anti-granjeo.
+const MONEDA_POR_TAREA_ASIGNADA = 10;
+const REPARTO_COMPLETA_PCT = 0.7;
+const REPARTO_ASIGNO_PCT = 0.3; // documentado como constante nombrada; en el código se calcula como el resto (total - parteCompleta) para que la suma nunca pierda una moneda por redondeo — REPARTO_COMPLETA_PCT + REPARTO_ASIGNO_PCT debe sumar 1.
+const BONUS_MONEDA_POR_DIA_RACHA = 2;
+const LIMITE_MONEDA_DIARIA = 100;
+const UMBRAL_ANTI_GRANJEO_MINUTOS = 10;
+
+async function rachaTareasAsignadas(client, usuarioId) {
+  const { rows } = await client.query(
+    'SELECT fecha FROM eventos_completado WHERE completado_por = $1 AND cuenta_para_racha = TRUE',
+    [usuarioId]
+  );
+  const dias = new Set(rows.map((r) => formatearDiaLima(r.fecha)));
+  return calcularRacha(dias);
+}
+
+async function monedaGanadaHoy(client, usuarioId) {
+  const { rows } = await client.query(
+    `SELECT COALESCE(SUM(cantidad), 0)::int AS total FROM moneda_transacciones
+     WHERE usuario_id = $1 AND origen = 'ganada'
+       AND fecha >= date_trunc('day', now() AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima'`,
+    [usuarioId]
+  );
+  return rows[0].total;
+}
+
+// Devuelve cuánto se pagó realmente (puede ser menos que `cantidad` si el
+// límite diario ya estaba parcialmente consumido, o 0 si ya se alcanzó).
+async function pagarMoneda(client, usuarioId, cantidad, motivo, eventoCompletadoId) {
+  if (cantidad <= 0) return 0;
+  const yaGanadaHoy = await monedaGanadaHoy(client, usuarioId);
+  const aPagar = Math.min(cantidad, Math.max(0, LIMITE_MONEDA_DIARIA - yaGanadaHoy));
+  if (aPagar <= 0) return 0;
+  await client.query(
+    "INSERT INTO moneda_transacciones (usuario_id, cantidad, origen, motivo, evento_completado_id) VALUES ($1, $2, 'ganada', $3, $4)",
+    [usuarioId, aPagar, motivo, eventoCompletadoId]
+  );
+  await client.query('UPDATE usuarios SET saldo_moneda = saldo_moneda + $1 WHERE id = $2', [aPagar, usuarioId]);
+  return aPagar;
+}
+
 app.post('/pendientes/:id/completar', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).send('id inválido');
   }
+  const client = await pool.connect();
+  let notificarA = null;
+  let comentario = null;
   try {
-    await pool.query(
-      'UPDATE pendientes SET hecho = TRUE WHERE id = $1 AND usuario_id = $2 AND eliminado = FALSE',
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `UPDATE pendientes SET hecho = TRUE
+       WHERE id = $1 AND eliminado = FALSE AND (usuario_id = $2 OR asignado_a = $2)
+       RETURNING id, usuario_id, asignado_a, asignado_en`,
       [id, req.usuarioId]
     );
+    const pendiente = rows[0];
+    if (pendiente && pendiente.asignado_a) {
+      comentario = (req.body.comentario || '').trim() || null;
+
+      const segundosDesdeAsignado = pendiente.asignado_en
+        ? (Date.now() - new Date(pendiente.asignado_en).getTime()) / 1000
+        : Infinity;
+      const esGranjeoSospechoso = segundosDesdeAsignado < UMBRAL_ANTI_GRANJEO_MINUTOS * 60;
+
+      const { rows: eventoRows } = await client.query(
+        'INSERT INTO eventos_completado (pendiente_id, completado_por, comentario, cuenta_para_racha) VALUES ($1, $2, $3, $4) RETURNING id',
+        [pendiente.id, req.usuarioId, comentario, !esGranjeoSospechoso]
+      );
+      const eventoId = eventoRows[0].id;
+
+      // El bonus por racha se suma al pozo ANTES de repartir 70/30, así que
+      // también favorece a quien asignó (le conviene armar rachas reales
+      // con su amigo, no solo al que completa). Si es un completado
+      // sospechosamente rápido, el bonus queda en 0 (no se paga completo,
+      // como pide el enunciado) y el evento no cuenta para la racha futura.
+      let bonusRacha = 0;
+      if (!esGranjeoSospechoso) {
+        const racha = await rachaTareasAsignadas(client, req.usuarioId);
+        bonusRacha = racha * BONUS_MONEDA_POR_DIA_RACHA;
+      }
+      const totalMoneda = MONEDA_POR_TAREA_ASIGNADA + bonusRacha;
+      const parteCompleta = Math.round(totalMoneda * REPARTO_COMPLETA_PCT);
+      const parteAsigno = totalMoneda - parteCompleta;
+
+      await pagarMoneda(client, req.usuarioId, parteCompleta, `Completar pendiente #${pendiente.id}`, eventoId);
+      await pagarMoneda(client, pendiente.usuario_id, parteAsigno, `Tarea asignada #${pendiente.id} completada`, eventoId);
+
+      // Se notifica al OTRO miembro de la tarea compartida, sea cual sea el
+      // rol de quien completó (el dueño original o la persona asignada).
+      notificarA = req.usuarioId === pendiente.usuario_id ? pendiente.asignado_a : pendiente.usuario_id;
+    }
+    await client.query('COMMIT');
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error marcando pendiente como hecho:', err.message);
+  } finally {
+    client.release();
+  }
+  if (notificarA) {
+    enviarPushAUsuario(notificarA, {
+      title: 'Tarea completada',
+      body: comentario ? `Se completó una tarea compartida: "${comentario}"` : 'Se completó una tarea compartida.',
+      data: { defaultUrl: '/' },
+    }).catch((err) => console.error('Error notificando tarea completada:', err.message));
   }
   res.redirect('/');
 });
@@ -627,9 +917,16 @@ app.post('/suscribir', async (req, res) => {
     );
     if (existente.rows.length === 0) {
       await pool.query(
-        'INSERT INTO push_subscriptions (endpoint, p256dh, auth) VALUES ($1, $2, $3)',
-        [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]
+        'INSERT INTO push_subscriptions (endpoint, p256dh, auth, usuario_id) VALUES ($1, $2, $3, $4)',
+        [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth, req.usuarioId]
       );
+    } else {
+      // El mismo navegador puede haber quedado suscrito bajo otra sesión
+      // (dispositivo compartido) — el dueño se actualiza al usuario actual.
+      await pool.query('UPDATE push_subscriptions SET usuario_id = $1 WHERE endpoint = $2', [
+        req.usuarioId,
+        subscription.endpoint,
+      ]);
     }
   } catch (err) {
     console.error('Error guardando suscripcion:', err.message);
@@ -657,6 +954,38 @@ async function enviarPushATodos(payloadObjeto) {
 
   const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
   return { enviadas, total: rows.length };
+}
+
+async function enviarPushAUsuario(usuarioId, payloadObjeto) {
+  const { rows } = await pool.query(
+    'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE usuario_id = $1',
+    [usuarioId]
+  );
+  const payload = JSON.stringify(payloadObjeto);
+
+  const resultados = await Promise.allSettled(
+    rows.map((s) =>
+      webpush
+        .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
+        .catch(async (err) => {
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [s.id]);
+          }
+          throw err;
+        })
+    )
+  );
+
+  const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
+  return { enviadas, total: rows.length };
+}
+
+function payloadRecordatorio(texto) {
+  return {
+    title: 'Recordatorio',
+    body: texto,
+    data: { defaultUrl: '/recordatorios' },
+  };
 }
 
 function payloadRecordatorioDiario() {
@@ -705,6 +1034,34 @@ function cronDesdeHora(horaStr) {
 }
 
 cron.schedule(cronDesdeHora(process.env.HORA_NOTIFICACION), revisarYNotificarSiNoHayHechosHoy, {
+  timezone: 'America/Lima',
+});
+
+// rama-notificaciones-recordatorios: corre cada minuto (los recordatorios
+// se guardan con minuto exacto desde /captura, un cron menos frecuente
+// los avisaría tarde). Los que no tienen usuario_id (creados antes de esta
+// rama, o directo por el bot sin dueño) se ignoran: no hay a quién avisar.
+async function revisarYNotificarRecordatoriosPendientes() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, texto, usuario_id FROM recordatorios
+      WHERE avisado = FALSE AND cuando <= now() AND usuario_id IS NOT NULL
+    `);
+    for (const r of rows) {
+      try {
+        const { enviadas, total } = await enviarPushAUsuario(r.usuario_id, payloadRecordatorio(r.texto));
+        console.log(`[cron] Recordatorio #${r.id}: notificado a ${enviadas}/${total} suscripcion(es) del usuario ${r.usuario_id}.`);
+      } catch (err) {
+        console.error(`[cron] Error notificando recordatorio #${r.id}:`, err.message);
+      }
+      await pool.query('UPDATE recordatorios SET avisado = TRUE WHERE id = $1', [r.id]);
+    }
+  } catch (err) {
+    console.error('[cron] Error en el job de recordatorios:', err.message);
+  }
+}
+
+cron.schedule('* * * * *', revisarYNotificarRecordatoriosPendientes, {
   timezone: 'America/Lima',
 });
 
@@ -810,6 +1167,50 @@ app.get('/estadisticas', async (req, res) => {
   }
 });
 
+// rama-captura-rapida: decisión de esquema documentada en COORDINACION.md —
+// se reusan las 3 tablas ya existentes (pendientes/ideas/recordatorios, las
+// mismas que ya llena el bot de Telegram) en vez de crear una tabla única
+// con columna `tipo`. No hace falta ALTER TABLE nuevo: las 3 ya tienen
+// usuario_id desde ramas anteriores.
+const TIPOS_CAPTURA_VALIDOS = ['pendiente', 'idea', 'recordatorio'];
+
+app.get('/captura', (req, res) => {
+  res.render('captura', { error: null, guardado: req.query.guardado === '1' });
+});
+
+app.post('/captura', async (req, res) => {
+  const texto = (req.body.texto || '').trim();
+  const tipo = req.body.tipo;
+  if (!texto || !TIPOS_CAPTURA_VALIDOS.includes(tipo)) {
+    return res.status(400).render('captura', { error: 'Escribe algo y elige un tipo válido.' });
+  }
+  if (tipo === 'recordatorio' && !req.body.cuando) {
+    return res.status(400).render('captura', { error: 'Los recordatorios necesitan fecha y hora.' });
+  }
+  try {
+    if (tipo === 'pendiente') {
+      await pool.query(
+        'INSERT INTO pendientes (texto, creado, hecho, usuario_id) VALUES ($1, now(), FALSE, $2)',
+        [texto, req.usuarioId]
+      );
+    } else if (tipo === 'idea') {
+      await pool.query(
+        'INSERT INTO ideas (fecha, idea, estado, usuario_id) VALUES ($1, $2, NULL, $3)',
+        [new Date().toISOString(), texto, req.usuarioId]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO recordatorios (texto, cuando, avisado, usuario_id) VALUES ($1, $2, FALSE, $3)',
+        [texto, new Date(req.body.cuando), req.usuarioId]
+      );
+    }
+  } catch (err) {
+    console.error('Error guardando captura rápida:', err.message);
+    return res.status(500).render('captura', { error: 'No se pudo guardar. Intenta de nuevo.' });
+  }
+  res.redirect('/captura?guardado=1');
+});
+
 app.get('/ideas', async (req, res) => {
   const rango = RANGOS_VALIDOS.includes(req.query.rango) ? req.query.rango : 'todo';
   try {
@@ -831,10 +1232,126 @@ app.get('/recordatorios', async (req, res) => {
       `SELECT id, texto, cuando, avisado FROM recordatorios WHERE usuario_id = $1 ${whereRango(rango, 'cuando')} ORDER BY id DESC`,
       [req.usuarioId]
     );
-    res.render('recordatorios', { recordatorios: rows, error: null, rango });
+    const conectado = await pool.query('SELECT 1 FROM google_calendar_tokens WHERE usuario_id = $1', [
+      req.usuarioId,
+    ]);
+    res.render('recordatorios', {
+      recordatorios: rows,
+      error: null,
+      rango,
+      googleConfigurado: Boolean(googleOAuthClient),
+      googleConectado: conectado.rows.length > 0,
+    });
   } catch (err) {
     console.error('Error consultando recordatorios:', err.message);
-    res.status(500).render('recordatorios', { recordatorios: [], error: 'No se pudo leer la base de datos.', rango });
+    res.status(500).render('recordatorios', {
+      recordatorios: [],
+      error: 'No se pudo leer la base de datos.',
+      rango,
+      googleConfigurado: Boolean(googleOAuthClient),
+      googleConectado: false,
+    });
+  }
+});
+
+// rama-google-calendar (tarea 10, esqueleto sin probar): las 4 rutas de
+// abajo nunca corrieron contra la API real de Google en esta sesión — no
+// hay client_id/client_secret todavía. Ver COORDINACION.md.
+app.get('/calendario/conectar', (req, res) => {
+  if (!googleOAuthClient) {
+    return res.status(500).send('Integración con Google Calendar no configurada (faltan variables de entorno).');
+  }
+  const url = googleOAuthClient.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent', // fuerza a Google a reemitir refresh_token aunque el usuario ya haya autorizado antes
+    scope: ['https://www.googleapis.com/auth/calendar.events'],
+    state: String(req.usuarioId),
+  });
+  res.redirect(url);
+});
+
+app.get('/calendario/callback', async (req, res) => {
+  if (!googleOAuthClient) {
+    return res.status(500).send('Integración con Google Calendar no configurada.');
+  }
+  const { code, state } = req.query;
+  // state = usuarioId de cuando se generó la URL en /calendario/conectar — si no
+  // coincide con la sesión actual, alguien está reusando/falsificando el callback.
+  if (!code || Number(state) !== req.usuarioId) {
+    return res.status(400).send('Callback de Google inválido.');
+  }
+  try {
+    const { tokens } = await googleOAuthClient.getToken(code);
+    const { iv, authTag, datos } = cifrarTokensGoogle(tokens);
+    await pool.query(
+      `INSERT INTO google_calendar_tokens (usuario_id, iv, auth_tag, datos_cifrados)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (usuario_id) DO UPDATE SET iv = $2, auth_tag = $3, datos_cifrados = $4, actualizado = now()`,
+      [req.usuarioId, iv, authTag, datos]
+    );
+    res.redirect('/recordatorios?google=conectado');
+  } catch (err) {
+    console.error('Error en callback de Google Calendar:', err.message);
+    res.status(500).send('No se pudo conectar con Google Calendar.');
+  }
+});
+
+app.post('/calendario/desconectar', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM google_calendar_tokens WHERE usuario_id = $1', [
+      req.usuarioId,
+    ]);
+    if (rows.length > 0 && googleOAuthClient) {
+      // Mejor esfuerzo: si revocar contra Google falla, se borra igual localmente
+      // (el usuario pidió desconectar, no queremos dejarlo "conectado" a la fuerza).
+      try {
+        const tokens = descifrarTokensGoogle(rows[0]);
+        if (tokens.access_token) await googleOAuthClient.revokeToken(tokens.access_token);
+      } catch (err) {
+        console.error('No se pudo revocar el token en Google (se borra igual localmente):', err.message);
+      }
+    }
+    await pool.query('DELETE FROM google_calendar_tokens WHERE usuario_id = $1', [req.usuarioId]);
+  } catch (err) {
+    console.error('Error desconectando Google Calendar:', err.message);
+  }
+  res.redirect('/recordatorios');
+});
+
+// Botón manual (tarea 8 / IA todavía no existe) para crear un evento a
+// partir de un recordatorio puntual.
+app.post('/recordatorios/:id/crear-evento-calendar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, texto, cuando FROM recordatorios WHERE id = $1 AND usuario_id = $2',
+      [id, req.usuarioId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).send('Recordatorio no encontrado.');
+    }
+    const cliente = await obtenerClienteCalendarPara(req.usuarioId);
+    if (!cliente) {
+      return res.status(400).send('Primero conectá tu Google Calendar.');
+    }
+    const calendar = google.calendar({ version: 'v3', auth: cliente });
+    const inicio = new Date(rows[0].cuando);
+    const fin = new Date(inicio.getTime() + 30 * 60 * 1000); // 30 min de duración por defecto, sin UI para cambiarla todavía
+    await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: rows[0].texto,
+        start: { dateTime: inicio.toISOString() },
+        end: { dateTime: fin.toISOString() },
+      },
+    });
+    res.redirect('/recordatorios?evento=creado');
+  } catch (err) {
+    console.error('Error creando evento en Google Calendar:', err.message);
+    res.status(500).send('No se pudo crear el evento en Google Calendar.');
   }
 });
 
@@ -939,7 +1456,7 @@ app.post('/pendientes/:id/asignar', async (req, res) => {
 
     if (!nombreUsuario) {
       // Selector vacío = quitar la asignación actual.
-      await pool.query('UPDATE pendientes SET asignado_a = NULL WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+      await pool.query('UPDATE pendientes SET asignado_a = NULL, asignado_en = NULL WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
       return res.redirect('/pendientes/' + id + '/editar');
     }
 
@@ -959,7 +1476,10 @@ app.post('/pendientes/:id/asignar', async (req, res) => {
       return res.status(403).send('Solo puedes asignar pendientes a un amigo (amistad aceptada).');
     }
 
-    await pool.query('UPDATE pendientes SET asignado_a = $1 WHERE id = $2 AND usuario_id = $3', [destinatario.id, id, req.usuarioId]);
+    // rama-moneda-virtual: asignado_en marca cuándo empezó la asignación
+    // actual, para el umbral anti-granjeo al completar (ver constante
+    // UMBRAL_ANTI_GRANJEO_MINUTOS más abajo).
+    await pool.query('UPDATE pendientes SET asignado_a = $1, asignado_en = now() WHERE id = $2 AND usuario_id = $3', [destinatario.id, id, req.usuarioId]);
   } catch (err) {
     console.error('Error asignando pendiente:', err.message);
     return res.status(500).send('No se pudo asignar el pendiente.');
@@ -1146,6 +1666,70 @@ app.post('/amigos/:id/rechazar', async (req, res) => {
   res.redirect('/amigos');
 });
 
+// rama-trazabilidad-social: rango y tamaño de página documentados en
+// COORDINACION.md — mismo espíritu que VENCIDO_DIAS/LIMITE_INTENTOS más
+// arriba: constantes nombradas, no números sueltos.
+const TRAZABILIDAD_DIAS = 7;
+const TRAZABILIDAD_PAGINA_TAMANO = 20;
+
+app.get('/trazabilidad', async (req, res) => {
+  const amistadId = Number(req.query.amistad_id);
+  const pagina = Math.max(0, Number(req.query.pagina) || 0);
+  if (!Number.isInteger(amistadId)) {
+    return res.status(400).send('amistad_id inválido');
+  }
+  try {
+    const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
+    if (!pertenece) {
+      return res.status(403).render('trazabilidad', {
+        eventos: [], conteoSemana: [], amistadId: null, pagina: 0, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda: 0, error: 'No tienes acceso a esta amistad.',
+      });
+    }
+    const { rows: amistadRows } = await pool.query(
+      'SELECT usuario_a_id, usuario_b_id FROM amistades WHERE id = $1',
+      [amistadId]
+    );
+    const { usuario_a_id, usuario_b_id } = amistadRows[0];
+
+    const { rows: eventos } = await pool.query(
+      `SELECT e.id, e.completado_por, e.comentario, e.fecha, p.texto,
+              u.nombre_usuario AS completado_por_nombre
+       FROM eventos_completado e
+       JOIN pendientes p ON p.id = e.pendiente_id
+       JOIN usuarios u ON u.id = e.completado_por
+       WHERE (p.usuario_id = $1 OR p.asignado_a = $1) AND (p.usuario_id = $2 OR p.asignado_a = $2)
+         AND e.fecha >= now() - INTERVAL '${TRAZABILIDAD_DIAS} days'
+       ORDER BY e.fecha DESC
+       LIMIT $3 OFFSET $4`,
+      [usuario_a_id, usuario_b_id, TRAZABILIDAD_PAGINA_TAMANO, pagina * TRAZABILIDAD_PAGINA_TAMANO]
+    );
+
+    // Contador semanal por persona: mismo criterio de "semana" que ya usa
+    // GET /estadisticas (date_trunc('week', ... AT TIME ZONE 'America/Lima')),
+    // aplicado a la fecha del evento en vez de a la fecha de creación.
+    const { rows: conteoSemana } = await pool.query(
+      `SELECT completado_por, COUNT(*)::int AS cantidad
+       FROM eventos_completado e
+       JOIN pendientes p ON p.id = e.pendiente_id
+       WHERE (p.usuario_id = $1 OR p.asignado_a = $1) AND (p.usuario_id = $2 OR p.asignado_a = $2)
+         AND date_trunc('week', e.fecha AT TIME ZONE 'America/Lima') = date_trunc('week', now() AT TIME ZONE 'America/Lima')
+       GROUP BY completado_por`,
+      [usuario_a_id, usuario_b_id]
+    );
+
+    // rama-moneda-virtual: saldo propio, para verificar que el sistema de
+    // moneda está pagando de verdad (la vista real del saldo/planta la
+    // arma la tarea 8, esto es solo un número de referencia por ahora).
+    const { rows: saldoRows } = await pool.query('SELECT saldo_moneda FROM usuarios WHERE id = $1', [req.usuarioId]);
+    const saldoMoneda = saldoRows[0] ? saldoRows[0].saldo_moneda : 0;
+
+    res.render('trazabilidad', { eventos, conteoSemana, amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda, error: null });
+  } catch (err) {
+    console.error('Error consultando trazabilidad:', err.message);
+    res.status(500).render('trazabilidad', { eventos: [], conteoSemana: [], amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda: 0, error: 'No se pudo leer la base de datos.' });
+  }
+});
+
 // Vista y rutas de chat. Todavía no está enlazada al menú de navegación
 // principal (partials/nav.ejs) ni depende de la tabla amistades, que se
 // construye en otra rama.
@@ -1200,7 +1784,18 @@ app.get('/notificaciones', async (req, res) => {
          AND m.leido = false`,
       [req.usuarioId]
     );
-    res.json({ noLeidos: rows[0].no_leidos });
+    // rama-chat-general: conteo aparte (noLeidosGeneral), no se suma a
+    // noLeidos — decisión documentada en COORDINACION.md. Usa
+    // chat_general_visto_hasta en vez de una columna leido por mensaje.
+    const { rows: generalRows } = await pool.query(
+      `SELECT COUNT(*)::int AS no_leidos
+       FROM mensajes_generales mg, usuarios u
+       WHERE u.id = $1
+         AND mg.autor_id != $1
+         AND mg.fecha > COALESCE(u.chat_general_visto_hasta, to_timestamp(0))`,
+      [req.usuarioId]
+    );
+    res.json({ noLeidos: rows[0].no_leidos, noLeidosGeneral: generalRows[0].no_leidos });
   } catch (err) {
     console.error('Error consultando notificaciones:', err.message);
     res.status(500).json({ error: 'No se pudo consultar notificaciones.' });
@@ -1230,6 +1825,73 @@ app.post('/mensajes', async (req, res) => {
     return res.status(500).send('No se pudo enviar el mensaje.');
   }
   res.redirect('/chat?amistad_id=' + amistadId);
+});
+
+// rama-chat-general: sala única para todos los usuarios registrados, sin
+// amistad de por medio. Paginación de 50 mensajes por vez (decisión
+// documentada en COORDINACION.md) con cursor `antes` (id del mensaje más
+// viejo ya cargado) para pedir la tanda anterior.
+const MENSAJES_GENERALES_POR_PAGINA = 50;
+
+app.get('/chat-general', async (req, res) => {
+  const antesId = Number(req.query.antes);
+  try {
+    const params = [];
+    let consulta = `SELECT m.id, m.autor_id, m.texto, m.fecha, u.nombre_usuario AS autor_nombre
+       FROM mensajes_generales m
+       LEFT JOIN usuarios u ON u.id = m.autor_id`;
+    if (Number.isInteger(antesId)) {
+      params.push(antesId);
+      consulta += ` WHERE m.id < $${params.length}`;
+    }
+    params.push(MENSAJES_GENERALES_POR_PAGINA);
+    consulta += ` ORDER BY m.id DESC LIMIT $${params.length}`;
+    const { rows } = await pool.query(consulta, params);
+    const mensajes = rows.reverse();
+
+    const { rows: usuarioRows } = await pool.query(
+      'SELECT chat_general_visto_hasta FROM usuarios WHERE id = $1',
+      [req.usuarioId]
+    );
+    const vistoHasta = usuarioRows[0] ? usuarioRows[0].chat_general_visto_hasta : null;
+    await pool.query('UPDATE usuarios SET chat_general_visto_hasta = now() WHERE id = $1', [req.usuarioId]);
+
+    res.render('chat-general', {
+      mensajes,
+      usuarioId: req.usuarioId,
+      vistoHasta,
+      hayMasAntiguos: mensajes.length === MENSAJES_GENERALES_POR_PAGINA,
+      primerId: mensajes.length > 0 ? mensajes[0].id : null,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando chat general:', err.message);
+    res.status(500).render('chat-general', {
+      mensajes: [],
+      usuarioId: req.usuarioId,
+      vistoHasta: null,
+      hayMasAntiguos: false,
+      primerId: null,
+      error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
+app.post('/mensajes-general', async (req, res) => {
+  const texto = (req.body.texto || '').trim();
+  if (!texto) {
+    return res.status(400).send('El texto no puede estar vacío');
+  }
+  try {
+    await pool.query(
+      'INSERT INTO mensajes_generales (autor_id, texto, fecha) VALUES ($1, $2, now())',
+      [req.usuarioId, texto]
+    );
+  } catch (err) {
+    console.error('Error creando mensaje general:', err.message);
+    return res.status(500).send('No se pudo enviar el mensaje.');
+  }
+  res.redirect('/chat-general');
 });
 
 ensureSchema()

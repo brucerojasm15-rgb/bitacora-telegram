@@ -1,0 +1,23 @@
+<%
+/* rama-tema-jungla: ilustración de hoja de monstera con fenestraciones,
+   reusada en el estado vacío de pendientes, login y registro (y en el
+   estado vacío re-renderizado por JS en index.ejs, ver ahí). Un solo
+   <mask> con ids únicos por instancia (idSufijo) para que no choquen si
+   la vista llegara a incluir más de una. */
+const tam = typeof tamano !== 'undefined' ? tamano : 72;
+const sufijo = typeof idSufijo !== 'undefined' ? idSufijo : 'a';
+%><svg width="<%= tam %>" height="<%= tam %>" viewBox="0 0 100 100" role="img" aria-label="Ilustración de una hoja de monstera">
+  <defs>
+    <mask id="monstera-mask-<%= sufijo %>">
+      <rect x="0" y="0" width="100" height="100" fill="white"></rect>
+      <ellipse cx="42" cy="34" rx="6" ry="9" fill="black"></ellipse>
+      <ellipse cx="62" cy="30" rx="5" ry="8" fill="black" transform="rotate(20 62 30)"></ellipse>
+      <ellipse cx="38" cy="58" rx="5" ry="8" fill="black" transform="rotate(-15 38 58)"></ellipse>
+      <ellipse cx="60" cy="60" rx="6" ry="9" fill="black" transform="rotate(12 60 60)"></ellipse>
+    </mask>
+  </defs>
+  <path d="M50 8 C74 10 90 30 88 52 C86 76 66 92 48 90 C26 88 10 70 12 48 C14 26 30 6 50 8 Z"
+        fill="var(--accent)" mask="url(#monstera-mask-<%= sufijo %>)"></path>
+  <path d="M50 14 L50 82 M50 30 L34 22 M50 30 L66 20 M50 50 L30 46 M50 50 L70 48 M50 66 L36 68 M50 66 L64 70"
+        stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.55"></path>
+</svg>

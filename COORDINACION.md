@@ -2351,7 +2351,7 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   cuenta si olvida el PIN (ya casi pasó una vez en esta sesión). Sin tocar el
   rate limiting ya existente (`limitarIntentos`) ni las rutas /login o /registro
   más allá de lo necesario para generar el código. — tomada por rama-recuperacion-pin
-- [ ] **Chat general: una sola sala para todos los usuarios registrados.**
+- [x] **Chat general: una sola sala para todos los usuarios registrados.**
   Distinto del chat 1-a-1 que ya existe (`amistades`/`mensajes`,
   `usuarioPerteneceAmistad`): acá NO hace falta ser amigos para verse — todo
   usuario logueado participa en la misma sala. Pedido por el usuario el
@@ -2374,8 +2374,13 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
     completo siempre.
   - Reusar el estilo visual ya existente de `views/chat.ejs` (burbujas,
     tema oscuro de rama-tema-chat) en vez de reinventar un diseño nuevo.
-  — asignada a: `rama-chat-general` (commiteada, sin probar contra la DB
-  real — ver su sección en "Estado de ramas") — Depende de: nada.
+  — asignada a: `rama-chat-general` — **✅ MERGEADA a main** (absorbida
+  directo, sin PR propio, dentro de la mega-consolidación `rama-tema-jungla`,
+  PR #37/#38 — confirmado 2026-08-13 con `git merge-base --is-ancestor` NO
+  detecta la rama vieja como ancestro porque fue reimplementada en la
+  consolidación, pero grep directo en `server.js` confirma `mensajes_generales`
+  ya existe. Branch/worktree viejo `rama-chat-general` borrado ese mismo día,
+  ya no hace falta). Depende de: nada.
   - Nota: este ítem se agregó primero en `rama-notificaciones-recordatorios`
     (commit 5aa4c0c) y por separado, a mano, en `rama-chat-general` (que no
     dependía de esa rama) — al combinar todo en `rama-tema-jungla` quedó
@@ -2508,7 +2513,7 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   de merges) — el bloqueo de despliegue ya no aplica, esta tarea queda libre
   para tomarse y desplegarse normalmente.
 
-- [ ] **3. Chat de captura rápida.** Input tipo chat de texto libre, con
+- [x] **3. Chat de captura rápida.** Input tipo chat de texto libre, con
   botones debajo (Pendiente / Idea / Recordatorio) para clasificar antes de
   enviar. Decidir en el momento de implementar el esquema más limpio (tabla
   única con columna `tipo`, o mantener las 3 tablas separadas `pendientes`/
@@ -2519,11 +2524,13 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   freesound.org) — **nunca generarlos ni usar ninguno sin verificar la
   licencia primero**, documentar de dónde salió cada archivo de audio usado.
   Si el tipo elegido es "Recordatorio", pedir fecha/hora antes de guardar. —
-  asignada a: `rama-captura-rapida` (commiteada, falta prueba end-to-end
-  contra la DB real — ver su sección en "Estado de ramas") — Depende de:
-  nada, puede arrancar en paralelo con 1/2.
+  asignada a: `rama-captura-rapida` — **✅ MERGEADA a main** (absorbida
+  directo en la consolidación `rama-tema-jungla`, PR #37/#38 — confirmado
+  2026-08-13, `/captura` GET/POST ya existe en `server.js`). Branch/worktree
+  viejo borrado ese mismo día. — Depende de: nada, puede arrancar en
+  paralelo con 1/2.
 
-- [ ] **4. Notificaciones push para recordatorios.** Depende de la tarea 3
+- [x] **4. Notificaciones push para recordatorios.** Depende de la tarea 3
   (necesita que existan recordatorios con fecha/hora capturados desde el
   chat rápido, o al menos la tabla/columna de recordatorios ya definida por
   esa tarea). Web Push API vía el paquete `web-push` (ya está en
@@ -2537,11 +2544,13 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   si alcanza o hace falta asociarla a `usuario_id`), y un proceso (cron,
   mismo patrón que `revisarYNotificarSiNoHayHechosHoy` con `node-cron`) que
   revise recordatorios pendientes y dispare la notificación a la hora
-  indicada. — asignada a: `rama-notificaciones-recordatorios` (commiteada,
-  sin probar contra la DB real — ver su sección en "Estado de ramas") —
-  Depende de: tarea 3.
+  indicada. — asignada a: `rama-notificaciones-recordatorios` — **✅
+  MERGEADA a main** (absorbida directo en la consolidación
+  `rama-tema-jungla`, PR #37/#38 — confirmado 2026-08-13,
+  `revisarYNotificarRecordatoriosPendientes` ya existe en `server.js`).
+  Branch/worktree viejo borrado ese mismo día. — Depende de: tarea 3.
 
-- [ ] **5. Rediseño visual "Jungla/Monstera".** Paleta modo claro (fondo
+- [x] **5. Rediseño visual "Jungla/Monstera".** Paleta modo claro (fondo
   `#F4F1E8`, verde `#2D5A3D`, acento `#D4A574`) y modo oscuro (fondo
   `#1A2620`, verde `#7CB88F`, mismo acento `#D4A574`). Toggle claro/oscuro
   guardado en preferencia del usuario (columna nueva en `usuarios`, o
@@ -2559,12 +2568,10 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   reemplazar el tema oscuro ya existente (de rama-tema-chat/rama-visual) sin
   coordinarlo — esta tarea lo reemplaza/actualiza a propósito, no es un
   conflicto, es la continuación esperada.** — asignada a: `rama-tema-jungla`
-  (commiteada, sin probar en navegador ni contra DB real — ver su sección
-  en "Estado de ramas") — Depende de: nada funcionalmente, pero
-  **despachar al final** (ver "Plan de despacho" arriba, razón documentada
-  ahí).
+  — **✅ MERGEADA a main vía PR #37/#38** (ver "Historial de merges a
+  main"). — Depende de: nada funcionalmente.
 
-- [ ] **6. Tareas asignadas: marcar como hecha + trazabilidad social.** Botón
+- [x] **6. Tareas asignadas: marcar como hecha + trazabilidad social.** Botón
   "Completar" visible SOLO para la persona asignada (ahora mismo
   `views/index.ejs` le muestra "Solo lectura" sin ningún botón — hay que
   agregar uno nuevo, sin tocar el `POST /pendientes/:id/completar` existente
@@ -2581,9 +2588,11 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   completar: cuando alguien completa una tarea que otro le asignó, quien
   asignó recibe una notificación reusando `enviarPushATodos` (o una variante
   que envíe a un solo usuario en vez de a todos — probablemente hace falta
-  esa variante, evaluar). — asignada a: `rama-trazabilidad-social`
-  (commiteada, sin probar contra la DB real — ver su sección en "Estado de
-  ramas") — Depende de: tarea 4 (notificaciones push).
+  esa variante, evaluar). — asignada a: `rama-trazabilidad-social` — **✅
+  MERGEADA a main** (absorbida directo en la consolidación
+  `rama-tema-jungla`, PR #37/#38 — confirmado 2026-08-13, `eventos_completado`
+  ya existe en `server.js`). Branch/worktree viejo borrado ese mismo día. —
+  Depende de: tarea 4 (notificaciones push).
 
 - [ ] **7. Sistema de moneda virtual.** Moneda ganada al completar una tarea
   asignada (no una tarea propia — solo las que vienen de `asignado_a`, para
@@ -2642,7 +2651,7 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   aviso — Depende de: decisión de negocio externa (modelo de ingresos), no
   de otra tarea de este backlog.
 
-- [ ] **10. Integración con Google Calendar.** OAuth explícito, mismo patrón
+- [x] **10. Integración con Google Calendar.** OAuth explícito, mismo patrón
   que cualquier conector tipo Claude (pantalla de consentimiento clara,
   scope mínimo necesario). La IA (o, si la Fase 1 de la tarea 8 todavía no
   está lista, un botón manual) crea eventos en el calendario a partir de un
@@ -2657,9 +2666,12 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   cliente sin cruzarlo contra la sesión). Esta es la primera de una fase
   futura de integraciones — Gmail y Spotify quedan explícitamente para
   después, no se abren en esta tarea. — asignada a: `rama-google-calendar`
-  (ESQUELETO SIN PROBAR, ver su sección en "Estado de ramas" — falta que el
-  dueño del proyecto genere credenciales reales de Google Cloud Console) —
-  Depende de: tarea 4 (notificaciones push). Puede
+  — **✅ MERGEADA a main** (absorbida directo en la consolidación
+  `rama-tema-jungla`, PR #37/#38 — confirmado 2026-08-13,
+  `google_calendar_tokens`/`obtenerClienteCalendarPara` ya existen en
+  `server.js`; sigue pendiente que el dueño del proyecto genere credenciales
+  reales de Google Cloud Console para probarlo en producción). Branch/worktree
+  viejo borrado ese mismo día. — Depende de: tarea 4 (notificaciones push). Puede
   correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
   no depende de ellas.
 
@@ -2680,21 +2692,23 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   Recordatorios) — decidir en el momento si son 3 variantes de la misma ilustración base
   o 3 ilustraciones separadas, y el texto corto y cálido de cada una (documentar el texto
   elegido, no dejarlo "por ahí" solo en el código). — asignada a: `rama-estados-vacios`
-  (commiteada, ver su sección en "Estado de ramas") — Depende de: nada (el sistema de
-  ilustraciones ya existe, tarea 5).
+  — **✅ MERGEADA a main** (era ya ancestro directo de `origin/main`,
+  confirmado 2026-08-13; branch/worktree borrado ese mismo día por estar
+  redundante) — Depende de: nada (el sistema de ilustraciones ya existe,
+  tarea 5).
 
-- [ ] **B. Onboarding para usuarios nuevos.** Recorrido corto (3-4 pasos) inmediatamente
+- [x] **B. Onboarding para usuarios nuevos.** Recorrido corto (3-4 pasos) inmediatamente
   después de `POST /registro`, explicando Pendientes/Ideas/Recordatorios y terminando en
   la elección de especie de planta (que hoy pasa dentro del formulario de registro mismo,
   tarea 8 — decidir en el momento si el onboarding absorbe ese paso o si sigue en el
   registro y el onboarding solo lo menciona, y documentar cuál). Debe poder saltarse en
   cualquier paso. Se muestra UNA sola vez — decidir dónde vive esa bandera (columna nueva
   en `usuarios`, ej. `onboarding_visto`, es lo más simple y consistente con el resto del
-  esquema) y documentarlo. — asignada a: `rama-onboarding` (commiteada, sin
-  probar contra la DB real — ver su sección en "Estado de ramas") — Depende
+  esquema) y documentarlo. — asignada a: `rama-onboarding` — **✅
+  MERGEADA a main como `rama-onboarding-v2`** — Depende
   de: tarea 8 (selección de especie, ya existe).
 
-- [ ] **C. Página de perfil/ajustes.** Ruta nueva (decidir el nombre exacto, ej.
+- [x] **C. Página de perfil/ajustes.** Ruta nueva (decidir el nombre exacto, ej.
   `/ajustes` o `/perfil` — ser consistente con el resto de nombres de ruta en español ya
   usados en el proyecto — y documentarlo) con: cambiar nombre visible, cambiar la especie
   de planta ya elegida (revisar si esto debe resetear la etapa de crecimiento o no —
@@ -2708,11 +2722,10 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   que preserve la suscripción por si se reactiva? documentar), y alternar claro/oscuro
   manualmente (el toggle en el nav ya existe — esta página solo necesita reflejar/exponer
   la misma preferencia `usuarios.tema`, no duplicar el mecanismo). — asignada a:
-  `rama-ajustes` (commiteada, sin probar contra la DB real — ver su
-  sección en "Estado de ramas") — Depende de: nada funcionalmente, pero tiene sentido
-  después de A/B para no pisarse con esos cambios de navegación.
+  `rama-ajustes` — **✅ MERGEADA a main como `rama-ajustes-v2` (PR #45)** —
+  Depende de: nada funcionalmente.
 
-- [ ] **D. Invitar amigos con enlace/código.** Código corto o enlace único por usuario
+- [x] **D. Invitar amigos con enlace/código.** Código corto o enlace único por usuario
   (decidir el formato — un token corto tipo el ya usado para `codigo_recuperacion_hash`
   es un precedente directo en este proyecto, reusar ese criterio de generarlo
   hasheado/de un solo uso o de vida larga, documentar cuál de los dos y por qué) que al
@@ -2721,10 +2734,10 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   simplemente su `id` numérico ni su `nombre_usuario` en texto plano si eso permite
   enumerar cuentas; decidir el mecanismo exacto (token aleatorio opaco guardado en una
   tabla/columna que lo resuelve al `usuario_id` real del lado del servidor) y
-  documentarlo. — asignada a: `rama-invitar-amigos` (commiteada, sin
-  probar contra la DB real — ver su sección en "Estado de ramas") — Depende de: sistema de amigos (ya existe).
+  documentarlo. — asignada a: `rama-invitar-amigos` — **✅ MERGEADA a main
+  como `rama-invitar-amigos-v2` (PR #47)** — Depende de: sistema de amigos (ya existe).
 
-- [ ] **E. Términos de servicio y política de privacidad + borrado de cuenta.** Página
+- [x] **E. Términos de servicio y política de privacidad + borrado de cuenta.** Página
   estática (decidir la ruta, ej. `/terminos` — documentar) explicando qué datos se
   guardan (cuenta, pendientes, mensajes, y si aplica la ubicación implícita en las
   notificaciones push — VAPID/push no comparte ubicación geográfica real, aclarar eso
@@ -2740,21 +2753,22 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   qué pasa con mensajes/pendientes que OTROS usuarios referencian de este usuario borrado
   (ej. un pendiente que este usuario tenía asignado por un amigo — decidir si se
   desasigna o si el pendiente se borra igual, documentar el criterio). — asignada a:
-  `rama-terminos-privacidad` (commiteada, probada de punta a punta contra la DB real
-  con dos cuentas descartables — ver su sección en "Estado de ramas") — Depende de: nada,
+  `rama-terminos-privacidad-v2` — **✅ MERGEADA a main vía PR #50 (2026-08-13)**,
+  probada de punta a punta contra la DB real con dos cuentas descartables (17
+  verificaciones post-borrado, ver "Historial de merges a main") — Depende de: nada,
   pero tocar esto con cuidado por ser destructivo de verdad.
 
-- [ ] **F. Búsqueda y filtros en pendientes/ideas.** Buscar por texto, filtrar por
+- [x] **F. Búsqueda y filtros en pendientes/ideas.** Buscar por texto, filtrar por
   categoría existente, y filtrar por estado (completado/pendiente). **Reusar el patrón de
   query ya existente en `GET /`** (que ya arma la consulta con `categoriaFiltro`/`q` de
   forma incremental) **en vez de duplicar la lógica** — extenderlo o extraerlo a un
   helper compartido si `/ideas` también lo necesita, decidir cuál de las dos y
-  documentarlo. — asignada a: `rama-busqueda-filtros` (commiteada, sin
-  probar contra la DB real — ver su sección en "Estado de ramas") — Depende de: nada
+  documentarlo. — asignada a: `rama-busqueda-filtros` — **✅ MERGEADA a
+  main como `rama-busqueda-filtros-v2` (PR #49)** — Depende de: nada
   (categorías y búsqueda en pendientes ya existen; esto es extender el filtro de
   estado y llevar el mismo patrón a `/ideas`).
 
-- [ ] **G. PWA instalable de verdad.** `manifest.json` ya existe — revisar si falta algo
+- [x] **G. PWA instalable de verdad.** `manifest.json` ya existe — revisar si falta algo
   (`start_url`, `display`, `theme_color` ya actualizado a la paleta Jungla/Monstera —
   confirmar que coincide con `#2D5A3D` usado en `partials/head.ejs`). Service worker
   (`public/sw.js`) ya existe y ya maneja `push`/`notificationclick` (tarea 4) — esta
@@ -2767,12 +2781,10 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   decisión). Validar el flujo real de "agregar a pantalla de inicio" en Android y iOS
   (Safari/iOS tiene su propio criterio de instalabilidad, distinto de Chrome/Android —
   probar ambos, no asumir que uno implica el otro). — asignada a:
-  `rama-pwa-instalable` (commiteada, sin probar en dispositivo real — ver
-  su sección en "Estado de ramas") — Depende
-  de: notificaciones push (tarea 4, ya mergeada — la dependencia ya está satisfecha,
-  comparten `public/sw.js`).
+  `rama-pwa-instalable` — **✅ MERGEADA a main como `rama-pwa-instalable-v2`**
+  — Depende de: notificaciones push (tarea 4, ya mergeada).
 
-- [ ] Rediseño de navegación mobile: reemplazar el menú de texto
+- [x] Rediseño de navegación mobile: reemplazar el menú de texto
   plano actual (12 ítems envueltos en 4 líneas: Captura rápida,
   Pendientes, Ideas, Recordatorios, Hechos, Estadísticas, Amigos, Mi
   planta, Chat general, Exportar, Ajustes, Cerrar sesión) por una
@@ -2796,13 +2808,13 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   Verificar con captura de pantalla real en mobile (no solo en
   navegador de escritorio) antes de dar la tarea por terminada.
   Motivado por revisión visual real de la pantalla de Captura rápida
-  (2026-08-13). — asignada a: `rama-nav-mobile-v2` (commiteada, ver su
-  sección en "Estado de ramas" — reconstruida sobre `origin/main`
-  actualizado porque la implementación original, en `rama-nav-mobile`,
-  partió de un main viejo y quedaría CONFLICTING contra
-  rama-asignacion-texto ya mergeada) — Depende de: nada.
+  (2026-08-13). — asignada a: `rama-nav-mobile-v2` — **✅ MERGEADA a main
+  vía PR #52 (2026-08-13)** (reconstruida sobre `origin/main` actualizado
+  porque la implementación original, en `rama-nav-mobile`, partió de un
+  main viejo y quedaría CONFLICTING contra rama-asignacion-texto ya
+  mergeada — ver "Historial de merges a main") — Depende de: nada.
 
-- [ ] Asignación de tareas por texto en captura rápida: detectar
+- [x] Asignación de tareas por texto en captura rápida: detectar
   dos patrones para asignar a un amigo (en vez de guardar como
   tarea propia): (a) "@nombre" en cualquier parte del texto, (b)
   frases naturales comunes: "recuérdale a [nombre]", "asígnale a
@@ -2815,7 +2827,9 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   de uno (ambigüedad), tratarla como tarea normal propia y avisar
   al usuario que no se pudo asignar. Reusa el sistema de
   asignación ya existente (mismo que usa la trazabilidad social)
-  — no crear una ruta paralela. — asignada a: sin asignar — Depende
+  — no crear una ruta paralela. — asignada a: `rama-asignacion-texto` —
+  **✅ MERGEADA a main vía PR #51 (2026-08-13)**, probada contra la DB real
+  (15 casos, ver "Historial de merges a main") — Depende
   de: sistema de asignación de tareas (ya existe).
 
 ## Cómo agregar un trabajador nuevo (para el usuario)

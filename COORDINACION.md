@@ -1955,6 +1955,136 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "Asigna tareas por texto en
   captura rápida (@nombre y frases naturales), con confirmación previa").
 
+### rama-nav-mobile (reconstruida como rama-nav-mobile-v2)
+- Estado: ✅ commiteada, lista para revisión (sin push/PR/merge — regla 8:
+  el hilo principal muestra el diff completo al usuario y espera su
+  "aprobado").
+- Tarea (backlog, ítem "Rediseño de navegación mobile"): reemplazar el menú
+  de texto plano actual (12 ítems en 4 líneas envueltas) por una barra de
+  navegación inferior fija en mobile con los 5-6 accesos más usados +
+  ícono, un menú desplegable "más" para el resto, e ícono para TODOS los
+  ítems (antes Pendientes/Ideas/Recordatorios/Hechos no tenían). Además en
+  `views/captura.ejs`: textarea con auto-resize y los 3 botones de tipo
+  (Pendiente/Idea/Recordatorio) en una sola fila de 3 columnas iguales.
+- **Por qué existe esta rama con otro nombre:** el trabajo original se hizo
+  en `rama-nav-mobile` (commits f2a6331/f6d6069/89ba69d, worktree en
+  `C:\Users\lenovo\Desktop\a-worktrees\rama-nav-mobile`, sin push — ver
+  regla 8 y el aviso de arriba sobre ramas locales no pusheadas) partiendo
+  de un `origin/main` que quedó viejo: mientras tanto se mergeó
+  `rama-asignacion-texto` (PR #51), que también toca `views/captura.ejs` y
+  `public/style.css` en zonas solapadas. Siguiendo la receta de
+  reconstrucción (ver arriba), se creó `rama-nav-mobile-v2` desde
+  `origin/main` ya actualizado (con `rama-terminos-privacidad-v2` y
+  `rama-asignacion-texto` incluidas) y se reaplicaron a mano los cambios de
+  la rama vieja.
+- **Qué NO tuvo conflicto real** (confirmado con diff antes de asumirlo,
+  como pide la receta): `views/partials/nav.ejs`, `views/partials/
+  icono.ejs` y `views/partials/scripts.ejs` — `rama-asignacion-texto` no
+  los tocó, así que se copió el contenido de la rama vieja casi directo
+  (nav.ejs pasa de un único `<nav>` de texto plano sin íconos en varios
+  ítems a los dos bloques `.nav-desktop`/`.nav-bottom` documentados abajo;
+  mismo cambio que ya estaba probado en la rama original). En
+  `public/style.css`, el bloque nuevo de `.nav-bottom`/`.nav-mas-menu` cae
+  cerca de `.login-main` (línea ~214) y `.aviso-asignacion` (agregado por
+  rama-asignacion-texto) vive en una zona totalmente distinta del archivo
+  (línea ~642) — sin solape.
+- **Qué SÍ tuvo conflicto real y cómo se resolvió:**
+  - `views/captura.ejs`: `main` actual ya trae el flujo de confirmación de
+    asignación de `rama-asignacion-texto` (`confirmarAsignacion`, el
+    `if/else` que envuelve el form, `textoPrefill` en el textarea, la
+    guardia `if (form)` en el script). Se aplicó ENCIMA de eso lo de
+    nav-mobile: `rows="1"` en vez de `rows="3"` en el textarea (conservando
+    `textoPrefill`), y el bloque de auto-resize JS (`autoResizeCaptura`).
+    La rama vieja de nav-mobile no conocía el flujo de confirmación (no
+    existía todavía cuando se escribió), así que su JS asumía que
+    `#captura-texto` siempre existe — se le agregó la guardia
+    `if (textareaCaptura) { ... }` (mismo patrón que ya usa el bloque de
+    abajo con `if (form)`, para cuando se está en la pantalla de
+    confirmación, que no tiene textarea).
+  - `public/style.css`: el textarea de captura (`.captura-form textarea`,
+    antes `resize: vertical`) y `.captura-tipos`/`.captura-tipo-btn` (antes
+    flex-wrap con `min-width:120px`, 2 botones arriba + 1 abajo en pantallas
+    angostas) se reemplazaron por las reglas de nav-mobile: `resize: none`
+    + `overflow-y: auto` + `max-height: 45vh` para el textarea (crece por
+    JS, no por asa manual), y `display: grid; grid-template-columns:
+    repeat(3, 1fr)` para que los 3 botones de tipo nunca envuelvan. No
+    chocó con nada de `rama-asignacion-texto` en esta zona del archivo.
+- **Decisión de arquitectura (nav.ejs, sin cambios respecto a la rama
+  vieja):** dos bloques `<nav>` alternados por CSS según ancho de pantalla
+  (`@media max-width: 720px`), nunca los dos visibles a la vez, en vez de
+  un solo `<nav>` reordenado con JS — más simple de razonar/mantener, a
+  costa de tener que agregar cualquier ruta nueva del menú en los dos
+  bloques (documentado como comentario en el propio `nav.ejs`).
+  - `.nav-desktop`: lista horizontal de siempre, con ícono agregado a los 5
+    ítems que no lo tenían (Pendientes, Ideas, Recordatorios, Hechos,
+    Cerrar sesión).
+  - `.nav-bottom` + `.nav-mas-menu`: barra inferior fija (mobile) con 5
+    accesos (Captura, Pendientes, Ideas, Recordatorios, Amigos — mismo
+    criterio documentado en la rama original: núcleo de uso diario, Amigos
+    como quinto por su doble función de gestión) + botón "Más" con el resto
+    en una hoja flotante.
+  - Toggle de tema: pasó de un único `id="toggle-tema"` a
+    `data-toggle-tema` + `querySelectorAll` en `scripts.ejs` (ahora hay dos
+    botones en el DOM, nunca los dos visibles a la vez, sincronizados).
+  - 2 íconos nuevos en `icono.ejs`: `mas` (tres puntos) y `salir`
+    (puerta+flecha, para "Cerrar sesión", que no tenía ícono propio).
+- Archivos tocados: `pendientes-web/views/partials/nav.ejs` (reescrito,
+  copiado casi directo de la rama vieja), `pendientes-web/views/partials/
+  icono.ejs` (+2 íconos, copiado directo), `pendientes-web/views/partials/
+  scripts.ejs` (toggle multi-botón + JS del menú "Más", copiado directo),
+  `pendientes-web/views/captura.ejs` (combinado a mano con el flujo de
+  confirmación de asignación), `pendientes-web/public/style.css`
+  (combinado a mano: bloque nuevo de nav-bottom/menú-más insertado sin
+  tocar `.aviso-asignacion`, más los ajustes de textarea/captura-tipos).
+  Ningún cambio en `server.js` (ni en esta rama ni en la reconstrucción).
+- **Qué se verificó en esta reconstrucción:**
+  - `npm install` en el worktree nuevo, `npm run ci` (sintaxis +
+    compilación de las 29 plantillas) OK.
+  - `ejs.renderFile` con datos simulados (sin DB) sobre `captura.ejs` en
+    las 4 combinaciones relevantes: flujo normal sin prefill (rows="1"
+    presente), flujo normal con `textoPrefill`, flujo con
+    `confirmarAsignacion` (confirma que NO se intenta acceder a
+    `#captura-texto`, que no existe en esa rama del template — la guardia
+    nueva funciona), y flujo con `avisoAsignacion`. También se renderizó
+    `index.ejs` completo (usa `partials/nav`, `partials/icono`) para
+    confirmar que el nav nuevo compila dentro de una vista real, con las
+    clases `nav-bottom`/`nav-mas-menu` presentes en el HTML resultante.
+  - **Contra el servidor real corriendo local (puerto 3212) y la DB real de
+    Railway**, con Playwright (Chromium headless, ya instalado en esta
+    máquina): 2 usuarios de prueba sembrados directo en la DB (no vía
+    `POST /registro`, para no gastar el límite de 5 registros exitosos/hora
+    por IP de `rama-limite-registro`, ya agotado por corridas previas de
+    esta misma prueba) con una amistad `aceptada` directo por SQL entre
+    ambos. Login real vía `POST /login`. Viewport mobile 375×812:
+    capturas de pantalla reales de (1) `/` con la barra inferior de 5
+    accesos + "Más" fija abajo, (2) el menú "Más" abierto con overlay,
+    (3) `/captura` vacío con el textarea en 1 línea y los 3 botones en
+    grid, (4) el mismo textarea después de escribir un párrafo largo,
+    mostrando que creció (bounding box: 50px → 155px de alto), (5) el
+    flujo de asignación por texto completo: se escribió
+    "avisar a @<amigo> sobre la reunion de manana", se envió como
+    Pendiente, apareció la pantalla de confirmación
+    (`.aviso-asignacion` presente, botón "Confirmar: asignar a @<amigo>")
+    coherente visualmente con el resto del rediseño (misma barra inferior,
+    mismo header), se confirmó, y (6) la pantalla de "Guardado." resultante.
+    Viewport desktop 1280×800: `.nav-desktop` visible con íconos en todos
+    los ítems, toggle de tema funcionando (`data-theme` pasa a `dark` al
+    click, capturado en pantalla). Se confirmó en la DB, tras el flujo
+    completo, que el pendiente quedó con `asignado_a` apuntando
+    correctamente al segundo usuario de prueba. Cero errores de consola o
+    `pageerror` durante todo el flujo. Usuarios de prueba, su amistad y el
+    pendiente de prueba borrados de la DB real al terminar (confirmado 0
+    filas restantes).
+  - `.env` sí estuvo disponible en esta reconstrucción (copiado del
+    worktree viejo `rama-nav-mobile`, que sí lo tenía, usando Read/Write en
+    vez de Bash porque este worktree también tiene bloqueado por permisos
+    cualquier comando Bash que contenga la cadena `.env` — mismo patrón que
+    documentó `rama-asignacion-texto` arriba).
+- Hueco/pendiente conocido: ninguno nuevo respecto a la rama original (ver
+  su nota sobre el breakpoint de 720px, no probado en dispositivo físico).
+- Commit: ver `git log` de esta rama (mensaje: "Reconstruye rama-nav-mobile
+  sobre main actualizado (rama-nav-mobile-v2)").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2650,7 +2780,11 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   Verificar con captura de pantalla real en mobile (no solo en
   navegador de escritorio) antes de dar la tarea por terminada.
   Motivado por revisión visual real de la pantalla de Captura rápida
-  (2026-08-13). — asignada a: sin asignar — Depende de: nada.
+  (2026-08-13). — asignada a: `rama-nav-mobile-v2` (commiteada, ver su
+  sección en "Estado de ramas" — reconstruida sobre `origin/main`
+  actualizado porque la implementación original, en `rama-nav-mobile`,
+  partió de un main viejo y quedaría CONFLICTING contra
+  rama-asignacion-texto ya mergeada) — Depende de: nada.
 
 - [ ] Asignación de tareas por texto en captura rápida: detectar
   dos patrones para asignar a un amigo (en vez de guardar como

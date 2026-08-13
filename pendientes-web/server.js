@@ -1058,8 +1058,10 @@ app.post('/suscribir', async (req, res) => {
   res.status(201).send('ok');
 });
 
-async function enviarPushATodos(payloadObjeto) {
-  const { rows } = await pool.query('SELECT id, endpoint, p256dh, auth FROM push_subscriptions');
+// rama-tema-jungla (limpieza): enviarPushATodos y enviarPushAUsuario solo
+// diferían en el WHERE de la consulta — el envío y la limpieza de
+// suscripciones muertas (404/410) eran idénticos, factorizados acá.
+async function enviarPushASubscripciones(rows, payloadObjeto) {
   const payload = JSON.stringify(payloadObjeto);
 
   const resultados = await Promise.allSettled(
@@ -1079,28 +1081,17 @@ async function enviarPushATodos(payloadObjeto) {
   return { enviadas, total: rows.length };
 }
 
+async function enviarPushATodos(payloadObjeto) {
+  const { rows } = await pool.query('SELECT id, endpoint, p256dh, auth FROM push_subscriptions');
+  return enviarPushASubscripciones(rows, payloadObjeto);
+}
+
 async function enviarPushAUsuario(usuarioId, payloadObjeto) {
   const { rows } = await pool.query(
     'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE usuario_id = $1',
     [usuarioId]
   );
-  const payload = JSON.stringify(payloadObjeto);
-
-  const resultados = await Promise.allSettled(
-    rows.map((s) =>
-      webpush
-        .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
-        .catch(async (err) => {
-          if (err.statusCode === 404 || err.statusCode === 410) {
-            await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [s.id]);
-          }
-          throw err;
-        })
-    )
-  );
-
-  const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
-  return { enviadas, total: rows.length };
+  return enviarPushASubscripciones(rows, payloadObjeto);
 }
 
 function payloadRecordatorio(texto) {

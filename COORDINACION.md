@@ -1300,6 +1300,47 @@
   elegir especie al registrarse la guarda, y que gastar/ganar moneda
   mueve la etapa como se espera.
 
+### rama-tema-jungla (limpieza)
+- Estado: commiteada.
+- Tarea: pasada de simplificación/optimización sobre todo lo agregado hoy
+  (rango `2c929e6..HEAD`, tareas 3/4/5/6/7/8/10-esqueleto + chat general),
+  escrito por agentes distintos que no se vieron entre sí — sin cambiar
+  comportamiento, código ya en producción vía PR #36.
+- Simplificado: `enviarPushATodos` y `enviarPushAUsuario` solo diferían en
+  el WHERE de la consulta — el envío + limpieza de suscripciones muertas
+  (404/410) era código idéntico duplicado. Factorizado en
+  `enviarPushASubscripciones(rows, payloadObjeto)`, llamado por ambas con
+  su propio SELECT. Firmas públicas y comportamiento sin cambios
+  (verificado: mismos call sites, mismo shape de retorno `{enviadas,
+  total}`).
+- Evaluado y dejado como estaba (a propósito, forzar la unificación
+  complicaba más de lo que simplificaba):
+  - El `<mask>` de fenestraciones de monstera en `partials/monstera.ejs`
+    vs. el de `partials/planta.ejs` (etapa adulta de la especie monstera):
+    son dos ilustraciones independientes en contextos distintos (marca fija
+    vs. tabla de 16 combinaciones especie×etapa) — compartir el `<mask>`
+    real exigiría anidar un partial dentro de otro con scoping de id
+    cruzado, más complejidad que las ~4 líneas que se ahorrarían.
+  - Los dos cron (`revisarYNotificarSiNoHayHechosHoy` vs.
+    `revisarYNotificarRecordatoriosPendientes`): estructura real distinta
+    (uno chequea un conteo y manda un broadcast condicional, el otro itera
+    N filas mandando push individual y actualizando cada una) — no hay
+    abstracción común limpia que valga la pena.
+  - Los `~9` queries secuenciales de `POST /pendientes/:id/completar`
+    cuando hay `asignado_a` (UPDATE + INSERT evento + 2×pagarMoneda de 3
+    queries cada uno + racha): parece mucho pero es una acción humana
+    infrecuente (completar UNA tarea), no un path caliente — no es un N+1
+    real, es una transacción con varios pasos. Priorizar claridad sobre
+    ahorrar un par de queries acá no vale la pena.
+- Sin bugs reales encontrados durante la revisión (solo la duplicación ya
+  descrita, que es prolijidad, no un bug).
+- Qué se verificó: `node --check server.js` limpio, confirmado que los 3
+  call sites de `enviarPushATodos`/`enviarPushAUsuario` no cambiaron
+  (mismos argumentos, mismo retorno desestructurado), grep de emoji sobre
+  todo el proyecto en cero. No se tocó ninguna vista en esta pasada, así
+  que los renders ya verificados en las secciones de arriba siguen
+  vigentes.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

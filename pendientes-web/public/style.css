@@ -918,7 +918,7 @@ tr.fila-saliendo {
   transform: scale(0.97);
 }
 
-.captura-cuando {
+.captura-cuando:not([hidden]) {
   display: flex;
   align-items: center;
   gap: 0.5rem;

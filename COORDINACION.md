@@ -2525,6 +2525,22 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   Motivado por revisión visual real de la pantalla de Captura rápida
   (2026-08-13). — asignada a: sin asignar — Depende de: nada.
 
+- [ ] Asignación de tareas por texto en captura rápida: detectar
+  dos patrones para asignar a un amigo (en vez de guardar como
+  tarea propia): (a) "@nombre" en cualquier parte del texto, (b)
+  frases naturales comunes: "recuérdale a [nombre]", "asígnale a
+  [nombre]", "para [nombre]". El nombre detectado se compara
+  contra la lista de amigos actuales del usuario (case-
+  insensitive). Si hay coincidencia exacta con un solo amigo,
+  mostrar "Se asignará a [nombre]" antes de guardar, con opción
+  de corregir o cancelar — nunca asignar sin mostrarlo primero.
+  Si el nombre no coincide con ningún amigo, o coincide con más
+  de uno (ambigüedad), tratarla como tarea normal propia y avisar
+  al usuario que no se pudo asignar. Reusa el sistema de
+  asignación ya existente (mismo que usa la trazabilidad social)
+  — no crear una ruta paralela. — asignada a: sin asignar — Depende
+  de: sistema de asignación de tareas (ya existe).
+
 ## Cómo agregar un trabajador nuevo (para el usuario)
 
 1. Escribe la tarea nueva en "Backlog de tareas" arriba (o pídele a cualquier sesión

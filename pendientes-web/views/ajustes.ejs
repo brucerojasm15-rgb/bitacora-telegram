@@ -12,6 +12,12 @@
       <p class="error"><%= error %></p>
     <% } else { %>
 
+      <% if (typeof alertaGastoIa !== 'undefined' && alertaGastoIa) { %>
+        <div class="aviso-asignacion">
+          <p>⚠️ Gasto de IA este mes: $<%= gastoIaEsteMes.toFixed(2) %> (umbral de aviso: $<%= umbralAlertaGastoIa.toFixed(2) %>) — revisá <code>ia_llamadas</code> si esperabas menos.</p>
+        </div>
+      <% } %>
+
       <% if (typeof guardado !== 'undefined' && guardado === 'nombre') { %>
         <p class="notificacion">Nombre de usuario actualizado.</p>
       <% } else if (typeof guardado !== 'undefined' && guardado === 'especie') { %>

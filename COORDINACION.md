@@ -2094,6 +2094,186 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "Reconstruye rama-nav-mobile
   sobre main actualizado (rama-nav-mobile-v2)").
 
+### rama-ia-companera-fase2
+- Estado: ✅ commiteada localmente, lista para revisión — **sin push, sin PR,
+  sin merge** (regla 8 de este mismo archivo; la sesión principal muestra el
+  diff completo al usuario y espera "aprobado" antes de pushear).
+- Tarea 9 del roadmap — IA compañera conversacional real, Fase 2. Implementé
+  `PLAN-tarea-9.md` (v2, en la raíz del worktree) tal cual estaba escrito:
+  **sin gating de premium** (cualquier usuario logueado entra directo a
+  `/ia/chat`), enfoque RAG (se arma el prompt con los datos reales del
+  usuario antes de llamar a la API), tabla `mensajes_ia`, tabla nueva
+  `perfil_ia` (perfil acumulado, se actualiza cada 15 mensajes nuevos del
+  usuario), `ia_llamadas` con columna `motivo` (`'chat'`/`'perfil'`), límite
+  de **40 mensajes/MES** (no por día), modelo `claude-haiku-4-5`.
+  Durante la sesión, el usuario agregó un requisito nuevo (alerta de gasto
+  mensual) que quedó documentado en una sección nueva del mismo
+  `PLAN-tarea-9.md` ("## Alerta de gasto mensual") — también implementado,
+  ver más abajo.
+- Cambios en `server.js`:
+  - `require('@anthropic-ai/sdk')` + cliente condicional `anthropicClient`
+    (mismo patrón que `googleOAuthClient`: sin `ANTHROPIC_API_KEY` en
+    `.env`, queda en `null` y las rutas responden 500 "no configurada" en
+    vez de fallar feo).
+  - Constantes `MODELO_IA_CHAT` (`'claude-haiku-4-5'`),
+    `LIMITE_MENSAJES_IA_POR_MES` (40), `UMBRAL_ACTUALIZAR_PERFIL` (15),
+    `PRECIO_IA_ENTRADA_POR_MTOK`/`PRECIO_IA_SALIDA_POR_MTOK`, y
+    `UMBRAL_ALERTA_GASTO_IA_USD` (20, agregada por el requisito nuevo).
+  - `ensureSchema()`: 3 sentencias nuevas — `mensajes_ia` (+ índice
+    `idx_mensajes_ia_usuario_fecha`), `perfil_ia` (`usuario_id` como PK, no
+    `id SERIAL` — relación 1:1, simplifica el upsert), `ia_llamadas` (+
+    columna `motivo` con `CHECK`). Ninguna columna nueva en `usuarios` (a
+    diferencia de la v1 descartada, que agregaba `es_premium`).
+  - Funciones nuevas: `calcularCostoIaUsd`, `contarMensajesIaEsteMes`,
+    `construirContextoIA` (RAG — trae pendientes activos, completados
+    recientes, ideas, recordatorios, hechos, reflexiones, observaciones de
+    `/ia` y el perfil acumulado si existe, todo en paralelo con
+    `Promise.all`, mismo patrón que `/exportar`/`/estadisticas`; más los
+    últimos ~10 turnos de `mensajes_ia` como historial),
+    `actualizarPerfilIaSiCorresponde` (dispara una actualización de perfil
+    cuando se cruzan 15 mensajes nuevos del usuario, con su propio
+    try/catch para no romper el chat si falla), `obtenerGastoIaEsteMes` y
+    `avisarSiGastoIaSuperaUmbral` (agregadas por el requisito nuevo —
+    `console.warn` si el gasto global del mes cruza $20, nunca bloquea).
+  - Rutas `GET/POST /ia/chat` (después de `POST /ia/usar-comodin`): `GET`
+    sin chequeo de premium, solo sesión; `POST` valida texto no vacío
+    (recorta a 2000 chars), cliente nulo → 500, límite mensual → redirect
+    `?error=limite_mensual` **antes** de guardar el mensaje o llamar a la
+    API, guarda el mensaje del usuario siempre (incluso si la llamada
+    falla después), llama a la API, guarda la respuesta + fila en
+    `ia_llamadas` (`motivo='chat'`), dispara
+    `actualizarPerfilIaSiCorresponde` en su propio try/catch, y en caso de
+    falla de la API guarda una fila de `ia_llamadas` con costo/tokens en 0
+    y `error` recortado a 500 chars, redirigiendo a
+    `?error=ia_no_disponible`.
+  - `GET /ajustes` (ya existente, tocada por el requisito nuevo): si
+    `req.session.nombre_usuario === 'bruce'` (mismo patrón ya usado para
+    restringir `POST /notificar-prueba` — no hay concepto de rol/admin en
+    el esquema), llama a `obtenerGastoIaEsteMes()` y pasa
+    `gastoIaEsteMes`/`alertaGastoIa`/`umbralAlertaGastoIa` a la vista; para
+    cualquier otro usuario no corre esa query extra.
+- Vistas: `views/ia-chat.ejs` (nueva — clon de `chat.ejs`, sin bloque de
+  premium ni indicadores de leído/visto, que no aplican acá; muestra
+  "Te quedan N de 40 mensajes este mes" y deshabilita el botón "Enviar" en
+  0 restantes), `views/ia.ejs` (la sección `ia-construccion`, que decía
+  "IA en construcción", ahora tiene arriba un botón "Hablar con
+  {nombreIa}" → `/ia/chat`; **decisión mía, no explícita en el plan**: en
+  vez de reemplazar la sección entera como decía el texto literal del
+  plan, mantuve la lista de `observaciones` de la Fase 1 debajo con un
+  título distinto ("Lo que notamos de tus datos") — me pareció mejor no
+  descartar esa función existente sin que el plan lo pidiera
+  explícitamente; la sesión principal puede revisar si prefiere quitarla),
+  `views/ajustes.ejs` (banner condicional `.aviso-asignacion`/`--warning`
+  ya existente en el proyecto, reusado sin tocar `style.css`, visible solo
+  si `alertaGastoIa`).
+- Textos de error elegidos en la vista (decisión mía, el plan solo daba el
+  ejemplo del límite mensual): `?error=limite_mensual` → "Alcanzaste el
+  límite de 40 mensajes este mes — volvé a hablar el mes que viene." (texto
+  exacto del plan); `?error=ia_no_disponible` → "No se pudo conseguir una
+  respuesta ahora mismo. Probá de nuevo en un rato." (no especificado en el
+  plan, elegido con el mismo tono informal del resto de la app).
+- **Decisión propia sin cobertura exacta del plan**: las excepciones
+  tipadas del SDK que menciona el plan (`Anthropic.RateLimitError`,
+  `Anthropic.APIConnectionError`, `Anthropic.APIStatusError`) — verifiqué
+  que la versión instalada del SDK (`@anthropic-ai/sdk@0.32.1`) no exporta
+  `APIStatusError` (sí exporta `APIError` como clase base de la que
+  heredan `AuthenticationError`, `RateLimitError`, etc., más
+  `APIConnectionError` aparte). El plan no pedía manejo diferenciado por
+  tipo de error (todas las fallas de la llamada de chat se tratan igual:
+  `ia_llamadas` con costo 0 + `error`, redirect a `ia_no_disponible`), así
+  que dejé un único `catch` genérico sin `instanceof` por tipo — se
+  comporta igual para cualquier subclase de error del SDK. Marcado acá
+  para que la sesión principal lo revise si quería un manejo distinto por
+  tipo de error.
+- **`ANTHROPIC_API_KEY` NO estaba disponible en esta sesión** — el `.env`
+  copiado (idéntico al de `C:\Users\lenovo\Desktop\a\pendientes-web\.env`,
+  no hizo falta copiarlo de nuevo, ya estaba igual) no tiene esa variable,
+  y no se agregó ninguna clave real ni de prueba al archivo. Esto bloqueó
+  una parte real de lo pedido: **no pude probar una conversación real de
+  punta a punta** (ni que la IA mencione pendientes/ideas reales sin
+  inventar nada, ni el disparador del perfil acumulado con 15 mensajes
+  reales, ni confirmar que el resumen del perfil aparece en el `system`
+  armado de un mensaje 16). Documentado con honestidad total, no simulado.
+- Qué SÍ se verificó, con honestidad total sobre las limitaciones:
+  - `node --check server.js` y `npm run ci` (30 archivos, incluida
+    `views/ia-chat.ejs` nueva) sin errores.
+  - **Esquema real contra la DB de Railway**: las 3 tablas nuevas
+    (`mensajes_ia`, `perfil_ia`, `ia_llamadas`) se crearon con las columnas,
+    tipos, el índice y los 2 `CHECK` constraints exactos que pedía el plan
+    (verificado consultando `information_schema.columns`/`pg_indexes`/
+    `pg_constraint` directamente).
+  - **Acceso sin gating**: con un usuario de prueba recién registrado (sin
+    ninguna bandera especial), `GET /ia/chat` → 200 directo, sin
+    redirección ni bloqueo. `GET /ia` muestra el botón "Hablar con
+    {nombreIa}" → `/ia/chat` para cualquier usuario, y ya no aparece el
+    texto "IA en construcción".
+  - **Sin `ANTHROPIC_API_KEY`**: `POST /ia/chat` → 500 exacto "IA
+    conversacional no configurada (falta ANTHROPIC_API_KEY)." sin crashear
+    el servidor (el proceso siguió respondiendo a otras rutas después).
+  - **Límite mensual**: insertando 40 mensajes `rol='usuario'` de prueba
+    directo en la DB para un usuario de prueba, `GET /ia/chat` mostró "Te
+    quedan 0 de 40 mensajes este mes." y el botón "Enviar" quedó
+    `disabled`. Para probar el `redirect` real de la ruta (que necesita
+    `anthropicClient` no nulo para llegar al chequeo de límite, ya que el
+    chequeo de cliente configurado va primero), arranqué una instancia
+    aparte del servidor con una `ANTHROPIC_API_KEY` **inventada/inválida**
+    (nunca guardada en `.env`, solo pasada como variable de entorno de esa
+    corrida) — con el usuario en 40/40, `POST /ia/chat` respondió 302 a
+    `/ia/chat?error=limite_mensual` **sin** intentar ninguna llamada real
+    (confirmé que no se agregó ninguna fila nueva a `mensajes_ia` ni
+    `ia_llamadas` para ese usuario tras el intento).
+  - **Manejo de falla de la API real** (con la misma key inventada, un
+    usuario de prueba nuevo con 0 mensajes este mes): `POST /ia/chat`
+    disparó una llamada real a `api.anthropic.com`, que devolvió
+    `401 authentication_error` (clave inválida, como se esperaba) — la
+    ruta lo capturó, guardó el mensaje del usuario en `mensajes_ia` de
+    todas formas (confirmado por consulta directa), insertó una fila en
+    `ia_llamadas` con `motivo='chat'`, tokens/costo en 0, `latencia_ms`
+    real, y `error` con el mensaje real del 401, y redirigió a
+    `/ia/chat?error=ia_no_disponible`. Esto confirma que la forma del
+    request (modelo, `system`, `messages`) llega al endpoint real de
+    Anthropic sin errores de formato antes de fallar por autenticación.
+  - **Alerta de gasto mensual**: insertando manualmente 2 filas en
+    `ia_llamadas` con `costo_usd` sumando $21.50 (por encima del umbral de
+    $20) para el mes actual, `obtenerGastoIaEsteMes()` devolvió 21.5
+    correctamente (consultado directo). No pude loguear con certeza el
+    `console.warn` disparado desde una request real con costo real (para
+    eso hacía falta una llamada exitosa, que requiere la key real) — sí
+    verifiqué que la función se llama en el lugar correcto (después de
+    cada `INSERT` exitoso en `ia_llamadas`, tanto en el flujo de chat como
+    en el de perfil) por revisión de código, y que el cálculo SQL agregado
+    (`SUM(costo_usd)` del mes calendario `America/Lima`) es correcto contra
+    datos reales insertados a mano.
+  - **Disparador del perfil acumulado**: **NO pude probarlo de punta a
+    punta** (requiere 15 mensajes reales ida y vuelta con la IA, que
+    requiere la key real). Verifiqué por revisión de código que el
+    contador compara mensajes `rol='usuario'` totales contra
+    `perfil_ia.mensajes_en_resumen` (tratando "sin fila" como 0), y que el
+    umbral de 15 está bien aplicado — pero no hay prueba end-to-end de que
+    el resumen generado por la IA quede guardado ni de que aparezca en el
+    `system` de un mensaje posterior. Pendiente para quien tenga acceso a
+    la key real.
+  - Limpieza completa: los 3 usuarios de prueba
+    (`test_ia9_tmp`/`test_ia9_tmp2`/`test_ia9_tmp3`), sus filas en
+    `mensajes_ia`/`ia_llamadas`/`perfil_ia`, y los scripts de prueba
+    temporales (`_test_ia9_*.js`, `_verificar_schema_tmp.js`) fueron
+    borrados antes de commitear. Confirmado 0 filas restantes y 0
+    mensajes/llamadas huérfanos.
+- **Costo real observado**: no hay datos de costo real de una llamada
+  exitosa (sin key real, todas las llamadas de prueba fallaron con 401
+  antes de generar tokens/costo). La sección "Costo estimado" de
+  `PLAN-tarea-9.md` sigue siendo una estimación de diseño, no recalculada
+  con datos reales — pendiente para cuando alguien con la key real corra
+  un piloto corto.
+- Archivos tocados: `pendientes-web/server.js`,
+  `pendientes-web/.env.example`, `pendientes-web/views/ia-chat.ejs`
+  (nuevo), `pendientes-web/views/ia.ejs`, `pendientes-web/views/ajustes.ejs`.
+  `pendientes-web/package.json`/`package-lock.json` ya traían
+  `@anthropic-ai/sdk` de un intento anterior (mencionado en las
+  instrucciones de esta sesión), no se reinstaló nada nuevo. No se tocó
+  `views/partials/nav.ejs`, `public/style.css`, `views/chat.ejs` ni
+  `views/chat-general.ejs`.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2842,26 +3022,44 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   `rama-ia-companera-fase1` (commiteada, sin probar contra la DB real —
   ver su sección en "Estado de ramas") — Depende de: tarea 7.
 
-- [ ] **9. [BLOQUEADA — no despachar todavía] IA compañera conversacional
-  real — Fase 2.** Integrar la API de Claude para que la planta hable de
-  verdad con el usuario. Depende de que exista un modelo de ingresos activo
-  (ej. suscripción/premium) — **el dueño del proyecto no lo ha definido
-  todavía, así que esta tarea no se asigna a ninguna rama hasta que exista
-  esa decisión de negocio.** Cuando se desbloquee: hay costo real por uso,
-  definir antes de lanzar un límite de mensajes por usuario/día y si el
-  acceso es exclusivo de usuarios con suscripción activa. La API key de
-  Claude es secreta: va en `.env`, nunca hardcodeada ni comiteada.
-  Documentar en esta misma sección de `COORDINACION.md` el costo estimado
-  por usuario activo (mensajes/día × precio por token, con la referencia de
-  precios vigente en ese momento) **para aprobación explícita del dueño del
-  proyecto antes de lanzar** — no desplegar solo con la aprobación de la
-  sesión que la construya. — asignada a: sin asignar, NO tomar hasta nuevo
-  aviso — Depende de: decisión de negocio externa (modelo de ingresos), no
-  de otra tarea de este backlog.
+- [x] **9. [YA NO BLOQUEADA — desbloqueada 2026-08-13, ver más abajo] IA
+  compañera conversacional real — Fase 2.** Integrar la API de Claude para
+  que la planta hable de verdad con el usuario. Depende de que exista un
+  modelo de ingresos activo (ej. suscripción/premium) — **el dueño del
+  proyecto no lo ha definido todavía, así que esta tarea no se asigna a
+  ninguna rama hasta que exista esa decisión de negocio.** Cuando se
+  desbloquee: hay costo real por uso, definir antes de lanzar un límite de
+  mensajes por usuario/día y si el acceso es exclusivo de usuarios con
+  suscripción activa. La API key de Claude es secreta: va en `.env`, nunca
+  hardcodeada ni comiteada. Documentar en esta misma sección de
+  `COORDINACION.md` el costo estimado por usuario activo (mensajes/día ×
+  precio por token, con la referencia de precios vigente en ese momento)
+  **para aprobación explícita del dueño del proyecto antes de lanzar** — no
+  desplegar solo con la aprobación de la sesión que la construya. — Depende
+  de: decisión de negocio externa (modelo de ingresos), no de otra tarea de
+  este backlog.
 
-  **Enfoque técnico definido (2026-08-13), sigue BLOQUEADA — esto documenta el
-  CÓMO para cuando se decida el CUÁNDO/CON QUÉ SE PAGA, no autoriza a empezar
-  a construir:**
+  **[Actualización 2026-08-13] Decisión final del dueño del proyecto, en el
+  mismo día:** en vez de suscripción/premium, **la conversación con la IA es
+  gratis para todos los usuarios**, con un tope de seguridad de 40
+  mensajes/usuario/MES (no diario) — no para cobrar, solo para no gastar
+  sin control. Esto reemplaza por completo la sección "Enfoque técnico
+  definido" de abajo (que quedaba pensada para el modelo de suscripción, con
+  40/día en vez de 40/mes y gating de `es_premium`) — ese diseño **NO** se
+  implementó, se descartó antes de escribir código. El diseño final v2
+  (con la pieza nueva de perfil acumulado que no estaba en el enfoque de
+  abajo) está documentado completo en `PLAN-tarea-9.md` del worktree
+  correspondiente. — **asignada a: `rama-ia-companera-fase2`
+  (commiteada localmente, sin push/PR — ver su sección completa en "Estado
+  de ramas" más arriba, incluida la limitación real: no había
+  `ANTHROPIC_API_KEY` disponible en esa sesión, así que la conversación real
+  de punta a punta y el disparador del perfil acumulado no se probaron
+  end-to-end).**
+
+  **Enfoque técnico definido (2026-08-13) — histórico, pensado para el
+  modelo de suscripción/premium descartado, NO es lo que se implementó
+  (ver la actualización de arriba y `PLAN-tarea-9.md` para el diseño real
+  v2):**
 
   **RAG, no chatbot genérico.** La IA compañera no debe responder de memoria
   genérica ni inventar contexto — debe consultar los datos reales del usuario

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Hablar con ' + nombreIa }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'chat' }) %> Hablar con <%= nombreIa %></h1>
+
+    <% if (error === 'limite_mensual') { %>
+      <p class="error">Alcanzaste el límite de 40 mensajes este mes — volvé a hablar el mes que viene.</p>
+    <% } else if (error === 'ia_no_disponible') { %>
+      <p class="error">No se pudo conseguir una respuesta ahora mismo. Probá de nuevo en un rato.</p>
+    <% } else if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } %>
+
+    <% if (mensajes.length === 0) { %>
+      <p class="empty">Todavía no hablaste con <%= nombreIa %>. Escribile algo para empezar.</p>
+    <% } else { %>
+      <ul class="chat-mensajes">
+        <% mensajes.forEach((m) => {
+          const esMio = m.rol === 'usuario';
+        %>
+          <li class="<%= esMio ? 'mensaje-propio' : 'mensaje-otro' %>">
+            <% if (!esMio) { %><span class="autor"><%= nombreIa %></span><% } %>
+            <span class="texto"><%= m.texto %></span>
+            <span class="fecha">
+              <%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %>
+            </span>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+
+    <p class="ia-progreso-texto">Te quedan <%= restantesEsteMes %> de <%= limiteMensual %> mensajes este mes.</p>
+
+    <form method="POST" action="/ia/chat" class="nuevo">
+      <input type="text" name="texto" placeholder="Escribí un mensaje..." maxlength="2000" required>
+      <button type="submit" <%= restantesEsteMes <= 0 ? 'disabled' : '' %>>Enviar</button>
+    </form>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

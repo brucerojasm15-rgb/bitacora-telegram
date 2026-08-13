@@ -8,6 +8,7 @@ const { Pool } = require('pg');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const { google } = require('googleapis');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,14 @@ const googleOAuthClient =
         process.env.GOOGLE_REDIRECT_URI
       )
     : null;
+
+// rama-ia-companera-fase2 (tarea 9 del roadmap, ver COORDINACION.md): mismo
+// patrón que googleOAuthClient arriba — sin ANTHROPIC_API_KEY en .env,
+// anthropicClient queda en null y las rutas /ia/chat devuelven 500
+// "no configurada" en vez de fallar feo.
+const anthropicClient = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
 
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
@@ -762,6 +771,53 @@ async function ensureSchema() {
       UNIQUE (usuario_id, fecha)
     )
   `);
+  // rama-ia-companera-fase2 (tarea 9 del roadmap): decisiones documentadas
+  // en COORDINACION.md. mensajes_ia es una tabla propia (no reusar
+  // mensajes/mensajes_generales, que exigen amistad_id o un autor_id real
+  // en usuarios — la IA no es una fila de usuarios).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mensajes_ia (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      rol TEXT NOT NULL CHECK (rol IN ('usuario', 'ia')),
+      texto TEXT NOT NULL,
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_mensajes_ia_usuario_fecha ON mensajes_ia (usuario_id, fecha)
+  `);
+  // perfil_ia: perfil acumulado, una fila por usuario (usuario_id como PK,
+  // no id SERIAL — relación 1:1, simplifica el upsert). resumen arranca
+  // vacío ('') hasta que se cruce UMBRAL_ACTUALIZAR_PERFIL mensajes nuevos
+  // del usuario (ver actualizarPerfilIaSiCorresponde más abajo).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS perfil_ia (
+      usuario_id INT PRIMARY KEY REFERENCES usuarios(id),
+      resumen TEXT NOT NULL DEFAULT '',
+      mensajes_en_resumen INT NOT NULL DEFAULT 0,
+      actualizado TIMESTAMP DEFAULT now()
+    )
+  `);
+  // ia_llamadas: instrumentación de costo/latencia desde el día 1 (ya no
+  // hay suscripción que compense el gasto, así que esto es lo que permite
+  // vigilar el gasto total real). motivo distingue llamadas de chat de
+  // las de actualización de perfil, mismo criterio de nomenclatura que
+  // moneda_transacciones.origen.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ia_llamadas (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      modelo TEXT NOT NULL,
+      motivo TEXT NOT NULL CHECK (motivo IN ('chat', 'perfil')),
+      tokens_entrada INT NOT NULL DEFAULT 0,
+      tokens_salida INT NOT NULL DEFAULT 0,
+      costo_usd NUMERIC(10,6) NOT NULL DEFAULT 0,
+      latencia_ms INT NOT NULL,
+      error TEXT,
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -1006,6 +1062,32 @@ const IA_COSTO_TEMA_EXTRA = 60;
 const IA_SKINS_DISPONIBLES = ['clasico', 'alegre', 'zen', 'nocturno'];
 const IA_TEMAS_EXTRA_DISPONIBLES = ['atardecer', 'lluvia'];
 
+// rama-ia-companera-fase2 (tarea 9 del roadmap): IA conversacional real —
+// decisiones documentadas en COORDINACION.md. Gratis para todos los
+// usuarios logueados (sin gating de premium); 40 mensajes/usuario/MES
+// (no por día, dentro del rango 30-50 pedido) es el tope de seguridad de
+// gasto, no una restricción de negocio. Haiku 4.5 por ser el modelo más
+// barato, coherente con que el acceso es gratis.
+const MODELO_IA_CHAT = 'claude-haiku-4-5';
+const LIMITE_MENSAJES_IA_POR_MES = 40;
+// Cada 15 mensajes nuevos del usuario se dispara una actualización del
+// perfil acumulado (ver actualizarPerfilIaSiCorresponde) — con el tope de
+// 40/mes, un usuario que agota el límite dispara ~2-3 actualizaciones al
+// mes, suficiente para no quedar desactualizado sin ser una llamada extra
+// por cada mensaje.
+const UMBRAL_ACTUALIZAR_PERFIL = 15;
+// Precios de Haiku 4.5 (USD por millón de tokens) — usados tanto para las
+// llamadas de chat como las de actualización de perfil.
+const PRECIO_IA_ENTRADA_POR_MTOK = 1.0;
+const PRECIO_IA_SALIDA_POR_MTOK = 5.0;
+// Alerta de gasto mensual (agregada 2026-08-13, pedido explícito del
+// usuario, ver PLAN-tarea-9.md): puramente informativa, nunca bloquea el
+// servicio. $20 elegido en el extremo superior del rango $15-20 pedido —
+// incluso 50 usuarios agotando el límite mensual todos los meses da
+// ~$6/mes (ver tabla de costo estimado en COORDINACION.md), así que cruzar
+// $20 señala algo fuera de lo esperado, no crecimiento orgánico normal.
+const UMBRAL_ALERTA_GASTO_IA_USD = 20;
+
 function etapaPorMoneda(totalDeVida) {
   let indice = 0;
   for (let i = IA_UMBRAL_ETAPA.length - 1; i >= 0; i--) {
@@ -1077,6 +1159,204 @@ async function observacionesIA(usuarioId) {
 
   observaciones.push(`Completaste ${completados.rows.length} pendiente(s) en total desde que empezaste.`);
   return observaciones;
+}
+
+// rama-ia-companera-fase2 (tarea 9 del roadmap): IA conversacional real —
+// decisiones documentadas en COORDINACION.md.
+
+function calcularCostoIaUsd(usage) {
+  return (usage.input_tokens / 1e6) * PRECIO_IA_ENTRADA_POR_MTOK
+       + (usage.output_tokens / 1e6) * PRECIO_IA_SALIDA_POR_MTOK;
+}
+
+// Reseteo por MES calendario America/Lima (no por día — decisión v2, ver
+// COORDINACION.md). Solo cuenta mensajes rol='usuario' (no las respuestas
+// de la IA).
+async function contarMensajesIaEsteMes(usuarioId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS cantidad FROM mensajes_ia
+     WHERE usuario_id = $1 AND rol = 'usuario'
+       AND date_trunc('month', fecha AT TIME ZONE 'America/Lima')
+         = date_trunc('month', now() AT TIME ZONE 'America/Lima')`,
+    [usuarioId]
+  );
+  return rows[0].cantidad;
+}
+
+// Alerta de gasto mensual (agregada 2026-08-13, ver UMBRAL_ALERTA_GASTO_IA_USD
+// y COORDINACION.md): total global (sin usuario_id) de costo_usd en
+// ia_llamadas del mes calendario America/Lima actual, sumando chat + perfil
+// de todos los usuarios. Nunca bloquea el servicio — es puramente informativa.
+async function obtenerGastoIaEsteMes() {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(costo_usd), 0)::numeric AS total FROM ia_llamadas
+     WHERE date_trunc('month', fecha AT TIME ZONE 'America/Lima')
+       = date_trunc('month', now() AT TIME ZONE 'America/Lima')`
+  );
+  return Number(rows[0].total);
+}
+
+// Se llama después de cada INSERT exitoso en ia_llamadas (chat o perfil).
+// Se chequea en cada request que agrega costo, sin deduplicar — es una
+// sola query de agregación barata, y en una app de este tamaño no genera
+// spam de log real (ver COORDINACION.md).
+async function avisarSiGastoIaSuperaUmbral() {
+  const total = await obtenerGastoIaEsteMes();
+  if (total >= UMBRAL_ALERTA_GASTO_IA_USD) {
+    console.warn(
+      `⚠️ Gasto de IA este mes: $${total.toFixed(2)} (umbral de aviso: $${UMBRAL_ALERTA_GASTO_IA_USD.toFixed(2)})`
+    );
+  }
+}
+
+// RAG: recupera del Postgres existente lo que el usuario realmente escribió
+// (mismas tablas/patrón que /exportar y /estadisticas, Promise.all en
+// paralelo) y arma el prompt con eso como contexto explícito, más la
+// sección de perfil acumulado si existe. Historial de conversación: últimos
+// ~10 turnos (20 mensajes usuario+ia intercalados) de mensajes_ia.
+async function construirContextoIA(usuarioId) {
+  const [pendientes, completados, ideas, recordatorios, hechos, reflexiones, perfil, historialRows] = await Promise.all([
+    pool.query(
+      'SELECT texto, categoria FROM pendientes WHERE usuario_id = $1 AND hecho = FALSE AND eliminado = FALSE ORDER BY creado DESC LIMIT 20',
+      [usuarioId]
+    ),
+    pool.query(
+      'SELECT texto FROM pendientes WHERE usuario_id = $1 AND hecho = TRUE AND eliminado = FALSE ORDER BY creado DESC LIMIT 10',
+      [usuarioId]
+    ),
+    pool.query('SELECT idea FROM ideas WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 10', [usuarioId]),
+    pool.query('SELECT texto FROM recordatorios WHERE usuario_id = $1 ORDER BY cuando DESC LIMIT 10', [usuarioId]),
+    pool.query('SELECT texto FROM hechos WHERE usuario_id = $1 ORDER BY cuando DESC LIMIT 10', [usuarioId]),
+    pool.query(
+      'SELECT pregunta, respuesta FROM reflexiones WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 5',
+      [usuarioId]
+    ),
+    pool.query('SELECT resumen FROM perfil_ia WHERE usuario_id = $1', [usuarioId]),
+    pool.query(
+      'SELECT rol, texto FROM mensajes_ia WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 20',
+      [usuarioId]
+    ),
+  ]);
+  const observaciones = await observacionesIA(usuarioId);
+
+  const lineas = [];
+  lineas.push(
+    'Sos la IA compañera de un usuario en una app de organización personal ' +
+    '(pendientes, ideas, recordatorios, hechos, reflexiones). Respondé en ' +
+    'español, con un tono cercano e informal ("vos"), y basate SOLO en los ' +
+    'datos reales listados abajo — nunca inventes pendientes, ideas ni ' +
+    'hechos que no estén ahí.'
+  );
+
+  const resumenPerfil = perfil.rows[0] && perfil.rows[0].resumen ? perfil.rows[0].resumen.trim() : '';
+  if (resumenPerfil) {
+    lineas.push('\n## Lo que ya sabemos de vos\n' + resumenPerfil);
+  }
+
+  lineas.push('\n## Pendientes activos');
+  lineas.push(
+    pendientes.rows.length
+      ? pendientes.rows.map((p) => `- ${p.texto}${p.categoria ? ` [${p.categoria}]` : ''}`).join('\n')
+      : '(sin pendientes activos)'
+  );
+
+  lineas.push('\n## Completados recientes');
+  lineas.push(completados.rows.length ? completados.rows.map((p) => `- ${p.texto}`).join('\n') : '(sin completados recientes)');
+
+  lineas.push('\n## Ideas');
+  lineas.push(ideas.rows.length ? ideas.rows.map((i) => `- ${i.idea}`).join('\n') : '(sin ideas anotadas)');
+
+  lineas.push('\n## Recordatorios');
+  lineas.push(recordatorios.rows.length ? recordatorios.rows.map((r) => `- ${r.texto}`).join('\n') : '(sin recordatorios)');
+
+  lineas.push('\n## Hechos');
+  lineas.push(hechos.rows.length ? hechos.rows.map((h) => `- ${h.texto}`).join('\n') : '(sin hechos registrados)');
+
+  lineas.push('\n## Reflexiones');
+  lineas.push(
+    reflexiones.rows.length
+      ? reflexiones.rows.map((r) => `- ${r.pregunta}: ${r.respuesta}`).join('\n')
+      : '(sin reflexiones)'
+  );
+
+  lineas.push('\n## Observaciones');
+  lineas.push(observaciones.map((o) => `- ${o}`).join('\n'));
+
+  const historial = historialRows.rows.slice().reverse();
+
+  return { system: lineas.join('\n'), historial };
+}
+
+// Disparador: contador de mensajes nuevos, no cron (ver COORDINACION.md
+// para el razonamiento). No debe romper el chat normal si falla — el call
+// site la envuelve en su propio try/catch.
+async function actualizarPerfilIaSiCorresponde(usuarioId) {
+  const { rows: totalRows } = await pool.query(
+    "SELECT COUNT(*)::int AS total FROM mensajes_ia WHERE usuario_id = $1 AND rol = 'usuario'",
+    [usuarioId]
+  );
+  const totalMensajes = totalRows[0].total;
+
+  const { rows: perfilRows } = await pool.query(
+    'SELECT mensajes_en_resumen FROM perfil_ia WHERE usuario_id = $1',
+    [usuarioId]
+  );
+  const mensajesEnResumen = perfilRows[0] ? perfilRows[0].mensajes_en_resumen : 0;
+
+  if (totalMensajes - mensajesEnResumen < UMBRAL_ACTUALIZAR_PERFIL) {
+    return;
+  }
+
+  const { rows: recientes } = await pool.query(
+    'SELECT rol, texto FROM mensajes_ia WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 30',
+    [usuarioId]
+  );
+  const conversacion = recientes
+    .slice()
+    .reverse()
+    .map((m) => `${m.rol === 'usuario' ? 'Usuario' : 'IA'}: ${m.texto}`)
+    .join('\n');
+
+  const systemResumen =
+    'Resumí en 2-3 oraciones los patrones de comportamiento que notás en esta conversación — hábitos, horarios, temas recurrentes. Sé concreto y breve, en español.';
+
+  const inicio = Date.now();
+  try {
+    const response = await anthropicClient.messages.create({
+      model: MODELO_IA_CHAT,
+      max_tokens: 200,
+      system: systemResumen,
+      messages: [{ role: 'user', content: conversacion }],
+    });
+    const latenciaMs = Date.now() - inicio;
+    const resumen = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join(' ')
+      .trim();
+    const costo = calcularCostoIaUsd(response.usage);
+
+    await pool.query(
+      `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms)
+       VALUES ($1, $2, 'perfil', $3, $4, $5, $6)`,
+      [usuarioId, MODELO_IA_CHAT, response.usage.input_tokens, response.usage.output_tokens, costo, latenciaMs]
+    );
+    await avisarSiGastoIaSuperaUmbral();
+    await pool.query(
+      `INSERT INTO perfil_ia (usuario_id, resumen, mensajes_en_resumen)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (usuario_id) DO UPDATE SET resumen = $2, mensajes_en_resumen = $3, actualizado = now()`,
+      [usuarioId, resumen, totalMensajes]
+    );
+  } catch (err) {
+    const latenciaMs = Date.now() - inicio;
+    console.error('Error actualizando perfil_ia:', err.message);
+    await pool.query(
+      `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms, error)
+       VALUES ($1, $2, 'perfil', 0, 0, 0, $3, $4)`,
+      [usuarioId, MODELO_IA_CHAT, latenciaMs, String((err && err.message) || err).slice(0, 500)]
+    );
+  }
 }
 
 app.post('/pendientes/:id/completar', async (req, res) => {
@@ -2277,6 +2557,129 @@ app.post('/ia/usar-comodin', async (req, res) => {
   res.redirect('/ia');
 });
 
+// rama-ia-companera-fase2 (tarea 9 del roadmap): IA conversacional real —
+// sin gating de premium, solo requiere sesión (ya garantizado por el
+// middleware global). Decisiones documentadas en COORDINACION.md.
+app.get('/ia/chat', async (req, res) => {
+  try {
+    const [{ rows: mensajes }, mensajesEsteMes, { rows: usuarioRows }] = await Promise.all([
+      pool.query(
+        'SELECT id, rol, texto, fecha FROM mensajes_ia WHERE usuario_id = $1 ORDER BY fecha ASC LIMIT 200',
+        [req.usuarioId]
+      ),
+      contarMensajesIaEsteMes(req.usuarioId),
+      pool.query('SELECT ia_nombre, ia_especie FROM usuarios WHERE id = $1', [req.usuarioId]),
+    ]);
+    const usuario = usuarioRows[0];
+    const nombreIa = (usuario && (usuario.ia_nombre || usuario.ia_especie)) || 'tu planta';
+    res.render('ia-chat', {
+      mensajes,
+      nombreIa,
+      restantesEsteMes: Math.max(0, LIMITE_MENSAJES_IA_POR_MES - mensajesEsteMes),
+      limiteMensual: LIMITE_MENSAJES_IA_POR_MES,
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    console.error('Error consultando el chat con la IA:', err.message);
+    res.status(500).render('ia-chat', {
+      mensajes: [],
+      nombreIa: 'tu planta',
+      restantesEsteMes: 0,
+      limiteMensual: LIMITE_MENSAJES_IA_POR_MES,
+      error: 'No se pudo cargar el chat.',
+    });
+  }
+});
+
+app.post('/ia/chat', async (req, res) => {
+  const texto = (req.body.texto || '').trim().slice(0, 2000);
+  if (!texto) {
+    return res.status(400).send('El mensaje no puede estar vacío.');
+  }
+  // Cliente condicional — mismo patrón que googleOAuthClient (server.js:32-39).
+  if (!anthropicClient) {
+    return res.status(500).send('IA conversacional no configurada (falta ANTHROPIC_API_KEY).');
+  }
+  try {
+    // Límite mensual: se chequea ANTES de llamar a la API y ANTES de
+    // guardar el mensaje del usuario (si no, el propio mensaje bloqueado
+    // se contaría la próxima vez).
+    const mensajesEsteMes = await contarMensajesIaEsteMes(req.usuarioId);
+    if (mensajesEsteMes >= LIMITE_MENSAJES_IA_POR_MES) {
+      return res.redirect('/ia/chat?error=limite_mensual');
+    }
+
+    // El mensaje del usuario se guarda SIEMPRE, incluso si la llamada a
+    // Anthropic falla después — no debe perderse.
+    await pool.query(
+      "INSERT INTO mensajes_ia (usuario_id, rol, texto) VALUES ($1, 'usuario', $2)",
+      [req.usuarioId, texto]
+    );
+
+    const { system, historial } = await construirContextoIA(req.usuarioId);
+    const messages = historial.map((m) => ({
+      role: m.rol === 'usuario' ? 'user' : 'assistant',
+      content: m.texto,
+    }));
+    messages.push({ role: 'user', content: texto });
+
+    const inicio = Date.now();
+    try {
+      const response = await anthropicClient.messages.create({
+        model: MODELO_IA_CHAT,
+        max_tokens: 1024,
+        system,
+        messages,
+      });
+      const latenciaMs = Date.now() - inicio;
+      const respuestaTexto = response.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join(' ')
+        .trim();
+      const costo = calcularCostoIaUsd(response.usage);
+
+      await pool.query(
+        "INSERT INTO mensajes_ia (usuario_id, rol, texto) VALUES ($1, 'ia', $2)",
+        [req.usuarioId, respuestaTexto || '(la IA no devolvió texto)']
+      );
+      await pool.query(
+        `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms)
+         VALUES ($1, $2, 'chat', $3, $4, $5, $6)`,
+        [req.usuarioId, MODELO_IA_CHAT, response.usage.input_tokens, response.usage.output_tokens, costo, latenciaMs]
+      );
+      await avisarSiGastoIaSuperaUmbral();
+
+      // El disparador de perfil corre después de guardar la respuesta
+      // exitosa, y su propio try/catch evita que una falla ahí rompa la
+      // respuesta del chat normal.
+      try {
+        await actualizarPerfilIaSiCorresponde(req.usuarioId);
+      } catch (errPerfil) {
+        console.error('Error en actualizarPerfilIaSiCorresponde (no rompe el chat):', errPerfil.message);
+      }
+
+      return res.redirect('/ia/chat');
+    } catch (errIa) {
+      // Excepciones tipadas del SDK (Anthropic.RateLimitError,
+      // Anthropic.APIConnectionError, subclases de Anthropic.APIError) se
+      // manejan todas igual acá: no hay comportamiento distinto por tipo
+      // en este diseño, solo se loguean uniformemente.
+      const latenciaMs = Date.now() - inicio;
+      console.error('Error llamando a la API de Claude:', errIa.message);
+      await pool.query(
+        `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms, error)
+         VALUES ($1, $2, 'chat', 0, 0, 0, $3, $4)`,
+        [req.usuarioId, MODELO_IA_CHAT, latenciaMs, String((errIa && errIa.message) || errIa).slice(0, 500)]
+      );
+      return res.redirect('/ia/chat?error=ia_no_disponible');
+    }
+  } catch (err) {
+    console.error('Error en POST /ia/chat:', err.message);
+    return res.status(500).send('No se pudo procesar el mensaje.');
+  }
+});
+
 // rama-ajustes (Ronda — pulido y detalles de producto): decisiones
 // documentadas en COORDINACION.md — "nombre visible" es nombre_usuario
 // (no un campo nuevo), cambiar de especie no reinicia la etapa (se
@@ -2294,6 +2697,19 @@ app.get('/ajustes', async (req, res) => {
       'SELECT 1 FROM push_subscriptions WHERE usuario_id = $1 LIMIT 1',
       [req.usuarioId]
     );
+    // rama-ia-companera-fase2 (alerta de gasto mensual, ver
+    // PLAN-tarea-9.md/COORDINACION.md): sin concepto de rol/admin en el
+    // esquema — mismo criterio ya usado para restringir POST
+    // /notificar-prueba, comparación directa contra el nombre de usuario
+    // guardado en la sesión. Solo se corre la query extra para 'bruce',
+    // para no pagar el costo de la agregación en cada visita de
+    // cualquier otro usuario.
+    let gastoIaEsteMes = null;
+    let alertaGastoIa = false;
+    if (req.session.nombre_usuario === 'bruce') {
+      gastoIaEsteMes = await obtenerGastoIaEsteMes();
+      alertaGastoIa = gastoIaEsteMes >= UMBRAL_ALERTA_GASTO_IA_USD;
+    }
     res.render('ajustes', {
       nombreUsuario: usuario ? usuario.nombre_usuario : '',
       especieActual: usuario && usuario.ia_especie ? usuario.ia_especie : 'monstera',
@@ -2302,6 +2718,9 @@ app.get('/ajustes', async (req, res) => {
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
       error: null,
       guardado: null,
+      gastoIaEsteMes,
+      alertaGastoIa,
+      umbralAlertaGastoIa: UMBRAL_ALERTA_GASTO_IA_USD,
     });
   } catch (err) {
     console.error('Error consultando ajustes:', err.message);
@@ -2309,6 +2728,7 @@ app.get('/ajustes', async (req, res) => {
       nombreUsuario: '', especieActual: 'monstera', especies: IA_ESPECIES,
       notificacionesActivas: false, vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
       error: 'No se pudo leer la base de datos.', guardado: null,
+      gastoIaEsteMes: null, alertaGastoIa: false, umbralAlertaGastoIa: UMBRAL_ALERTA_GASTO_IA_USD,
     });
   }
 });

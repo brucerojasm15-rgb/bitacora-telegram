@@ -1465,6 +1465,46 @@
 - Archivos tocados: `public/manifest.json`, `public/sw.js`,
   `public/offline.html` (nuevo).
 
+### rama-onboarding
+- Estado: commiteada, sin probar contra la DB real (worktree sin `.env`).
+- Tarea: onboarding para usuarios nuevos (tarea B, "Ronda — pulido y detalles
+  de producto"). Recorrido de 4 pasos inmediatamente después de registrarse.
+- Decisiones (documentadas antes de implementar):
+  - **No absorbe la elección de especie de planta** — sigue pasando dentro
+    de `views/registro.ejs` tal cual ya estaba (tarea 8). El último paso del
+    onboarding solo la MUESTRA (ya elegida) junto con una explicación corta
+    de cómo crece, sin volver a pedirla. Motivo: duplicar el picker de
+    especie en dos lugares (registro + onboarding) es más superficie para
+    que se desincronicen que valor real — el usuario ya la eligió hace 10
+    segundos.
+  - **Bandera `usuarios.onboarding_visto`** (`BOOLEAN NOT NULL DEFAULT
+    FALSE`) — mismo criterio que el resto del esquema (columna simple en
+    `usuarios`, no tabla aparte). Cuentas viejas quedan en `FALSE` pero
+    nunca ven el onboarding forzado porque nada las redirige ahí solas —
+    solo el link "continuar" de la pantalla de código de recuperación
+    (`views/codigo-recuperacion.ejs`, ya existente) apunta a `/onboarding`
+    en el flujo de `POST /registro`; el mismo flujo en `POST /recuperar`
+    (reseteo de PIN de un usuario existente) sigue apuntando a `/login`
+    como antes, sin tocar.
+  - 4 pasos: bienvenida, Pendientes, Ideas+Recordatorios (combinados en un
+    solo paso para no pasarse de 3-4), y la planta compañera. Un solo
+    request GET renderiza los 4 (ocultos con `hidden` salvo el primero) y
+    JS los va mostrando — evita una ruta por paso. "Saltar" está disponible
+    en todo momento y hace `POST /onboarding/completar` (marca la bandera
+    y redirige a `/`), igual que terminar los 4 pasos normalmente.
+- Archivos tocados: `server.js` (columna nueva, `GET /onboarding`,
+  `POST /onboarding/completar`, cambio de una línea en `continuarUrl` de
+  `POST /registro`), `views/onboarding.ejs` (nuevo), `public/style.css`
+  (`.onboarding-*`, con guardia de `prefers-reduced-motion`).
+- Qué se verificó: `node --check` limpio, `ejs.renderFile('views/onboarding.ejs', ...)`
+  con datos realistas confirma los 4 pasos presentes, CSS balanceado, grep
+  de emoji en cero. Confirmé a mano que `continuarUrl: '/login'` del flujo
+  de `/recuperar` (otro caller de la misma vista `codigo-recuperacion.ejs`)
+  no se tocó. Sin probar contra la DB real — worktree sin `.env`.
+- No pusheado ni con PR — regla 8 de COORDINACION.md, sin excepción: el
+  hilo principal muestra el diff completo al usuario y espera su
+  "aprobado" antes de push/PR/merge.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2054,8 +2094,9 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   registro y el onboarding solo lo menciona, y documentar cuál). Debe poder saltarse en
   cualquier paso. Se muestra UNA sola vez — decidir dónde vive esa bandera (columna nueva
   en `usuarios`, ej. `onboarding_visto`, es lo más simple y consistente con el resto del
-  esquema) y documentarlo. — asignada a: sin asignar — Depende de: tarea 8 (selección de
-  especie, ya existe).
+  esquema) y documentarlo. — asignada a: `rama-onboarding` (commiteada, sin
+  probar contra la DB real — ver su sección en "Estado de ramas") — Depende
+  de: tarea 8 (selección de especie, ya existe).
 
 - [ ] **C. Página de perfil/ajustes.** Ruta nueva (decidir el nombre exacto, ej.
   `/ajustes` o `/perfil` — ser consistente con el resto de nombres de ruta en español ya

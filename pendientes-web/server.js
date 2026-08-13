@@ -2375,7 +2375,7 @@ async function auxiliarErrorAjustes(req, res, mensajeError) {
   });
 }
 
-app.post('/ajustes/eliminar-cuenta', async (req, res) => {
+app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (req, res) => {
   const pin = req.body.pin || '';
   const confirmacion = (req.body.confirmar || '').trim().toUpperCase();
   if (confirmacion !== 'ELIMINAR') {

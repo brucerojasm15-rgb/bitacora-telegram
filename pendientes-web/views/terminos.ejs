@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Términos y privacidad' }) %>
+</head>
+<body>
+  <main class="pagina-estatica">
+    <h1><%- include('partials/icono', { nombre: 'portapapeles' }) %> Términos y privacidad</h1>
+
+    <section>
+      <h2>Qué datos guarda esta app</h2>
+      <ul>
+        <li><strong>Cuenta:</strong> tu nombre de usuario y tu PIN (guardado hasheado, nunca en texto plano).</li>
+        <li><strong>Pendientes, ideas, recordatorios y hechos:</strong> el texto que escribís, la fecha, y la categoría que le asignes.</li>
+        <li><strong>Mensajes:</strong> el contenido de tus conversaciones 1 a 1 y de la sala general, con la fecha de envío.</li>
+        <li><strong>Amistades:</strong> con quién tenés una amistad aceptada o pendiente en la app.</li>
+        <li><strong>Notificaciones push:</strong> si activás "Activar notificaciones", se guarda una suscripción técnica del navegador (un identificador y dos claves de cifrado) para poder enviarte avisos. <strong>Esto no incluye tu ubicación geográfica</strong> — el sistema de notificaciones push no accede ni comparte dónde estás.</li>
+        <li><strong>Moneda y planta compañera:</strong> el saldo de moneda que ganás al completar tareas asignadas, y la especie/etapa de tu planta.</li>
+        <li><strong>Google Calendar (si lo conectás):</strong> un token de acceso cifrado, únicamente para crear eventos que vos pidas.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Para qué se usan</h2>
+      <p>Únicamente para que la app funcione: mostrarte tus propios pendientes, avisarte de tus recordatorios, y permitirte compartir tareas y chatear con las personas que agregues como amigos. No se comparte con terceros ni se usa con fines publicitarios.</p>
+    </section>
+
+    <section>
+      <h2>Tu cuenta y tus datos</h2>
+      <p>Podés eliminar tu cuenta y los datos asociados desde la página de ajustes en cualquier momento.</p>
+    </section>
+
+    <p><a href="/registro">Volver a crear cuenta</a></p>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

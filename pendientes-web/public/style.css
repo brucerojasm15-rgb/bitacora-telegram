@@ -1370,3 +1370,26 @@ tr.fila-saliendo {
 .ajustes-tema-opciones button:hover {
   border-color: var(--accent);
 }
+
+/* rama-terminos-privacidad: zona de peligro (eliminar cuenta) */
+.ajustes-peligro {
+  border-color: var(--danger);
+}
+
+.ajustes-peligro h2 {
+  color: var(--danger);
+}
+
+.ajustes-boton-peligro {
+  background: var(--danger);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ajustes-boton-peligro:hover {
+  opacity: 0.9;
+}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Chat general' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1>💬 Chat general</h1>
+    <p class="count">Todos los usuarios registrados ven esta sala — no hace falta ser amigos.</p>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+      <% if (hayMasAntiguos) { %>
+        <a href="/chat-general?antes=<%= primerId %>" class="btn-link">Cargar mensajes más antiguos</a>
+      <% } %>
+
+      <% if (mensajes.length === 0) { %>
+        <p class="empty">Todavía no hay mensajes en la sala general.</p>
+      <% } else { %>
+        <%
+          const sinLeerPrevios = mensajes.filter((m) => m.autor_id !== usuarioId && (!vistoHasta || new Date(m.fecha) > new Date(vistoHasta))).length;
+        %>
+        <% if (sinLeerPrevios > 0) { %>
+          <p class="notificacion">
+            🔔 Tenías <%= sinLeerPrevios %> mensaje<%= sinLeerPrevios === 1 ? '' : 's' %> sin leer en la sala general.
+          </p>
+        <% } %>
+        <ul class="chat-mensajes">
+          <% mensajes.forEach((m) => {
+            const esMio = m.autor_id === usuarioId;
+          %>
+            <li class="<%= esMio ? 'mensaje-propio' : 'mensaje-otro' %>">
+              <% if (!esMio) { %><span class="autor"><%= m.autor_nombre || ('Usuario ' + m.autor_id) %></span><% } %>
+              <span class="texto"><%= m.texto %></span>
+              <span class="fecha">
+                <%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %>
+              </span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+
+      <form method="POST" action="/mensajes-general" class="nuevo">
+        <input type="text" name="texto" placeholder="Escribe un mensaje..." required>
+        <button type="submit">Enviar</button>
+      </form>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

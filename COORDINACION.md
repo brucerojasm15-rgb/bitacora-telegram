@@ -755,6 +755,57 @@
   real de Railway (esta sesión no tenía esa conexión disponible) y
   confirmar a oído que los 3 sonidos se sienten bien en volumen/duración —
   pendiente para el usuario antes de mergear.
+
+### rama-chat-general
+- Estado: commiteada, sin probar contra la DB real (ver "Qué se verificó").
+- Tarea: chat general — una sola sala compartida por todos los usuarios
+  registrados, sin necesidad de amistad. Pedido directo del usuario el
+  2026-08-12, agregado al backlog (ver nota en esa entrada sobre por qué se
+  portó a mano desde `rama-notificaciones-recordatorios`). Creada desde
+  `origin/main` (PR #35, commit 2c929e6) — no depende de ninguna rama del
+  roadmap grande.
+- Decisiones de esquema (tomadas al implementar):
+  1. **Tabla propia `mensajes_generales`** (id, autor_id, texto, fecha) — no
+     se reusó `mensajes`, que está atada a `amistad_id` y no tiene sentido
+     sin una amistad de por medio.
+  2. **No-leídos con timestamp, no columna `leido` por mensaje.** El chat
+     1-a-1 marca `leido` por fila porque solo hay 2 participantes; acá
+     potencialmente participan todos los usuarios de la app, así que marcar
+     "visto" por mensaje y por usuario sería una tabla de cruce que crece
+     como (mensajes × usuarios). Se agregó una sola columna,
+     `usuarios.chat_general_visto_hasta TIMESTAMP`, que se actualiza a
+     `now()` cada vez que el usuario abre `/chat-general`. `GET
+     /notificaciones` cuenta mensajes de otros con `fecha >
+     chat_general_visto_hasta` para el badge de no-leídos.
+  3. **`noLeidosGeneral` aparte de `noLeidos` en `GET /notificaciones`**, no
+     sumado — para no cambiar en silencio el significado de un campo que ya
+     consume el frontend del chat 1-a-1 (que además tiene semántica
+     distinta: "sin leer" ahí es por mensaje, acá es "desde que abriste la
+     sala").
+  4. **Paginación: 50 mensajes por vez**, cursor `?antes=<id>` (el mensaje
+     más viejo ya cargado) para pedir la tanda anterior — elegido porque es
+     el mismo orden de magnitud que "todo el historial visible de un
+     vistazo" sin cargar una sala que, a diferencia del chat 1-a-1, puede
+     acumular mensajes de varios usuarios a la vez.
+  5. **Se muestra el nombre de usuario real (`nombre_usuario`), no
+     "Usuario <id>"** como hace el chat 1-a-1 — en una sala con más de 2
+     personas, saber quién escribió cada mensaje deja de ser algo obvio por
+     contexto.
+- Archivos tocados: `server.js` (tabla `mensajes_generales`, columna
+  `usuarios.chat_general_visto_hasta`, rutas `GET /chat-general` y `POST
+  /mensajes-general`, extensión de `GET /notificaciones`),
+  `views/chat-general.ejs` (nuevo, reusa las clases `.chat-mensajes`/
+  `.mensaje-propio`/`.mensaje-otro`/`.btn-link`/`.nuevo` ya existentes —
+  no hizo falta tocar `style.css`), `views/partials/nav.ejs` (link nuevo).
+- Qué se verificó: `node --check server.js` sin errores; `ejs.renderFile`
+  de `chat-general.ejs` para 3 estados (vacío, con mensajes, error) sin
+  errores. **No se probó contra la DB real** — este worktree no tiene
+  `pendientes-web/.env` (gitignored, `git worktree add` no lo copia).
+  Pendiente antes de mergear: confirmar que el `ALTER TABLE` corre limpio,
+  que un mensaje nuevo de un usuario aparece para los demás, que
+  `chat_general_visto_hasta` efectivamente baja el contador de
+  `noLeidosGeneral` a 0 al abrir la sala, y que la paginación con `?antes=`
+  trae la tanda correcta.
 - Commit: pendiente de crear en esta misma sesión.
 
 ### rama-integracion
@@ -962,6 +1013,36 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   cuenta si olvida el PIN (ya casi pasó una vez en esta sesión). Sin tocar el
   rate limiting ya existente (`limitarIntentos`) ni las rutas /login o /registro
   más allá de lo necesario para generar el código. — tomada por rama-recuperacion-pin
+- [ ] **Chat general: una sola sala para todos los usuarios registrados.**
+  Distinto del chat 1-a-1 que ya existe (`amistades`/`mensajes`,
+  `usuarioPerteneceAmistad`): acá NO hace falta ser amigos para verse — todo
+  usuario logueado participa en la misma sala. Pedido por el usuario el
+  2026-08-12, no depende de ninguna tarea del roadmap grande de esa misma
+  fecha (puede arrancar en cualquier momento, en paralelo con cualquier otra
+  rama activa) y tampoco está incluido en ese "Plan de despacho" — es un
+  ítem aparte.
+  - Esquema sugerido (decidir y documentar al implementar, mismo criterio
+    que el resto del roadmap): tabla nueva `mensajes_generales` (id,
+    autor_id, texto, fecha) — NO reusar `mensajes`, que está atada a
+    `amistad_id` y no tiene sentido para una sala sin amistad de por medio.
+  - Decidir si hay o no indicador de "no leídos" para la sala general (el
+    chat 1-a-1 lo tiene vía columna `leido` por mensaje — con potencialmente
+    todos los usuarios de la app en una sola sala, marcar leído por mensaje
+    y por usuario puede no escalar igual; una alternativa más simple es un
+    timestamp `visto_hasta` por usuario y contar mensajes más nuevos que
+    eso). Documentar la elección y el porqué.
+  - Decidir paginación/límite de mensajes mostrados (una sala compartida por
+    todos crece más rápido que un chat 1-a-1) — no cargar el historial
+    completo siempre.
+  - Reusar el estilo visual ya existente de `views/chat.ejs` (burbujas,
+    tema oscuro de rama-tema-chat) en vez de reinventar un diseño nuevo.
+  — asignada a: `rama-chat-general` (commiteada, sin probar contra la DB
+  real — ver su sección en "Estado de ramas") — Depende de: nada.
+  - Nota: este ítem se agregó primero en `rama-notificaciones-recordatorios`
+    (commit 5aa4c0c), rama que todavía no está mergeada a `main` — esta
+    rama (`rama-chat-general`) se creó desde `origin/main` directo (no
+    dependía de ninguna rama del roadmap), así que el ítem se portó a mano
+    acá para no depender de una rama ajena sin mergear.
 
 ### Ronda nueva (2026-08-11) — propuesta por el usuario, mejoras a definir por rama
 

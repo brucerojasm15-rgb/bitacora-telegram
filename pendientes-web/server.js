@@ -429,6 +429,19 @@ async function ensureSchema() {
       leido BOOLEAN DEFAULT false
     )
   `);
+  // rama-chat-general: sala única para todos los usuarios, sin amistad_id
+  // de por medio (decisión documentada en COORDINACION.md).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mensajes_generales (
+      id SERIAL PRIMARY KEY,
+      autor_id INT REFERENCES usuarios(id),
+      texto TEXT,
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS chat_general_visto_hasta TIMESTAMP
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS historial_ediciones (
       id SERIAL PRIMARY KEY,
@@ -1244,7 +1257,18 @@ app.get('/notificaciones', async (req, res) => {
          AND m.leido = false`,
       [req.usuarioId]
     );
-    res.json({ noLeidos: rows[0].no_leidos });
+    // rama-chat-general: conteo aparte (noLeidosGeneral), no se suma a
+    // noLeidos — decisión documentada en COORDINACION.md. Usa
+    // chat_general_visto_hasta en vez de una columna leido por mensaje.
+    const { rows: generalRows } = await pool.query(
+      `SELECT COUNT(*)::int AS no_leidos
+       FROM mensajes_generales mg, usuarios u
+       WHERE u.id = $1
+         AND mg.autor_id != $1
+         AND mg.fecha > COALESCE(u.chat_general_visto_hasta, to_timestamp(0))`,
+      [req.usuarioId]
+    );
+    res.json({ noLeidos: rows[0].no_leidos, noLeidosGeneral: generalRows[0].no_leidos });
   } catch (err) {
     console.error('Error consultando notificaciones:', err.message);
     res.status(500).json({ error: 'No se pudo consultar notificaciones.' });
@@ -1274,6 +1298,73 @@ app.post('/mensajes', async (req, res) => {
     return res.status(500).send('No se pudo enviar el mensaje.');
   }
   res.redirect('/chat?amistad_id=' + amistadId);
+});
+
+// rama-chat-general: sala única para todos los usuarios registrados, sin
+// amistad de por medio. Paginación de 50 mensajes por vez (decisión
+// documentada en COORDINACION.md) con cursor `antes` (id del mensaje más
+// viejo ya cargado) para pedir la tanda anterior.
+const MENSAJES_GENERALES_POR_PAGINA = 50;
+
+app.get('/chat-general', async (req, res) => {
+  const antesId = Number(req.query.antes);
+  try {
+    const params = [];
+    let consulta = `SELECT m.id, m.autor_id, m.texto, m.fecha, u.nombre_usuario AS autor_nombre
+       FROM mensajes_generales m
+       LEFT JOIN usuarios u ON u.id = m.autor_id`;
+    if (Number.isInteger(antesId)) {
+      params.push(antesId);
+      consulta += ` WHERE m.id < $${params.length}`;
+    }
+    params.push(MENSAJES_GENERALES_POR_PAGINA);
+    consulta += ` ORDER BY m.id DESC LIMIT $${params.length}`;
+    const { rows } = await pool.query(consulta, params);
+    const mensajes = rows.reverse();
+
+    const { rows: usuarioRows } = await pool.query(
+      'SELECT chat_general_visto_hasta FROM usuarios WHERE id = $1',
+      [req.usuarioId]
+    );
+    const vistoHasta = usuarioRows[0] ? usuarioRows[0].chat_general_visto_hasta : null;
+    await pool.query('UPDATE usuarios SET chat_general_visto_hasta = now() WHERE id = $1', [req.usuarioId]);
+
+    res.render('chat-general', {
+      mensajes,
+      usuarioId: req.usuarioId,
+      vistoHasta,
+      hayMasAntiguos: mensajes.length === MENSAJES_GENERALES_POR_PAGINA,
+      primerId: mensajes.length > 0 ? mensajes[0].id : null,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando chat general:', err.message);
+    res.status(500).render('chat-general', {
+      mensajes: [],
+      usuarioId: req.usuarioId,
+      vistoHasta: null,
+      hayMasAntiguos: false,
+      primerId: null,
+      error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
+app.post('/mensajes-general', async (req, res) => {
+  const texto = (req.body.texto || '').trim();
+  if (!texto) {
+    return res.status(400).send('El texto no puede estar vacío');
+  }
+  try {
+    await pool.query(
+      'INSERT INTO mensajes_generales (autor_id, texto, fecha) VALUES ($1, $2, now())',
+      [req.usuarioId, texto]
+    );
+  } catch (err) {
+    console.error('Error creando mensaje general:', err.message);
+    return res.status(500).send('No se pudo enviar el mensaje.');
+  }
+  res.redirect('/chat-general');
 });
 
 ensureSchema()

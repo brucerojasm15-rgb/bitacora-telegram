@@ -1,19 +1,100 @@
-  <nav class="nav">
+<%
+  /* rama-nav-mobile: antes esto era un solo <nav> de texto plano con 12
+     ítems envueltos en 4 líneas (documentado en COORDINACION.md, backlog
+     "Rediseño de navegación mobile"), y 4 de esos ítems (Pendientes, Ideas,
+     Recordatorios, Hechos) no tenían ícono mientras el resto sí — ahora
+     TODOS los ítems tienen ícono, reusando los que ya existían como
+     ícono de la propia página (`portapapeles` en el <h1> de index.ejs,
+     `bombilla`/`reloj` ya usados en captura.ejs, `check` en hechos.ejs) en
+     vez de inventar íconos nuevos donde ya había uno consistente. Solo se
+     agregaron 2 íconos nuevos a partials/icono.ejs (`mas`, `salir`) porque
+     no existía ningún ícono previo para "más opciones" ni "cerrar sesión".
+
+     Ahora hay DOS representaciones del mismo menú, alternadas por CSS según
+     el ancho de pantalla (ver @media max-width: 720px en style.css) —
+     nunca las dos visibles a la vez, y ambas apuntan a las mismas rutas
+     (una sola fuente de verdad: si se agrega una ruta nueva al menú, hay
+     que agregarla en los dos bloques, igual que antes había que agregarla
+     una vez):
+       - `.nav-desktop`: la lista horizontal de siempre, para pantallas
+         anchas (escritorio/tablet).
+       - `.nav-bottom` + `.nav-mas-menu`: barra inferior fija con los 5
+         accesos más usados (Captura, Pendientes, Ideas, Recordatorios,
+         Amigos) y un botón "Más" que despliega el resto (Hechos,
+         Estadísticas, Mi planta, Chat general, Exportar, Ajustes, Cerrar
+         sesión, tema claro/oscuro) en una hoja flotante, para mobile.
+         Criterio de qué 5 quedan fijos abajo (documentado también en
+         COORDINACION.md): son las acciones de uso esperado diario/varias
+         veces por sesión — capturar algo nuevo y revisar los 3 tipos de
+         cosas que se capturan (Pendientes/Ideas/Recordatorios) son el
+         núcleo del producto; Amigos se agregó como quinto porque es la
+         puerta de entrada al costado social (agregar/aceptar amigos y
+         saltar a un chat 1-a-1) y se espera que se revise seguido, más que
+         Hechos (archivo histórico, se consulta poco) o Estadísticas/Mi
+         planta/Exportar/Ajustes (se visitan ocasionalmente). Chat general
+         quedó en "Más" y no en la barra fija porque, a diferencia de
+         Amigos, no tiene la doble función de gestión (agregar/aceptar) que
+         sí justifica una revisión frecuente. */
+%>
+  <nav class="nav nav-desktop" aria-label="Navegación">
     <a href="/captura"><%- include('icono', { nombre: 'rayo' }) %> Captura rápida</a>
-    <a href="/">Pendientes</a>
-    <a href="/ideas">Ideas</a>
-    <a href="/recordatorios">Recordatorios</a>
-    <a href="/hechos">Hechos</a>
+    <a href="/"><%- include('icono', { nombre: 'portapapeles' }) %> Pendientes</a>
+    <a href="/ideas"><%- include('icono', { nombre: 'bombilla' }) %> Ideas</a>
+    <a href="/recordatorios"><%- include('icono', { nombre: 'reloj' }) %> Recordatorios</a>
+    <a href="/hechos"><%- include('icono', { nombre: 'check' }) %> Hechos</a>
     <a href="/estadisticas"><%- include('icono', { nombre: 'grafico' }) %> Estadísticas</a>
     <a href="/amigos"><%- include('icono', { nombre: 'personas' }) %> Amigos</a>
     <a href="/ia"><%- include('icono', { nombre: 'planta' }) %> Mi planta</a>
     <a href="/chat-general"><%- include('icono', { nombre: 'chat' }) %> Chat general</a>
     <a href="/exportar"><%- include('icono', { nombre: 'descarga' }) %> Exportar</a>
     <a href="/ajustes"><%- include('icono', { nombre: 'ajustes' }) %> Ajustes</a>
-    <button type="button" id="toggle-tema" class="toggle-tema" aria-label="Cambiar tema claro/oscuro">
+    <button type="button" class="toggle-tema" data-toggle-tema aria-label="Cambiar tema claro/oscuro">
       <%- include('icono', { nombre: 'sol' }) %>
     </button>
     <form method="POST" action="/logout" class="logout-form">
-      <button type="submit">Cerrar sesión</button>
+      <button type="submit"><%- include('icono', { nombre: 'salir' }) %> Cerrar sesión</button>
     </form>
   </nav>
+
+  <nav class="nav-bottom" aria-label="Navegación principal">
+    <a class="nav-bottom-item" href="/captura">
+      <%- include('icono', { nombre: 'rayo' }) %>
+      <span>Captura</span>
+    </a>
+    <a class="nav-bottom-item" href="/">
+      <%- include('icono', { nombre: 'portapapeles' }) %>
+      <span>Pendientes</span>
+    </a>
+    <a class="nav-bottom-item" href="/ideas">
+      <%- include('icono', { nombre: 'bombilla' }) %>
+      <span>Ideas</span>
+    </a>
+    <a class="nav-bottom-item" href="/recordatorios">
+      <%- include('icono', { nombre: 'reloj' }) %>
+      <span>Recordatorios</span>
+    </a>
+    <a class="nav-bottom-item" href="/amigos">
+      <%- include('icono', { nombre: 'personas' }) %>
+      <span>Amigos</span>
+    </a>
+    <button type="button" class="nav-bottom-item nav-mas-btn" id="btn-nav-mas" aria-haspopup="true" aria-expanded="false" aria-controls="nav-mas-menu">
+      <%- include('icono', { nombre: 'mas' }) %>
+      <span>Más</span>
+    </button>
+  </nav>
+
+  <div class="nav-mas-overlay" id="nav-mas-overlay" hidden></div>
+  <div class="nav-mas-menu" id="nav-mas-menu" role="menu" aria-label="Más opciones" hidden>
+    <a href="/hechos" role="menuitem"><%- include('icono', { nombre: 'check' }) %> <span>Hechos</span></a>
+    <a href="/estadisticas" role="menuitem"><%- include('icono', { nombre: 'grafico' }) %> <span>Estadísticas</span></a>
+    <a href="/ia" role="menuitem"><%- include('icono', { nombre: 'planta' }) %> <span>Mi planta</span></a>
+    <a href="/chat-general" role="menuitem"><%- include('icono', { nombre: 'chat' }) %> <span>Chat general</span></a>
+    <a href="/exportar" role="menuitem"><%- include('icono', { nombre: 'descarga' }) %> <span>Exportar</span></a>
+    <a href="/ajustes" role="menuitem"><%- include('icono', { nombre: 'ajustes' }) %> <span>Ajustes</span></a>
+    <button type="button" class="nav-mas-tema" data-toggle-tema role="menuitem">
+      <%- include('icono', { nombre: 'sol' }) %> <span>Tema claro/oscuro</span>
+    </button>
+    <form method="POST" action="/logout" class="logout-form" role="menuitem">
+      <button type="submit"><%- include('icono', { nombre: 'salir' }) %> <span>Cerrar sesión</span></button>
+    </form>
+  </div>

@@ -3,9 +3,15 @@
     // rama-tema-jungla: toggle claro/oscuro. El ícono refleja el tema
     // ACTUAL (sol si se está mostrando claro, luna si oscuro). Guarda la
     // preferencia en la cuenta (no localStorage — ver COORDINACION.md).
+    // rama-nav-mobile: ahora puede haber MÁS DE UN botón de toggle en la
+    // página a la vez (el de la barra de escritorio y el del menú "más" de
+    // mobile — nunca los dos visibles al mismo tiempo, pero los dos existen
+    // en el DOM), así que se usa `data-toggle-tema` + querySelectorAll en
+    // vez de un solo id: cualquiera de los dos que se toque actualiza el
+    // tema y ambos íconos quedan sincronizados.
     (function () {
-      const boton = document.getElementById('toggle-tema');
-      if (!boton) return;
+      const botones = document.querySelectorAll('[data-toggle-tema]');
+      if (!botones.length) return;
       const RUTA_SOL = '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>';
       const RUTA_LUNA = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path>';
 
@@ -16,21 +22,60 @@
       }
 
       function pintarIcono() {
-        const svg = boton.querySelector('svg');
-        if (svg) svg.innerHTML = temaActual() === 'dark' ? RUTA_LUNA : RUTA_SOL;
+        const ruta = temaActual() === 'dark' ? RUTA_LUNA : RUTA_SOL;
+        botones.forEach((boton) => {
+          const svg = boton.querySelector('svg');
+          if (svg) svg.innerHTML = ruta;
+        });
       }
 
       pintarIcono();
 
-      boton.addEventListener('click', () => {
-        const nuevo = temaActual() === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', nuevo);
-        pintarIcono();
-        fetch('/preferencia-tema', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tema: nuevo === 'dark' ? 'oscuro' : 'claro' }),
-        }).catch(() => {});
+      botones.forEach((boton) => {
+        boton.addEventListener('click', () => {
+          const nuevo = temaActual() === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', nuevo);
+          pintarIcono();
+          fetch('/preferencia-tema', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tema: nuevo === 'dark' ? 'oscuro' : 'claro' }),
+          }).catch(() => {});
+        });
+      });
+    })();
+  </script>
+  <script>
+    // rama-nav-mobile: menú "Más" de la barra de navegación inferior
+    // (mobile). Solo existe si el partial de nav está presente en la
+    // página (todas las vistas autenticadas) — con guardia por si algún
+    // día una vista no lo incluye.
+    (function () {
+      const btn = document.getElementById('btn-nav-mas');
+      const menu = document.getElementById('nav-mas-menu');
+      const overlay = document.getElementById('nav-mas-overlay');
+      if (!btn || !menu || !overlay) return;
+
+      function abrir() {
+        menu.hidden = false;
+        overlay.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+      }
+
+      function cerrar() {
+        menu.hidden = true;
+        overlay.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+      }
+
+      btn.addEventListener('click', () => {
+        if (menu.hidden) abrir(); else cerrar();
+      });
+
+      overlay.addEventListener('click', cerrar);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !menu.hidden) cerrar();
       });
     })();
   </script>

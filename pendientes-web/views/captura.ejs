@@ -45,7 +45,7 @@
       <p><a href="/captura?texto=<%= encodeURIComponent(confirmarAsignacion.texto) %>">&larr; Corregir el texto</a></p>
     <% } else { %>
     <form method="POST" action="/captura" id="form-captura" class="captura-form">
-      <textarea name="texto" id="captura-texto" rows="3" placeholder="Escribe aquí..." required><%= typeof textoPrefill !== 'undefined' ? textoPrefill : '' %></textarea>
+      <textarea name="texto" id="captura-texto" rows="1" placeholder="Escribe aquí..." required><%= typeof textoPrefill !== 'undefined' ? textoPrefill : '' %></textarea>
 
       <input type="hidden" name="tipo" id="captura-tipo-oculto">
       <div class="captura-tipos" role="group" aria-label="Tipo">
@@ -63,6 +63,30 @@
   </main>
 
   <script>
+    // rama-nav-mobile: auto-resize del textarea con el contenido. Se eligió
+    // un listener de `input` en JS en vez de `field-sizing: content` (CSS)
+    // porque ese último todavía no tiene soporte confiable en Safari/iOS
+    // (esta es una PWA pensada para instalarse en el celular, ver
+    // rama-pwa-instalable en COORDINACION.md) — el listener de JS funciona
+    // igual en cualquier navegador con el patrón estándar
+    // "height:auto, después height:scrollHeight". `max-height` +
+    // `overflow-y:auto` en CSS ponen un techo razonable (scroll interno)
+    // para que un texto larguísimo no empuje la barra de tipos fuera de
+    // pantalla.
+    // rama-asignacion-texto: en la pantalla de confirmación de asignación
+    // no existe #captura-texto (son 2 forms simples de confirmar/cancelar,
+    // sin textarea) — de ahí la guarda `if (textareaCaptura)`, que
+    // rama-nav-mobile original no necesitaba porque no conocía ese flujo.
+    const textareaCaptura = document.getElementById('captura-texto');
+    if (textareaCaptura) {
+      const autoResizeCaptura = () => {
+        textareaCaptura.style.height = 'auto';
+        textareaCaptura.style.height = textareaCaptura.scrollHeight + 'px';
+      };
+      autoResizeCaptura();
+      textareaCaptura.addEventListener('input', autoResizeCaptura);
+    }
+
     // El campo de fecha/hora solo se pide cuando el tipo elegido es
     // "Recordatorio". El submit real se retrasa un instante (form.submit()
     // en vez de dejar que el botón navegue directo) solo para que el sonido

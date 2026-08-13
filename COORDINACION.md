@@ -1505,6 +1505,68 @@
   hilo principal muestra el diff completo al usuario y espera su
   "aprobado" antes de push/PR/merge.
 
+### rama-ajustes
+- Estado: commiteada, sin probar contra la DB real (worktree sin `.env`).
+- Tarea: tarea C de "Ronda — pulido y detalles de producto" (2026-08-13) —
+  página de perfil/ajustes. Despachada en paralelo con las tareas A, B, D,
+  E, F, G de la misma ronda, cada una en su propio worktree — no toca
+  archivos fuera de su alcance.
+- Decisiones (documentadas antes de escribir código, como pide la regla 8):
+  1. **Ruta: `/ajustes`** — consistente con el resto de nombres de ruta en
+     español de una sola palabra ya usados (`/amigos`, `/captura`,
+     `/estadisticas`).
+  2. **"Nombre visible" = `nombre_usuario`** (no un campo nuevo). Es el
+     único nombre de cuenta que existe hoy — agregar un "display name"
+     aparte hubiera sido una columna redundante. Reusa la misma validación
+     de `/registro` (`NOMBRE_USUARIO_REGEX`, normalizado a minúsculas,
+     mismo manejo del error `23505` por duplicado). También actualiza
+     `req.session.nombre_usuario` de una vez, por consistencia con cómo lo
+     graba `/login`/`/registro`, aunque hoy no se lea en ningún otro lado.
+  3. **Cambiar de especie NO reinicia la etapa de la planta.** La etapa
+     (`etapaPorMoneda`, tarea 8) se calcula siempre a partir de la moneda
+     ganada de por vida (`moneda_transacciones`), nunca de `ia_especie` —
+     cambiar la especie no toca esa tabla, así que la etapa sigue igual
+     automáticamente. No hizo falta código extra para esto, solo
+     confirmarlo y documentarlo.
+  4. **Sonidos: `localStorage`, no columna en `usuarios`.** A diferencia
+     del tema visual (que si vive en `usuarios.tema` para que el HTML
+     salga del servidor ya correcto y no parpadee), la preferencia de
+     sonido no afecta el HTML inicial en absoluto — solo si `public/
+     sonidos.js` reproduce audio o no, una decisión 100% del lado del
+     cliente. Guardar esto en el servidor no evitaría ningún parpadeo,
+     solo agregaría una vuelta a la DB innecesaria. Clave
+     `localStorage.sonidosActivos`, ausente o `'si'` = activado (default),
+     `'no'` = desactivado. `reproducirSonido()` en `public/sonidos.js` **se
+     modificó** para respetar esta bandera — si no, el toggle de esta
+     página sería cosmético y no apagaría nada de verdad.
+  5. **Desactivar notificaciones push = borrar la(s) fila(s) de
+     `push_subscriptions`** del usuario actual, no una columna de opt-out
+     nueva. Reactivar ya significa volver a tocar "Activar
+     notificaciones", que vuelve a correr `POST /suscribir` — ese flujo ya
+     existe y ya inserta si no hay fila, así que una columna de opt-out
+     solo hubiera sido estado duplicado (¿la fila existe pero está
+     "apagada", o no existe? dos formas de representar lo mismo). Borrar
+     es más simple y coherente con que el propio `enviarPushASubscripciones`
+     ya borra filas muertas (404/410) de la misma tabla.
+  6. **Tema claro/oscuro/sistema: reusa `POST /preferencia-tema` tal
+     cual**, sin ruta nueva — la página de ajustes solo muestra 3 opciones
+     (claro/oscuro/sistema) que postean ahí, igual que ya hace el toggle
+     del nav pero con las 3 opciones visibles en vez de solo alternar
+     entre 2.
+- Archivos tocados: `server.js` (rutas `GET /ajustes`, `POST /ajustes/
+  nombre`, `POST /ajustes/especie`, `POST /ajustes/notificaciones`),
+  `views/ajustes.ejs` (nuevo), `views/partials/nav.ejs` (link nuevo),
+  `views/partials/icono.ejs` (ícono `ajustes` nuevo, engranaje estilo
+  lucide), `public/sonidos.js` (respeta la bandera de `localStorage`),
+  `public/style.css` (`.ajustes-*`, reusando los tokens ya existentes).
+- Qué se verificó: `node --check server.js` limpio; `ejs.renderFile(...)`
+  de `views/ajustes.ejs` con datos simulados realistas (con y sin
+  suscripción push activa); grep de emoji sobre todo el proyecto en cero.
+  Sin DB real en este worktree (sin `.env`, mismo motivo de siempre) — sin
+  probar contra Postgres real.
+- **NO PUSHEADO, SIN PR** — regla 8: el hilo principal muestra el diff
+  completo al usuario y espera su "aprobado" antes de pushear/mergear.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2111,9 +2173,10 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   desactiva: ¿borrar la fila de `push_subscriptions`, o una columna de opt-out separada
   que preserve la suscripción por si se reactiva? documentar), y alternar claro/oscuro
   manualmente (el toggle en el nav ya existe — esta página solo necesita reflejar/exponer
-  la misma preferencia `usuarios.tema`, no duplicar el mecanismo). — asignada a: sin
-  asignar — Depende de: nada funcionalmente, pero tiene sentido después de A/B para no
-  pisarse con esos cambios de navegación.
+  la misma preferencia `usuarios.tema`, no duplicar el mecanismo). — asignada a:
+  `rama-ajustes` (commiteada, sin probar contra la DB real — ver su
+  sección en "Estado de ramas") — Depende de: nada funcionalmente, pero tiene sentido
+  después de A/B para no pisarse con esos cambios de navegación.
 
 - [ ] **D. Invitar amigos con enlace/código.** Código corto o enlace único por usuario
   (decidir el formato — un token corto tipo el ya usado para `codigo_recuperacion_hash`

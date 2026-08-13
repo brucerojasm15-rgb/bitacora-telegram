@@ -2842,54 +2842,114 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   `rama-ia-companera-fase1` (commiteada, sin probar contra la DB real —
   ver su sección en "Estado de ramas") — Depende de: tarea 7.
 
-- [ ] **9. [BLOQUEADA — no despachar todavía] IA compañera conversacional
-  real — Fase 2.** Integrar la API de Claude para que la planta hable de
-  verdad con el usuario. Depende de que exista un modelo de ingresos activo
-  (ej. suscripción/premium) — **el dueño del proyecto no lo ha definido
-  todavía, así que esta tarea no se asigna a ninguna rama hasta que exista
-  esa decisión de negocio.** Cuando se desbloquee: hay costo real por uso,
-  definir antes de lanzar un límite de mensajes por usuario/día y si el
-  acceso es exclusivo de usuarios con suscripción activa. La API key de
-  Claude es secreta: va en `.env`, nunca hardcodeada ni comiteada.
-  Documentar en esta misma sección de `COORDINACION.md` el costo estimado
-  por usuario activo (mensajes/día × precio por token, con la referencia de
-  precios vigente en ese momento) **para aprobación explícita del dueño del
-  proyecto antes de lanzar** — no desplegar solo con la aprobación de la
-  sesión que la construya. — asignada a: sin asignar, NO tomar hasta nuevo
-  aviso — Depende de: decisión de negocio externa (modelo de ingresos), no
-  de otra tarea de este backlog.
+  **Extensión: evolución de dos ejes + avatar + export (2026-08-13, nueva
+  tarea, depende de la tarea 9).** La planta pasa de tener un solo eje de
+  evolución (tamaño por moneda) a dos ejes combinados:
 
-  **Enfoque técnico definido (2026-08-13), sigue BLOQUEADA — esto documenta el
-  CÓMO para cuando se decida el CUÁNDO/CON QUÉ SE PAGA, no autoriza a empezar
-  a construir:**
+  - **Eje 1 (sin cambios):** semillas/moneda acumulada → etapa/tamaño
+    (semilla → brote → joven → adulta), como ya funciona hoy.
+  - **Eje 2 (nuevo):** profundidad del **perfil acumulado** de la tarea 9 →
+    rasgos visuales/de personalidad de la planta (color distintivo,
+    variación de forma de hoja, pequeños mensajes o animaciones que
+    reflejen lo que la IA aprendió del usuario — ej. "veo que te va mejor
+    en las mañanas 🌱"). Diseñar un esquema simple de 3-4 rasgos visuales
+    combinables derivados del perfil (no hace falta que sea complejo al
+    inicio — combinables ya dan variedad suficiente). **Depende
+    directamente de que el perfil acumulado de la tarea 9 ya exista y
+    tenga datos reales** — no se puede diseñar el mapeo rasgo↔dato sin
+    perfiles reales para probar contra.
+
+  **Avatar:** la planta (combinando ambos ejes) se convierte en la foto de
+  perfil de cada usuario, visible automáticamente donde ya se muestra un
+  avatar hoy — lista de amigos, chat general, feed de trazabilidad social.
+  Esto **reemplaza cualquier necesidad de una función de "compartir"
+  separada dentro de la app** — decisión explícita del usuario, no
+  construir un botón de compartir interno aparte.
+
+  **Exportar:** botón en `/ajustes` o en la vista de "Mi planta" para
+  descargar la planta actual como imagen (PNG), pensada para compartir en
+  WhatsApp/Instagram **fuera** de la app.
+
+  **Secuencia obligatoria (decisión explícita del usuario):** construir
+  primero la tarea 9 completa (IA conversacional + perfil acumulado) antes
+  de tocar esta parte visual — el eje 2 depende de tener perfiles reales
+  para probar el mapeo. La parte de "avatar en toda la app" se despacha
+  como **bloque único al final**, sin fragmentar en paralelo con otra tarea
+  que toque `.ejs` (riesgo de choque en `views/partials/nav.ejs` y
+  cualquier vista que muestre avatares — amigos, chat general,
+  trazabilidad). — asignada a: sin asignar (bloqueada hasta que la tarea 9
+  esté completa) — Depende de: tarea 9 (perfil acumulado con datos reales).
+
+- [ ] **9. ✅ DESBLOQUEADA (2026-08-13) — IA compañera conversacional real —
+  Fase 2.** Integrar la API de Claude para que la planta hable de verdad con
+  el usuario. El bloqueo original ("no asignar hasta que exista un modelo de
+  ingresos") queda resuelto — **el usuario decidió el modelo de negocio
+  final: gratis para todos los usuarios**, no suscripción/premium (una
+  decisión intermedia de suscripción se había pedido y confirmado antes,
+  pero esta versión del 2026-08-13 la reemplaza — la de abajo es la
+  vigente). La API key de Claude es secreta: va en `.env`, nunca
+  hardcodeada ni comiteada. — asignada a: `rama-ia-companera-fase2`
+  (en construcción) — Depende de: nada más, lista para despachar.
+
+  **Diseño final (2026-08-13):**
+
+  **Modelo de negocio: gratis, con tope de seguridad mensual.** Sin gating
+  por suscripción ni columna `es_premium` — todos los usuarios logueados
+  tienen acceso. Tope de **40 mensajes/usuario/mes** (número elegido dentro
+  del rango 30-50 que pidió el usuario; documentar en el commit que
+  implemente esto el razonamiento puntual si se ajusta). Al llegar al tope,
+  avisar que se alcanzó el límite del mes — **sin pedir pago, sin mencionar
+  suscripción** (no hay ningún flujo de cobro en esta tarea). Reseteo
+  mensual, criterio de "mes" a definir en el momento (calendario natural
+  `America/Lima` es lo más simple y consistente con el resto del proyecto,
+  ej. `date_trunc('month', ...)`).
 
   **RAG, no chatbot genérico.** La IA compañera no debe responder de memoria
   genérica ni inventar contexto — debe consultar los datos reales del usuario
-  (pendientes, ideas, recordatorios, hechos, historial de "Mi planta") antes
-  de responder, para que las respuestas estén ancladas a lo que el usuario
-  realmente escribió, no una alucinación con tono amable.
+  (pendientes, ideas, recordatorios, hechos) antes de responder, para que las
+  respuestas estén ancladas a lo que el usuario realmente escribió, no una
+  alucinación con tono amable.
 
   Piezas necesarias:
   1. **Recuperación:** al recibir un mensaje del usuario, traer del Postgres
      existente los registros relevantes (últimos pendientes/ideas/
-     recordatorios, filtrados por `usuario_id`) — reusar los mismos patrones
-     de query que ya existen en `server.js`, NO una base de datos vectorial
-     nueva por ahora; el volumen de datos por usuario es chico, no hace falta
-     esa complejidad todavía.
-  2. **Contexto al modelo:** armar el prompt incluyendo esos registros como
-     contexto explícito antes de la pregunta del usuario.
-  3. **Respuesta:** llamada a la API de Claude con ese contexto, mostrada en
-     una interfaz de chat — reusar el patrón visual del chat general o el
-     chat de amistad ya existentes, no diseñar uno nuevo desde cero.
+     recordatorios/hechos, filtrados por `usuario_id`) — reusar los mismos
+     patrones de query que ya existen en `server.js` (ej. el de `GET
+     /exportar`), NO una base de datos vectorial nueva; el volumen de datos
+     por usuario es chico, no hace falta esa complejidad.
+  2. **Contexto al modelo:** armar el prompt incluyendo esos registros MÁS
+     el perfil acumulado (ver abajo) como contexto explícito antes de la
+     pregunta del usuario.
+  3. **Respuesta:** llamada a la API de Claude (Haiku, el modelo más barato
+     — decisión explícita del usuario, coherente con que el acceso es
+     gratis) con ese contexto, mostrada en una interfaz de chat — reusar el
+     patrón visual del chat general o el chat de amistad ya existentes
+     (`views/chat.ejs`/`chat-general.ejs`, con su CSS en `public/style.css`
+     ya hecho), no diseñar uno nuevo desde cero.
 
-  **Instrumentación desde el día 1 (LLM Ops básico, sin herramienta paga
-  todavía)** — esto es lo que permite decidir el modelo de ingresos con datos
-  reales de costo por usuario, en vez de adivinar entre suscripción/moneda
-  comprable/premium (que es justo la decisión pendiente que bloquea esta
-  tarea):
+  **Perfil acumulado (pieza nueva, no estaba en el diseño anterior):** tabla
+  nueva que guarda un resumen breve de patrones del usuario (ej. "suele
+  posponer tareas de la mañana"), pensada para dar continuidad entre
+  sesiones de chat sin tener que reprocesar todo el historial cada vez.
+  **Se actualiza periódicamente, NO en cada mensaje** — sería carísimo en
+  tokens y no aporta nada nuevo mensaje a mensaje. Decidir en el momento de
+  implementar el disparador exacto (cron diario/semanal tipo
+  `revisarYNotificarRecordatoriosPendientes`, o un contador de mensajes
+  nuevos acumulados desde la última actualización — documentar cuál y por
+  qué) y el criterio de qué entra en el resumen (probablemente un prompt
+  aparte, más barato, que resume el historial reciente — documentar el
+  costo de esa llamada extra también en la sección de LLM Ops). Este perfil
+  se agrega como contexto extra en cada conversación (ver punto 2 de
+  arriba).
+
+  **Instrumentación desde el día 1 (LLM Ops básico):**
   - Loggear costo real por llamada (tokens de entrada/salida × precio del
-    modelo) en una tabla propia, por `usuario_id`.
+    modelo) en una tabla propia, por `usuario_id` — incluye tanto las
+    llamadas de chat como las de actualización de perfil.
   - Loggear latencia por respuesta.
+  - Esto sigue siendo valioso aunque ya no bloquee una decisión de
+    ingresos: da visibilidad real de costo total de la app para decisiones
+    futuras (ej. si hiciera falta poner un límite más estricto).
 
 - [x] **10. Integración con Google Calendar.** OAuth explícito, mismo patrón
   que cualquier conector tipo Claude (pantalla de consentimiento clara,

@@ -456,6 +456,19 @@ async function ensureSchema() {
       editado TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-trazabilidad-social: decisión de esquema documentada en
+  // COORDINACION.md — tabla nueva en vez de columna en `pendientes`, porque
+  // un evento de completado es inmutable y separado del estado actual del
+  // pendiente (mismo espíritu que historial_ediciones arriba).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS eventos_completado (
+      id SERIAL PRIMARY KEY,
+      pendiente_id INT REFERENCES pendientes(id),
+      completado_por INT REFERENCES usuarios(id),
+      comentario TEXT,
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -548,16 +561,43 @@ app.post('/pendientes', async (req, res) => {
   res.redirect('/');
 });
 
+// rama-trazabilidad-social: decisión documentada en COORDINACION.md — se
+// amplía esta ruta con "OR asignado_a = $2" en vez de crear una ruta nueva
+// para completar tareas asignadas. Es la misma acción (marcar hecho=TRUE);
+// duplicarla en dos rutas hubiera significado mantener la misma UPDATE en
+// dos lugares. El único comportamiento extra para el caso asignado es el
+// evento de trazabilidad + la notificación, ambos condicionados a que la
+// tarea tuviera `asignado_a` (es decir, que fuera una tarea compartida).
 app.post('/pendientes/:id/completar', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).send('id inválido');
   }
   try {
-    await pool.query(
-      'UPDATE pendientes SET hecho = TRUE WHERE id = $1 AND usuario_id = $2 AND eliminado = FALSE',
+    const { rows } = await pool.query(
+      `UPDATE pendientes SET hecho = TRUE
+       WHERE id = $1 AND eliminado = FALSE AND (usuario_id = $2 OR asignado_a = $2)
+       RETURNING id, usuario_id, asignado_a`,
       [id, req.usuarioId]
     );
+    const pendiente = rows[0];
+    if (pendiente && pendiente.asignado_a) {
+      const comentario = (req.body.comentario || '').trim() || null;
+      await pool.query(
+        'INSERT INTO eventos_completado (pendiente_id, completado_por, comentario) VALUES ($1, $2, $3)',
+        [pendiente.id, req.usuarioId, comentario]
+      );
+      // Se notifica al OTRO miembro de la tarea compartida, sea cual sea el
+      // rol de quien completó (el dueño original o la persona asignada).
+      const notificarA = req.usuarioId === pendiente.usuario_id ? pendiente.asignado_a : pendiente.usuario_id;
+      if (notificarA) {
+        enviarPushAUsuario(notificarA, {
+          title: 'Tarea completada',
+          body: comentario ? `Se completó una tarea compartida: "${comentario}"` : 'Se completó una tarea compartida.',
+          data: { defaultUrl: '/' },
+        }).catch((err) => console.error('Error notificando tarea completada:', err.message));
+      }
+    }
   } catch (err) {
     console.error('Error marcando pendiente como hecho:', err.message);
   }
@@ -1274,6 +1314,64 @@ app.post('/amigos/:id/rechazar', async (req, res) => {
     return res.status(500).send('No se pudo rechazar la solicitud.');
   }
   res.redirect('/amigos');
+});
+
+// rama-trazabilidad-social: rango y tamaño de página documentados en
+// COORDINACION.md — mismo espíritu que VENCIDO_DIAS/LIMITE_INTENTOS más
+// arriba: constantes nombradas, no números sueltos.
+const TRAZABILIDAD_DIAS = 7;
+const TRAZABILIDAD_PAGINA_TAMANO = 20;
+
+app.get('/trazabilidad', async (req, res) => {
+  const amistadId = Number(req.query.amistad_id);
+  const pagina = Math.max(0, Number(req.query.pagina) || 0);
+  if (!Number.isInteger(amistadId)) {
+    return res.status(400).send('amistad_id inválido');
+  }
+  try {
+    const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
+    if (!pertenece) {
+      return res.status(403).render('trazabilidad', {
+        eventos: [], conteoSemana: [], amistadId: null, pagina: 0, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, error: 'No tienes acceso a esta amistad.',
+      });
+    }
+    const { rows: amistadRows } = await pool.query(
+      'SELECT usuario_a_id, usuario_b_id FROM amistades WHERE id = $1',
+      [amistadId]
+    );
+    const { usuario_a_id, usuario_b_id } = amistadRows[0];
+
+    const { rows: eventos } = await pool.query(
+      `SELECT e.id, e.completado_por, e.comentario, e.fecha, p.texto,
+              u.nombre_usuario AS completado_por_nombre
+       FROM eventos_completado e
+       JOIN pendientes p ON p.id = e.pendiente_id
+       JOIN usuarios u ON u.id = e.completado_por
+       WHERE (p.usuario_id = $1 OR p.asignado_a = $1) AND (p.usuario_id = $2 OR p.asignado_a = $2)
+         AND e.fecha >= now() - INTERVAL '${TRAZABILIDAD_DIAS} days'
+       ORDER BY e.fecha DESC
+       LIMIT $3 OFFSET $4`,
+      [usuario_a_id, usuario_b_id, TRAZABILIDAD_PAGINA_TAMANO, pagina * TRAZABILIDAD_PAGINA_TAMANO]
+    );
+
+    // Contador semanal por persona: mismo criterio de "semana" que ya usa
+    // GET /estadisticas (date_trunc('week', ... AT TIME ZONE 'America/Lima')),
+    // aplicado a la fecha del evento en vez de a la fecha de creación.
+    const { rows: conteoSemana } = await pool.query(
+      `SELECT completado_por, COUNT(*)::int AS cantidad
+       FROM eventos_completado e
+       JOIN pendientes p ON p.id = e.pendiente_id
+       WHERE (p.usuario_id = $1 OR p.asignado_a = $1) AND (p.usuario_id = $2 OR p.asignado_a = $2)
+         AND date_trunc('week', e.fecha AT TIME ZONE 'America/Lima') = date_trunc('week', now() AT TIME ZONE 'America/Lima')
+       GROUP BY completado_por`,
+      [usuario_a_id, usuario_b_id]
+    );
+
+    res.render('trazabilidad', { eventos, conteoSemana, amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, error: null });
+  } catch (err) {
+    console.error('Error consultando trazabilidad:', err.message);
+    res.status(500).render('trazabilidad', { eventos: [], conteoSemana: [], amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, error: 'No se pudo leer la base de datos.' });
+  }
 });
 
 // Vista y rutas de chat. Todavía no está enlazada al menú de navegación

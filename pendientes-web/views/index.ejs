@@ -69,7 +69,10 @@
                 <td><%= new Date(p.creado).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %></td>
                 <td>
                   <% if (esAsignado) { %>
-                    <span class="solo-lectura">Solo lectura</span>
+                    <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-asignado-form">
+                      <input type="text" name="comentario" placeholder="Comentario (opcional)">
+                      <button type="submit">✅ Completar</button>
+                    </form>
                   <% } else if (p.necesita_reflexion) { %>
                     <form method="POST" action="/pendientes/<%= p.id %>/reflexion" class="reflexion-form">
                       <label>¿Qué pasa?</label>

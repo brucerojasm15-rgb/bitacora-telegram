@@ -327,7 +327,8 @@ h1 {
   border-color: var(--accent);
 }
 
-.reflexion-form {
+.reflexion-form,
+.completar-asignado-form {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -341,7 +342,8 @@ h1 {
   white-space: nowrap;
 }
 
-.reflexion-form input[type="text"] {
+.reflexion-form input[type="text"],
+.completar-asignado-form input[type="text"] {
   padding: 0.6rem 0.8rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -351,13 +353,15 @@ h1 {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.reflexion-form input[type="text"]:focus {
+.reflexion-form input[type="text"]:focus,
+.completar-asignado-form input[type="text"]:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
 }
 
-.reflexion-form button {
+.reflexion-form button,
+.completar-asignado-form button {
   padding: 0.6rem 1rem;
   border: none;
   border-radius: var(--radius-sm);
@@ -652,12 +656,6 @@ tr.fila-saliendo {
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.solo-lectura {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-style: italic;
 }
 
 .asignado-actual {

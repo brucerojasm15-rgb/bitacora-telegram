@@ -864,6 +864,63 @@
   usuario dueño, no a otras suscripciones, y que `avisado` queda en TRUE).
 - Commit: pendiente de crear en esta misma sesión.
 
+### rama-trazabilidad-social
+- Estado: commiteada, sin probar contra la DB real (ver "Qué se verificó").
+- Tarea: tareas asignadas — completar + trazabilidad social (tarea 6 del
+  roadmap 2026-08-12). Depende de la tarea 4: creada desde
+  `rama-notificaciones-recordatorios` (rama local, commit `68d43d5`, NO
+  desde `origin/main`) porque necesita `enviarPushAUsuario()` y
+  `push_subscriptions.usuario_id` de esa rama — tampoco mergeada a main
+  todavía. Cadena de dependencias del roadmap, no un descuido: tarea 3 → 4 →
+  6, ninguna de las tres está en main aún.
+- Decisiones de esquema (tomadas al implementar):
+  1. **`POST /pendientes/:id/completar` se amplía, no se duplica.** Pasa a
+     aceptar `usuario_id = $2 OR asignado_a = $2`. Es la misma acción
+     (marcar `hecho=TRUE`); una ruta nueva hubiera significado mantener el
+     mismo UPDATE en dos lugares. Lo único condicionado al caso compartido
+     (evento de trazabilidad + notificación push) es si la tarea tenía
+     `asignado_a IS NOT NULL` — no quién la completó.
+  2. **Comentario y trazabilidad en tabla nueva `eventos_completado`**
+     (`pendiente_id`, `completado_por`, `comentario`, `fecha`), no columnas
+     en `pendientes`. Mismo criterio que `historial_ediciones`: un evento de
+     completado es un hecho inmutable separado del estado actual del
+     pendiente. Se registra sin importar si completó el dueño o la persona
+     asignada (visible para ambos).
+  3. **Feed: últimos 7 días, paginado de a 20**
+     (`TRAZABILIDAD_DIAS`/`TRAZABILIDAD_PAGINA_TAMANO`, constantes
+     nombradas junto a `VENCIDO_DIAS`/`LIMITE_INTENTOS`). 7 días en vez de
+     14 para que el feed se sienta "reciente" y no una lista larga —
+     consistente con el criterio semanal que ya usa `/estadisticas`.
+     Paginación simple `LIMIT/OFFSET` vía `?pagina=N`.
+  4. **Contador semanal por persona:** mismo criterio de "semana" que
+     `GET /estadisticas` (`date_trunc('week', ... AT TIME ZONE
+     'America/Lima')`), aplicado a `eventos_completado.fecha` en vez de a
+     `pendientes.creado` — no se pudo reusar el código literal porque es
+     otra tabla, pero sí el criterio de corte de semana.
+  5. **Notificación:** al completar una tarea compartida, se notifica al
+     OTRO miembro (si completó el dueño, se avisa al asignado, y
+     viceversa) con `enviarPushAUsuario()`.
+- Archivos tocados: server.js (tabla `eventos_completado`, `/pendientes/:id/
+  completar` ampliada, ruta nueva `GET /trazabilidad`), views/index.ejs
+  (botón "Completar" + comentario opcional reemplazando el antiguo "Solo
+  lectura" para tareas asignadas), views/trazabilidad.ejs (nuevo),
+  views/amigos.ejs (link "📊 Actividad" junto al de chat),
+  public/style.css (`.completar-asignado-form` reusa las reglas de
+  `.reflexion-form` por selector compartido; se borró `.solo-lectura`, que
+  quedó sin ningún uso tras el cambio de `index.ejs`).
+- Qué se verificó: `node --check server.js` sin errores; `ejs.renderFile`
+  con datos simulados (sin DB) para `trazabilidad.ejs` (caso con eventos y
+  caso de error 403), `index.ejs` (con una tarea asignada, confirmando que
+  aparece `completar-asignado-form` y ya no `solo-lectura`) y `amigos.ejs`
+  (confirmando el link nuevo). **No se probó contra la DB real** — este
+  worktree tampoco tiene `pendientes-web/.env` (mismo motivo de siempre).
+  Falta antes de mergear: crear una amistad y una tarea asignada de
+  prueba, completarla desde ambos roles (dueño y asignado), confirmar que
+  `eventos_completado` se llena una sola vez por completado, que
+  `/trazabilidad` solo muestra eventos de esa amistad específica (no de
+  otras), y que el push le llega al usuario correcto.
+- Commit: pendiente de crear en esta misma sesión.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -1298,8 +1355,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   completar: cuando alguien completa una tarea que otro le asignó, quien
   asignó recibe una notificación reusando `enviarPushATodos` (o una variante
   que envíe a un solo usuario en vez de a todos — probablemente hace falta
-  esa variante, evaluar). — asignada a: sin asignar (sugerido:
-  `rama-trazabilidad-social`) — Depende de: tarea 4 (notificaciones push).
+  esa variante, evaluar). — asignada a: `rama-trazabilidad-social`
+  (commiteada, sin probar contra la DB real — ver su sección en "Estado de
+  ramas") — Depende de: tarea 4 (notificaciones push).
 
 - [ ] **7. Sistema de moneda virtual.** Moneda ganada al completar una tarea
   asignada (no una tarea propia — solo las que vienen de `asignado_a`, para

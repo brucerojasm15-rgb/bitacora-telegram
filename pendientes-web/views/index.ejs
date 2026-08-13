@@ -43,7 +43,7 @@
       <% } else if (pendientes.length === 0) { %>
         <div class="empty">
           <%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio' }) %>
-          <p>No hay pendientes.</p>
+          <p>No tenés pendientes. Momento perfecto para respirar.</p>
         </div>
       <% } else { %>
         <p class="count" id="contador"><%= pendientes.length %> pendiente(s)</p>
@@ -148,7 +148,7 @@
       const tbody = document.querySelector('#tabla-pendientes tbody');
       if (fila) fila.remove();
       if (!tbody || tbody.children.length === 0) {
-        document.getElementById('lista').innerHTML = `<div class="empty"><%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio-js' }) %><p>No hay pendientes.</p></div>`;
+        document.getElementById('lista').innerHTML = `<div class="empty"><%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio-js' }) %><p>No tenés pendientes. Momento perfecto para respirar.</p></div>`;
       } else {
         document.getElementById('contador').textContent = `${tbody.children.length} pendiente(s)`;
       }

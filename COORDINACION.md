@@ -1366,6 +1366,45 @@
   que los renders ya verificados en las secciones de arriba siguen
   vigentes.
 
+### rama-estados-vacios
+- Estado: commiteada, lista para revisión (no probada contra la DB real — sin
+  `.env` en este worktree).
+- Tarea: A de la "Ronda — pulido y detalles de producto" — estados vacíos con
+  tema jungla en Pendientes, Ideas y Recordatorios.
+- **Decisión:** reusar exactamente el mismo `partials/monstera` (una sola
+  ilustración base, sin variantes por sección) en vez de crear 3 ilustraciones
+  separadas. Motivo: `views/index.ejs` ya la usaba en su estado vacío desde el
+  rediseño visual (tarea 5), con estilos `.empty`/`.empty svg`/`.empty p` ya
+  definidos en `style.css` — reusar el mismo partial y la misma estructura
+  `<div class="empty">` es lo que de verdad hace que "no sea una ilustración
+  nueva desconectada del resto" (como pide el enunciado), y evita mantener 3
+  variantes de SVG por una diferencia que el usuario ni va a notar entre
+  secciones. Lo que sí distingue cada sección es el texto.
+- **Textos elegidos** (cortos, tono cálido, mismo "vos" informal que ya usa el
+  resto de la app):
+  - Pendientes: "No tenés pendientes. Momento perfecto para respirar." (antes
+    decía simplemente "No hay pendientes." — lo actualicé también, en los dos
+    lugares donde aparece: el render inicial en `index.ejs` y el re-render por
+    JS cuando se completa el último pendiente sin recargar la página).
+  - Ideas: "Todavía no anotaste ninguna idea. La próxima que se te ocurra, ya
+    sabés dónde va."
+  - Recordatorios: "No hay recordatorios armados. Cuando quieras que algo no
+    se te escape, agregalo acá."
+- Archivos tocados: `views/index.ejs` (2 lugares, texto), `views/ideas.ejs`,
+  `views/recordatorios.ejs` (agregan el mismo patrón `<div class="empty">` +
+  `partials/monstera` + texto que ya existía en `index.ejs`). No se tocó
+  `views/hechos.ejs` — el enunciado de la tarea menciona explícitamente solo
+  Pendientes/Ideas/Recordatorios, no Hechos; queda fuera de alcance a
+  propósito, no es un olvido.
+- Qué se verificó: `node --check server.js` (no se tocó, pero se corrió
+  igual); `ejs.renderFile(...)` de `index.ejs`, `ideas.ejs` y
+  `recordatorios.ejs` con lista vacía Y con datos (para no romper el otro
+  caso) — sin errores; grep de emoji sobre las 3 vistas tocadas en cero. Sin
+  `.env` en este worktree, así que no se probó contra la DB real ni se vio
+  renderizado en un navegador — pendiente antes de mergear.
+- **Sin push, sin PR, sin merge — regla 8 de este mismo archivo.** El hilo
+  principal muestra el diff completo al usuario y espera su "aprobado".
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -1944,8 +1983,9 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   desconectada del resto. Un estado distinto por sección (Pendientes, Ideas,
   Recordatorios) — decidir en el momento si son 3 variantes de la misma ilustración base
   o 3 ilustraciones separadas, y el texto corto y cálido de cada una (documentar el texto
-  elegido, no dejarlo "por ahí" solo en el código). — asignada a: sin asignar — Depende
-  de: nada (el sistema de ilustraciones ya existe, tarea 5).
+  elegido, no dejarlo "por ahí" solo en el código). — asignada a: `rama-estados-vacios`
+  (commiteada, ver su sección en "Estado de ramas") — Depende de: nada (el sistema de
+  ilustraciones ya existe, tarea 5).
 
 - [ ] **B. Onboarding para usuarios nuevos.** Recorrido corto (3-4 pasos) inmediatamente
   después de `POST /registro`, explicando Pendientes/Ideas/Recordatorios y terminando en

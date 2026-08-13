@@ -1,13 +1,16 @@
   <nav class="nav">
-    <a href="/captura">⚡ Captura rápida</a>
+    <a href="/captura"><%- include('icono', { nombre: 'rayo' }) %> Captura rápida</a>
     <a href="/">Pendientes</a>
     <a href="/ideas">Ideas</a>
     <a href="/recordatorios">Recordatorios</a>
     <a href="/hechos">Hechos</a>
-    <a href="/estadisticas">📊 Estadísticas</a>
-    <a href="/amigos">🤝 Amigos</a>
-    <a href="/chat-general">💬 Chat general</a>
-    <a href="/exportar">📥 Exportar</a>
+    <a href="/estadisticas"><%- include('icono', { nombre: 'grafico' }) %> Estadísticas</a>
+    <a href="/amigos"><%- include('icono', { nombre: 'personas' }) %> Amigos</a>
+    <a href="/chat-general"><%- include('icono', { nombre: 'chat' }) %> Chat general</a>
+    <a href="/exportar"><%- include('icono', { nombre: 'descarga' }) %> Exportar</a>
+    <button type="button" id="toggle-tema" class="toggle-tema" aria-label="Cambiar tema claro/oscuro">
+      <%- include('icono', { nombre: 'sol' }) %>
+    </button>
     <form method="POST" action="/logout" class="logout-form">
       <button type="submit">Cerrar sesión</button>
     </form>

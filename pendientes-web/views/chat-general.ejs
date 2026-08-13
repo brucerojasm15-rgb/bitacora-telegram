@@ -6,7 +6,7 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>💬 Chat general</h1>
+    <h1><%- include('partials/icono', { nombre: 'chat' }) %> Chat general</h1>
     <p class="count">Todos los usuarios registrados ven esta sala — no hace falta ser amigos.</p>
 
     <% if (error) { %>
@@ -24,7 +24,7 @@
         %>
         <% if (sinLeerPrevios > 0) { %>
           <p class="notificacion">
-            🔔 Tenías <%= sinLeerPrevios %> mensaje<%= sinLeerPrevios === 1 ? '' : 's' %> sin leer en la sala general.
+            <%- include('partials/icono', { nombre: 'campana' }) %> Tenías <%= sinLeerPrevios %> mensaje<%= sinLeerPrevios === 1 ? '' : 's' %> sin leer en la sala general.
           </p>
         <% } %>
         <ul class="chat-mensajes">

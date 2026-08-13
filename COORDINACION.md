@@ -1012,8 +1012,8 @@
 - Commit: pendiente de crear en esta misma sesión.
 
 ### rama-tema-jungla
-- Estado: en progreso — este primer tramo es SOLO la combinación de código,
-  todavía sin ningún cambio visual.
+- Estado: commiteada, sin probar contra la DB real ni en un navegador de
+  verdad (ver "Verificación del rediseño visual" más abajo).
 - Tarea: tarea 5 del roadmap 2026-08-12 (rediseño "Jungla/Monstera"). Como
   esta tarea toca prácticamente todos los `.ejs` y estaba despachada al
   final a propósito (para no chocar con el resto del roadmap en paralelo),
@@ -1063,9 +1063,99 @@
   originales lo había hecho tampoco, mismo motivo de siempre: sin `.env`
   en el worktree) — sigue pendiente, ahora acumulado en un solo lugar en
   vez de en 5 ramas separadas.
-- **Qué sigue:** aplicar el rediseño visual en sí (paleta, íconos SVG
-  reemplazando emojis, ilustración de monstera) sobre esta base ya
-  combinada — es un paso aparte, todavía no arrancado.
+- **Rediseño visual (este commit):** aplicado sobre la combinación de
+  arriba. Paleta y tokens derivados ya habían sido aprobados por el usuario
+  en un mockup aparte antes de tocar código real (mismos valores acá, para
+  que el mockup y la app real no diverjan):
+  - Claro: fondo `#F4F1E8`, verde (ahora `--accent`) `#2D5A3D`, acento cálido
+    nuevo (`--tono`) `#D4A574`. Oscuro: fondo `#1A2620`, verde `#7CB88F`,
+    mismo `--tono`. El resto de los tokens (superficie, texto, bordes,
+    semánticos danger/success/warning) se derivaron para buen contraste en
+    los dos modos — quedaron documentados como comentario arriba del
+    `:root` en `public/style.css`.
+  - Se reusaron los NOMBRES de variable que ya existían (`--accent`,
+    `--bg-elevated`, `--radius`, etc.) para no tener que tocar cada regla
+    del archivo — solo los valores cambiaron. `--radius`/`--radius-sm`
+    subieron de 10px/8px a 20px/14px ("bordes redondeados generosos").
+    Reemplaza al tema oscuro anterior (rama-tema-chat/rama-visual) a
+    propósito, como pide el enunciado — no quedaron los dos en paralelo.
+  - **Toggle claro/oscuro: columna `usuarios.tema` (no localStorage).**
+    Decisión: persiste entre dispositivos de la misma cuenta, y permite que
+    el HTML salga del servidor ya con el `data-theme` correcto (script
+    inline al principio de `partials/head.ejs`, antes del `<link
+    rel="stylesheet">`) sin parpadeo del tema equivocado — con
+    `localStorage` eso no es posible porque el servidor no sabe la
+    preferencia al renderizar. Middleware nuevo expone `tema` a todas las
+    vistas vía `res.locals` (una consulta liviana más por request
+    logueado). Ruta nueva `POST /preferencia-tema`. Botón en
+    `partials/nav.ejs` (ícono sol/luna según el tema ACTUAL, no el que se
+    va a activar).
+  - **Íconos SVG nuevos** (`views/partials/icono.ejs`, un solo set
+    reusado en todo el proyecto, estilo lucide/heroicons outline 24x24):
+    🔔→campana, 🗑️→papelera, ✔→check, ✓✓→doble-check, ❌→x, 🔐→candado,
+    ✏️→lápiz, 🔥→llama, 📋→portapapeles, 💡→bombilla, ⚡→rayo, 🤝→personas,
+    💬→chat, 📊→gráfico, 📥→descarga, 📅→calendario, ⏰→reloj, ⏳→arena
+    (hourglass — distinto de "reloj" a propósito: posponer no es lo mismo
+    que un recordatorio con hora fija), ← →→flecha-izq/flecha-der, más
+    sol/luna para el toggle. **`●` (punto de "mensaje sin leer" en
+    `chat.ejs`) se dejó como texto a propósito, no es emoji real** — es un
+    carácter geométrico simple que ya hereda `var(--accent)` como
+    cualquier texto, sin la inconsistencia visual entre plataformas que sí
+    tienen los emoji de verdad (que es la razón real de reemplazarlos).
+  - **Ilustración de monstera** (`views/partials/monstera.ejs`, un
+    `<path>` de la hoja + `<mask>` con elipses para las fenestraciones) en
+    los 3 lugares pedidos: estado vacío de pendientes (`index.ejs`, tanto
+    el render inicial como el que arma el JS al completar el último
+    pendiente — ver bug de abajo), `login.ejs`, `registro.ejs`. Favicon
+    nuevo en `public/favicon.svg` (versión standalone, sin depender de
+    variables CSS ya que un favicon se carga fuera del contexto de la
+    página). **Los íconos PWA existentes (`public/icons/icon-192.png`,
+    `icon-512.png`, PNG rasterizados) NO se regeneraron** — no es viable
+    sin herramientas de imagen desde acá. Quedan pendientes de actualizar
+    a mano con la ilustración nueva; mientras tanto el `manifest.json`
+    sigue apuntando a los viejos (funcionan, solo no tienen el estilo
+    nuevo).
+  - Nombres de sección sin tocar (Pendientes, Ideas, Recordatorios, etc.)
+    en las 15 vistas, incluidas las 6 que trajeron las otras ramas
+    (`captura.ejs`, `chat-general.ejs`, `trazabilidad.ejs`,
+    `recordatorios.ejs` con Google Calendar, etc.) — no eran parte del
+    alcance original de la tarea 5 (se escribió antes de que existieran)
+    pero quedarían visualmente a medias si no se tocaban también.
+  - **Bug real encontrado y corregido durante la verificación (no por el
+    render de EJS, que no lo detecta):** el estado vacío que arma
+    `index.ejs` por JS (cuando se completa el último pendiente sin
+    recargar la página) insertaba el SVG multi-línea de la monstera
+    dentro de un string JS con comillas simples — comillas simples no
+    aceptan saltos de línea crudos, así que el JS quedaba con un
+    "Unterminated string literal" en el navegador aunque EJS lo renderizara
+    sin error del lado del servidor. Se cambió esa asignación a un
+    template literal (backticks). Después de esto, se extrajeron y
+    validaron con `node --check` los 47 bloques `<script>` inline de las
+    15 vistas (no solo la sintaxis EJS/HTML) para no repetir la misma
+    clase de bug en otro lado.
+  - Otro bug real, distinto (de EJS, no de JS): un comentario de
+    documentación dentro de `views/partials/icono.ejs` incluía, como
+    texto de ejemplo, la sintaxis literal `<%- include(...) %>` — el
+    parser de EJS no entiende comentarios, así que interpretó eso como
+    una tag real y rompió el balance de tags de TODO archivo que
+    incluyera este partial (`Could not find matching close tag`). Se
+    corrigió reescribiendo el comentario sin mostrar la sintaxis literal.
+- **Verificación del rediseño visual:** `node --check server.js` limpio.
+  Grep final de emoji (rango Unicode ampliado, no solo los 4 del
+  enunciado original — la primera pasada con un rango más angosto se
+  había comido ⏰/⏳ silenciosamente) sobre `server.js` y las 15 `.ejs`:
+  cero coincidencias reales (el único resultado es el `●` documentado
+  arriba). `ejs.renderFile(...)` con datos simulados para las 15 vistas,
+  cubriendo también sus variantes de error/vacío/con-datos donde aplica:
+  las 20 combinaciones renderizan sin error. Los 47 `<script>` inline
+  resultantes se extrajeron y pasaron `node --check` uno por uno (detectó
+  el bug del template literal, ver arriba). **Lo que NO se pudo probar**:
+  contra la DB real (sigue sin `.env` en este worktree) y en un navegador
+  de verdad — el toggle, el favicon, y que el `data-theme` server-side
+  efectivamente evite el parpadeo, son cosas que solo se confirman
+  mirando la app corriendo. Recomendado antes de mergear: abrir la app
+  localmente, tocar el toggle unas cuantas veces, y mirar las 3
+  ilustraciones de monstera.
 
 ### rama-integracion
 - Estado: —
@@ -1479,8 +1569,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   o con un grep de emojis antes de dar la tarea por terminada. **NO
   reemplazar el tema oscuro ya existente (de rama-tema-chat/rama-visual) sin
   coordinarlo — esta tarea lo reemplaza/actualiza a propósito, no es un
-  conflicto, es la continuación esperada.** — asignada a: sin asignar
-  (sugerido: `rama-tema-jungla`) — Depende de: nada funcionalmente, pero
+  conflicto, es la continuación esperada.** — asignada a: `rama-tema-jungla`
+  (commiteada, sin probar en navegador ni contra DB real — ver su sección
+  en "Estado de ramas") — Depende de: nada funcionalmente, pero
   **despachar al final** (ver "Plan de despacho" arriba, razón documentada
   ahí).
 

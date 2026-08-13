@@ -6,7 +6,7 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>💬 Chat</h1>
+    <h1><%- include('partials/icono', { nombre: 'chat' }) %> Chat</h1>
 
     <% if (!amistadId) { %>
       <p class="empty">Indica una amistad con <code>?amistad_id=</code> para ver la conversación.</p>
@@ -28,7 +28,7 @@
         %>
         <% if (sinLeerPrevios > 0) { %>
           <p class="notificacion">
-            🔔 Tenías <%= sinLeerPrevios %> mensaje<%= sinLeerPrevios === 1 ? '' : 's' %> sin leer. Se marcaron como leídos al abrir el chat.
+            <%- include('partials/icono', { nombre: 'campana' }) %> Tenías <%= sinLeerPrevios %> mensaje<%= sinLeerPrevios === 1 ? '' : 's' %> sin leer. Se marcaron como leídos al abrir el chat.
           </p>
         <% } %>
         <ul class="chat-mensajes">
@@ -43,7 +43,7 @@
                 <% if (!esMio && !m.leido) { %>
                   <span class="no-leido" title="Mensaje nuevo">●</span>
                 <% } else if (esMio) { %>
-                  <span class="visto" title="<%= m.leido ? 'Visto' : 'Enviado' %>"><%= m.leido ? '✓✓' : '✓' %></span>
+                  <span class="visto" title="<%= m.leido ? 'Visto' : 'Enviado' %>"><%- include('partials/icono', { nombre: m.leido ? 'doble-check' : 'check' }) %></span>
                 <% } %>
               </span>
             </li>

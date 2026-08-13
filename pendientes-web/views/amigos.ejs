@@ -6,7 +6,7 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>🤝 Amigos</h1>
+    <h1><%- include('partials/icono', { nombre: 'personas' }) %> Amigos</h1>
 
     <% if (error) { %>
       <p class="error"><%= error %></p>
@@ -36,10 +36,10 @@
                 <td>
                   <div class="acciones">
                     <form method="POST" action="/amigos/<%= s.amistad_id %>/aceptar">
-                      <button type="submit">✅ Aceptar</button>
+                      <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Aceptar</button>
                     </form>
                     <form method="POST" action="/amigos/<%= s.amistad_id %>/rechazar">
-                      <button type="submit">❌ Rechazar</button>
+                      <button type="submit"><%- include('partials/icono', { nombre: 'x' }) %> Rechazar</button>
                     </form>
                   </div>
                 </td>
@@ -72,8 +72,8 @@
           <% amigos.forEach((a) => { %>
             <li>
               <span class="autor"><%= a.nombre_usuario %></span>
-              <a href="/chat?amistad_id=<%= a.amistad_id %>" class="btn-link">💬 Chat</a>
-              <a href="/trazabilidad?amistad_id=<%= a.amistad_id %>" class="btn-link">📊 Actividad</a>
+              <a href="/chat?amistad_id=<%= a.amistad_id %>" class="btn-link"><%- include('partials/icono', { nombre: 'chat' }) %> Chat</a>
+              <a href="/trazabilidad?amistad_id=<%= a.amistad_id %>" class="btn-link"><%- include('partials/icono', { nombre: 'grafico' }) %> Actividad</a>
             </li>
           <% }) %>
         </ul>

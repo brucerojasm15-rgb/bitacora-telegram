@@ -6,7 +6,7 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>⚡ Captura rápida</h1>
+    <h1><%- include('partials/icono', { nombre: 'rayo' }) %> Captura rápida</h1>
     <p class="count">Escribe lo que sea y elige qué es antes de guardarlo.</p>
 
     <% if (error) { %>
@@ -21,9 +21,9 @@
 
       <input type="hidden" name="tipo" id="captura-tipo-oculto">
       <div class="captura-tipos" role="group" aria-label="Tipo">
-        <button type="submit" class="captura-tipo-btn" data-tipo="pendiente">✅ Pendiente</button>
-        <button type="submit" class="captura-tipo-btn" data-tipo="idea">💡 Idea</button>
-        <button type="submit" class="captura-tipo-btn" data-tipo="recordatorio" id="btn-recordatorio">⏰ Recordatorio</button>
+        <button type="submit" class="captura-tipo-btn" data-tipo="pendiente"><%- include('partials/icono', { nombre: 'check' }) %> Pendiente</button>
+        <button type="submit" class="captura-tipo-btn" data-tipo="idea"><%- include('partials/icono', { nombre: 'bombilla' }) %> Idea</button>
+        <button type="submit" class="captura-tipo-btn" data-tipo="recordatorio" id="btn-recordatorio"><%- include('partials/icono', { nombre: 'reloj' }) %> Recordatorio</button>
       </div>
 
       <div id="campo-cuando" class="captura-cuando" hidden>

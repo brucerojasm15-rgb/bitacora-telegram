@@ -1,25 +1,89 @@
+/* rama-tema-jungla: paleta "Jungla/Monstera" (tarea 5 del roadmap).
+   Fondo/verde/acento vienen fijados por el enunciado; el resto de los
+   tokens (superficies, texto, semánticos) se derivaron para que
+   contrasten bien en los dos modos, mismos nombres de variable que ya
+   usaba el tema anterior para no tener que tocar cada regla del archivo.
+   --accent pasó a ser el verde de marca (antes era el azul viejo);
+   --tono es el acento cálido D4A574 nuevo, sin equivalente antes. */
 :root {
-  --bg: #15161b;
-  --bg-elevated: #1d1f27;
-  --bg-elevated-2: #262933;
-  --border: #33363f;
-  --border-soft: #2a2d36;
-  --text: #edeef2;
-  --text-muted: #9a9dab;
-  --accent: #6d8dfc;
-  --accent-strong: #5577f0;
-  --danger: #ff6b6b;
-  --danger-bg: #3a1f22;
-  --success: #34d399;
-  --success-strong: #22c55e;
-  --success-bg: #16301f;
-  --warning: #fbbf24;
-  --warning-bg: #332a12;
-  --radius: 10px;
-  --radius-sm: 8px;
-  --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --bg: #F4F1E8;
+  --bg-elevated: #FCFAF2;
+  --bg-elevated-2: #FFFFFF;
+  --border: #DCD5C2;
+  --border-soft: #E8E2D2;
+  --text: #20291F;
+  --text-muted: #5C6B5B;
+  --accent: #2D5A3D;
+  --accent-strong: #234832;
+  --accent-rgb: 45, 90, 61;
+  --tono: #D4A574;
+  --tono-suave: #F1E3D0;
+  --danger: #C4573A;
+  --danger-rgb: 196, 87, 58;
+  --danger-bg: #F3E1DA;
+  --success: #3E7A52;
+  --success-strong: #2D5A3D;
+  --success-bg: #E1EBE2;
+  --warning: #B8863E;
+  --warning-bg: #F1E3D0;
+  --radius: 20px;
+  --radius-sm: 14px;
+  --shadow: 0 8px 24px -12px rgba(32, 41, 31, 0.18);
   --transition-fast: 0.18s ease;
   --transition-medium: 0.35s ease;
+  --display: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", "Nunito", system-ui, sans-serif;
+}
+
+/* Oscuro: reemplaza al tema oscuro anterior (rama-tema-chat/rama-visual)
+   a propósito, no en paralelo — mismo criterio de paleta, tokens con el
+   mismo nombre para que el resto del archivo no necesite tocarse. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1A2620;
+    --bg-elevated: #213027;
+    --bg-elevated-2: #263A2F;
+    --border: #33463A;
+    --border-soft: #2A3A30;
+    --text: #EDEAE0;
+    --text-muted: #9FB0A0;
+    --accent: #7CB88F;
+    --accent-strong: #3E7A52;
+    --accent-rgb: 124, 184, 143;
+    --tono: #D4A574;
+    --tono-suave: #3B3324;
+    --danger: #E08464;
+    --danger-rgb: 224, 132, 100;
+    --danger-bg: #3A2A22;
+    --success: #7CB88F;
+    --success-strong: #4F9169;
+    --success-bg: #1E2E24;
+    --warning: #D9A968;
+    --warning-bg: #3B3324;
+    --shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.5);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1A2620;
+  --bg-elevated: #213027;
+  --bg-elevated-2: #263A2F;
+  --border: #33463A;
+  --border-soft: #2A3A30;
+  --text: #EDEAE0;
+  --text-muted: #9FB0A0;
+  --accent: #7CB88F;
+  --accent-strong: #3E7A52;
+  --accent-rgb: 124, 184, 143;
+  --tono: #D4A574;
+  --tono-suave: #3B3324;
+  --danger: #E08464;
+  --danger-rgb: 224, 132, 100;
+  --danger-bg: #3A2A22;
+  --success: #7CB88F;
+  --success-strong: #4F9169;
+  --success-bg: #1E2E24;
+  --warning: #D9A968;
+  --warning-bg: #3B3324;
+  --shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -39,8 +103,70 @@ main {
   margin: 0 auto;
 }
 
-h1 {
+h1, h2, h3 {
   margin-bottom: 0.25rem;
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+h1 svg, h2 svg {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+button, .btn-link, .nav a {
+  font-family: var(--display);
+}
+
+/* Íconos SVG en línea (partials/icono.ejs) — viewBox 24x24 fijo en todos,
+   así que un solo selector por atributo alcanza para dimensionarlos
+   consistentes con el texto que los rodea, en cualquier lugar del
+   proyecto donde se usen. La ilustración de monstera usa otro viewBox y
+   no cae acá. */
+svg[viewBox="0 0 24 24"] {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+}
+
+.nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.toggle-tema {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: auto;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.toggle-tema:hover {
+  border-color: var(--accent);
+}
+
+.toggle-tema svg {
+  width: 16px;
+  height: 16px;
 }
 
 .nav {
@@ -65,7 +191,7 @@ h1 {
 }
 
 .logout-form {
-  margin: 0 0 0 auto;
+  margin: 0;
 }
 
 .logout-form button {
@@ -88,6 +214,32 @@ h1 {
 .login-main {
   max-width: 320px;
   margin: 4rem auto 0;
+  padding: 2.25rem 2rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.login-main .login-form,
+.login-main p {
+  text-align: left;
+}
+
+.login-main h1 {
+  justify-content: center;
+}
+
+.ilustracion-auth {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.ilustracion-auth svg {
+  width: 72px;
+  height: 72px;
 }
 
 .login-form {
@@ -110,7 +262,7 @@ h1 {
 .login-form input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
 .login-form button {
@@ -158,7 +310,7 @@ h1 {
 .nuevo input[type="text"]:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
 .nuevo select {
@@ -274,7 +426,7 @@ h1 {
 .editar-form textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
 .acciones-form {
@@ -357,7 +509,7 @@ h1 {
 .completar-asignado-form input[type="text"]:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
 .reflexion-form button,
@@ -383,6 +535,21 @@ h1 {
 
 .empty {
   color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.empty svg {
+  width: 64px;
+  height: 64px;
+}
+
+.empty p {
+  margin: 0;
 }
 
 .error {
@@ -390,7 +557,7 @@ h1 {
   background: var(--danger-bg);
   padding: 0.85rem 1.1rem;
   border-radius: var(--radius);
-  border: 1px solid rgba(255, 107, 107, 0.25);
+  border: 1px solid rgba(var(--danger-rgb), 0.25);
 }
 
 .codigo-recuperacion {
@@ -443,7 +610,7 @@ h1 {
 .filtro-rango input[type="number"]:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
 .filtro-rango button {
@@ -681,7 +848,7 @@ tr.fila-saliendo {
 .asignar-form select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
 .asignar-form button {
@@ -719,7 +886,7 @@ tr.fila-saliendo {
 .captura-form textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
 .captura-tipos {
@@ -769,5 +936,5 @@ tr.fila-saliendo {
 .captura-cuando input[type="datetime-local"]:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 141, 252, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }

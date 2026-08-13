@@ -1,10 +1,21 @@
   <meta charset="UTF-8">
+  <% /* rama-tema-jungla: aplica el data-theme guardado ANTES de que se
+       pinte nada, para no parpadear con el tema equivocado. Si tema es
+       null ("sistema"), no toca el atributo y prefers-color-scheme manda,
+       como en el resto del CSS. */ %>
+  <script>
+    (function () {
+      var t = <%- JSON.stringify(typeof tema !== 'undefined' && tema === 'oscuro' ? 'dark' : (typeof tema !== 'undefined' && tema === 'claro' ? 'light' : '')) %>;
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= titulo %></title>
   <link rel="stylesheet" href="/style.css">
 
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#15161b">
+  <meta name="theme-color" content="#2D5A3D">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">

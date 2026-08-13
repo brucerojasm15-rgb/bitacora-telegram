@@ -114,6 +114,43 @@ app.use((req, res, next) => {
   return res.status(401).end();
 });
 
+// rama-tema-jungla: expone `tema` a TODAS las vistas vía res.locals (así
+// partials/head.ejs puede fijar data-theme en el <html> sin parpadeo, sin
+// que cada ruta tenga que acordarse de pasarlo). Una consulta liviana más
+// por request logueado — aceptable para el tamaño de esta app.
+app.use(async (req, res, next) => {
+  if (!req.usuarioId) {
+    res.locals.tema = null;
+    return next();
+  }
+  try {
+    const { rows } = await pool.query('SELECT tema FROM usuarios WHERE id = $1', [req.usuarioId]);
+    res.locals.tema = rows[0] ? rows[0].tema : null;
+  } catch (err) {
+    res.locals.tema = null;
+  }
+  next();
+});
+
+const TEMAS_VALIDOS = ['claro', 'oscuro', 'sistema'];
+
+app.post('/preferencia-tema', async (req, res) => {
+  const tema = req.body.tema;
+  if (!TEMAS_VALIDOS.includes(tema)) {
+    return res.status(400).end();
+  }
+  try {
+    await pool.query('UPDATE usuarios SET tema = $1 WHERE id = $2', [
+      tema === 'sistema' ? null : tema,
+      req.usuarioId,
+    ]);
+  } catch (err) {
+    console.error('Error guardando preferencia de tema:', err.message);
+    return res.status(500).end();
+  }
+  res.status(204).end();
+});
+
 // Límite de intentos por IP (fuerza bruta en /login y /registro). En memoria:
 // suficiente para una sola instancia; si la app crece a múltiples instancias
 // habría que moverlo a la DB o a algo compartido como Redis.
@@ -433,6 +470,13 @@ async function ensureSchema() {
       pin_hash TEXT,
       creado TIMESTAMP DEFAULT now()
     )
+  `);
+  // rama-tema-jungla: preferencia de tema en la cuenta (no localStorage)
+  // para que persista entre dispositivos y el HTML salga ya con el data-
+  // theme correcto desde el servidor, sin parpadeo del tema equivocado.
+  // NULL = sigue la preferencia del sistema operativo (prefers-color-scheme).
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tema TEXT
   `);
   await pool.query(`
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigo_recuperacion_hash TEXT

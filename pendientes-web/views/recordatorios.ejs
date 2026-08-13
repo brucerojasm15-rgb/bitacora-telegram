@@ -6,17 +6,17 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>⏰ Recordatorios</h1>
+    <h1><%- include('partials/icono', { nombre: 'reloj' }) %> Recordatorios</h1>
 
     <% if (typeof googleConfigurado !== 'undefined' && googleConfigurado) { %>
       <p class="count">
         <% if (googleConectado) { %>
-          📅 Google Calendar conectado.
+          <%- include('partials/icono', { nombre: 'calendario' }) %> Google Calendar conectado.
           <form method="POST" action="/calendario/desconectar" style="display:inline">
             <button type="submit" class="secundario">Desconectar</button>
           </form>
         <% } else { %>
-          <a href="/calendario/conectar"><button type="button" class="secundario">📅 Conectar Google Calendar</button></a>
+          <a href="/calendario/conectar"><button type="button" class="secundario"><%- include('partials/icono', { nombre: 'calendario' }) %> Conectar Google Calendar</button></a>
         <% } %>
       </p>
     <% } %>
@@ -50,7 +50,7 @@
               <% if (typeof googleConectado !== 'undefined' && googleConectado) { %>
                 <td>
                   <form method="POST" action="/recordatorios/<%= r.id %>/crear-evento-calendar" style="display:inline">
-                    <button type="submit" class="secundario">📅 Crear evento</button>
+                    <button type="submit" class="secundario"><%- include('partials/icono', { nombre: 'calendario' }) %> Crear evento</button>
                   </form>
                 </td>
               <% } %>

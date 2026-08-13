@@ -6,9 +6,9 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>📋 Pendientes</h1>
+    <h1><%- include('partials/icono', { nombre: 'portapapeles' }) %> Pendientes</h1>
 
-    <button id="activar-notificaciones" type="button" class="secundario">🔔 Activar notificaciones</button>
+    <button id="activar-notificaciones" type="button" class="secundario"><%- include('partials/icono', { nombre: 'campana' }) %> Activar notificaciones</button>
 
     <form method="POST" action="/pendientes" class="nuevo">
       <input type="text" name="texto" id="nuevo-pendiente" placeholder="Nuevo pendiente..." required>
@@ -41,7 +41,10 @@
       <% if (error) { %>
         <p class="error"><%= error %></p>
       <% } else if (pendientes.length === 0) { %>
-        <p class="empty">No hay pendientes. 🎉</p>
+        <div class="empty">
+          <%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio' }) %>
+          <p>No hay pendientes.</p>
+        </div>
       <% } else { %>
         <p class="count" id="contador"><%= pendientes.length %> pendiente(s)</p>
         <table id="tabla-pendientes">
@@ -71,7 +74,7 @@
                   <% if (esAsignado) { %>
                     <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-asignado-form">
                       <input type="text" name="comentario" placeholder="Comentario (opcional)">
-                      <button type="submit">✅ Completar</button>
+                      <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Completar</button>
                     </form>
                   <% } else if (p.necesita_reflexion) { %>
                     <form method="POST" action="/pendientes/<%= p.id %>/reflexion" class="reflexion-form">
@@ -82,14 +85,14 @@
                   <% } else { %>
                     <div class="acciones">
                       <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form">
-                        <button type="submit">✅ Completar</button>
+                        <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Completar</button>
                       </form>
                       <form method="POST" action="/pendientes/<%= p.id %>/posponer" class="posponer-form">
-                        <button type="submit">⏳ Posponer</button>
+                        <button type="submit"><%- include('partials/icono', { nombre: 'arena' }) %> Posponer</button>
                       </form>
-                      <a href="/pendientes/<%= p.id %>/editar" class="btn-link">✏️ Editar</a>
+                      <a href="/pendientes/<%= p.id %>/editar" class="btn-link"><%- include('partials/icono', { nombre: 'lapiz' }) %> Editar</a>
                       <form method="POST" action="/pendientes/<%= p.id %>/eliminar" class="eliminar-form">
-                        <button type="submit">🗑️ Eliminar</button>
+                        <button type="submit"><%- include('partials/icono', { nombre: 'papelera' }) %> Eliminar</button>
                       </form>
                     </div>
                   <% } %>
@@ -145,7 +148,7 @@
       const tbody = document.querySelector('#tabla-pendientes tbody');
       if (fila) fila.remove();
       if (!tbody || tbody.children.length === 0) {
-        document.getElementById('lista').innerHTML = '<p class="empty">No hay pendientes. 🎉</p>';
+        document.getElementById('lista').innerHTML = `<div class="empty"><%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio-js' }) %><p>No hay pendientes.</p></div>`;
       } else {
         document.getElementById('contador').textContent = `${tbody.children.length} pendiente(s)`;
       }
@@ -164,7 +167,7 @@
           reproducirSonido('completar');
           if (!fila) return;
           const celdaAcciones = fila.querySelector('td:last-child');
-          if (celdaAcciones) celdaAcciones.innerHTML = '<span class="check-confirm">✔</span>';
+          if (celdaAcciones) celdaAcciones.innerHTML = '<span class="check-confirm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"></path></svg></span>';
           fila.classList.add('fila-completada');
           setTimeout(() => {
             fila.classList.add('fila-saliendo');

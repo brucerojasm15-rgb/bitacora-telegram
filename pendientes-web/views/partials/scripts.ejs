@@ -1,5 +1,40 @@
   <script src="/sonidos.js"></script>
   <script>
+    // rama-tema-jungla: toggle claro/oscuro. El ícono refleja el tema
+    // ACTUAL (sol si se está mostrando claro, luna si oscuro). Guarda la
+    // preferencia en la cuenta (no localStorage — ver COORDINACION.md).
+    (function () {
+      const boton = document.getElementById('toggle-tema');
+      if (!boton) return;
+      const RUTA_SOL = '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>';
+      const RUTA_LUNA = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path>';
+
+      function temaActual() {
+        const marcado = document.documentElement.getAttribute('data-theme');
+        if (marcado === 'dark' || marcado === 'light') return marcado;
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+
+      function pintarIcono() {
+        const svg = boton.querySelector('svg');
+        if (svg) svg.innerHTML = temaActual() === 'dark' ? RUTA_LUNA : RUTA_SOL;
+      }
+
+      pintarIcono();
+
+      boton.addEventListener('click', () => {
+        const nuevo = temaActual() === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', nuevo);
+        pintarIcono();
+        fetch('/preferencia-tema', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tema: nuevo === 'dark' ? 'oscuro' : 'claro' }),
+        }).catch(() => {});
+      });
+    })();
+  </script>
+  <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch(() => {});

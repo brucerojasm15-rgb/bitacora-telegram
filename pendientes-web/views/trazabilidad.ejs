@@ -6,7 +6,7 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <h1>📊 Actividad compartida</h1>
+    <h1><%- include('partials/icono', { nombre: 'grafico' }) %> Actividad compartida</h1>
 
     <% if (error) { %>
       <p class="error"><%= error %></p>
@@ -42,10 +42,10 @@
         </ul>
         <div class="filtro-rango">
           <% if (pagina > 0) { %>
-            <a href="/trazabilidad?amistad_id=<%= amistadId %>&pagina=<%= pagina - 1 %>" class="btn-link">← Más recientes</a>
+            <a href="/trazabilidad?amistad_id=<%= amistadId %>&pagina=<%= pagina - 1 %>" class="btn-link"><%- include('partials/icono', { nombre: 'flecha-izq' }) %> Más recientes</a>
           <% } %>
           <% if (eventos.length === paginaTamano) { %>
-            <a href="/trazabilidad?amistad_id=<%= amistadId %>&pagina=<%= pagina + 1 %>" class="btn-link">Más antiguas →</a>
+            <a href="/trazabilidad?amistad_id=<%= amistadId %>&pagina=<%= pagina + 1 %>" class="btn-link">Más antiguas <%- include('partials/icono', { nombre: 'flecha-der' }) %></a>
           <% } %>
         </div>
       <% } %>

@@ -2100,6 +2100,41 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Responsable de: revisar qué ramas están "lista para merge", mergear a main una por
   una en orden seguro, resolver conflictos, y registrar cada merge abajo.
 
+## Verificación forense de ramas borradas con -D forzado (2026-08-13)
+
+Contexto: se borraron 25 ramas/worktrees huérfanos tras confirmar que su trabajo ya
+estaba en `main` (absorbido en la consolidación `rama-tema-jungla`, o reconstruido
+como `-v2`). 13 eran ancestro directo de `main` (`git branch -d` normal). Las 12 de
+abajo NO eran ancestro directo (son commits distintos, reimplementados en otro lado)
+y se borraron con `git branch -D` tras confirmación explícita del usuario. Esta
+sección deja registro permanente de la verificación de contenido real hecha para
+cada una — 5 siguen recuperables vía `origin/rama-<nombre>` (nunca se borraron ahí),
+las otras 7 solo existían como objetos sueltos al momento de esta verificación
+(2026-08-13) y podrían perderse con un `git gc` futuro, por eso queda el detalle acá
+en vez de depender de que el objeto siga existiendo.
+
+`git merge-base --is-ancestor <hash> main` dio **NO** en las 12 (esperado, son
+commits distintos) — el criterio real de "pasa" es la verificación de contenido:
+
+| Rama | Hash | Recuperable vía `origin`| Verificación de contenido |
+|---|---|---|---|
+| `rama-ajustes` | `6124327` | Sí, `origin/rama-ajustes` | 4/4 rutas (`/ajustes` GET, `/ajustes/nombre`, `/ajustes/especie`, `/ajustes/notificaciones`) confirmadas por nombre exacto en `server.js` de main |
+| `rama-busqueda-filtros` | `5d8da34` | Sí, `origin/rama-busqueda-filtros` | `agregarFiltroTexto()` confirmada en `server.js:859`, usada en pendientes (línea 888) e ideas (línea 1596) |
+| `rama-invitar-amigos` | `8903230` | Sí, `origin/rama-invitar-amigos` | `generarCodigoInvitacion` (263), `resolverInvitador` (372), `obtenerOCrearCodigoInvitacion` (1917) confirmadas por línea |
+| `rama-onboarding` | `74ddb3f` | Sí, `origin/rama-onboarding` | `/onboarding` GET y `/onboarding/completar` POST confirmadas por nombre exacto |
+| `rama-pwa-instalable` | `4fd5a20` | Sí, `origin/rama-pwa-instalable` | `public/offline.html` existe en main; `public/sw.js` tiene `CACHE_NAME`/`OFFLINE_URL`/manejo de cache (11 matches de `cache`) |
+| `rama-terminos-privacidad` | `a9b0ce3` | No (solo objeto suelto) | `git diff a9b0ce3 main -- pendientes-web/views/terminos.ejs` → **0 líneas, archivo idéntico byte a byte** |
+| `rama-captura-rapida` | `1ad1dcd` | No (solo objeto suelto) | `/captura` GET y POST confirmadas por nombre exacto; `public/sonidos/enviar.mp3` existe en main |
+| `rama-chat-general` | `1bb44dd` | No (solo objeto suelto) | `/chat-general` (línea 2596) y `/mensajes-general` (línea 2640) confirmadas |
+| `rama-google-calendar` | `9e34f9a` | No (solo objeto suelto) | `cifrarTokensGoogle`(275), `descifrarTokensGoogle`(283), `obtenerClienteCalendarPara`(299), `/calendario/conectar`(1638), `/calendario/callback`(1651), `/calendario/desconectar`(1677), `/recordatorios/:id/crear-evento-calendar`(1701) — 7/7 confirmadas por línea |
+| `rama-notificaciones-recordatorios` | `7f0d407` | No (solo objeto suelto) | `enviarPushAUsuario`(1279), `payloadRecordatorio`(1287), `revisarYNotificarRecordatoriosPendientes`(1348) — 3/3 confirmadas por línea |
+| `rama-trazabilidad-social` | `d8685d2` | No (solo objeto suelto) | `/trazabilidad` confirmada en `server.js:2068` |
+| `rama-nav-mobile` | `89ba69d` | No (solo objeto suelto) | `git diff rama-nav-mobile rama-nav-mobile-v2 -- nav.ejs icono.ejs scripts.ejs` → vacío, idénticos; `captura.ejs`/`style.css` reconciliados por el subagente de reconstrucción y mostrados en el hilo principal antes del merge (PR #52) |
+
+**Resultado: 12 de 12 pasan la verificación de contenido.** Ninguna quedó sin poder
+confirmarse. Si en el futuro hace falta revisar alguna de las 5 recuperables a mano:
+`git fetch origin && git checkout -b rama-X origin/rama-X`.
+
 ## Historial de merges a main
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)

@@ -28,6 +28,31 @@
 6. Si detectas un hueco de seguridad o bug en OTRA rama, documéntalo en su sección,
    no lo arregles tú mismo salvo que el usuario lo autorice explícitamente.
 7. No borres el historial de otras ramas en este archivo. Solo agrega o actualiza tu sección.
+8. **[Agregada 2026-08-13, tras un incidente real] Antes de combinar ramas y llevarlas a
+   producción, mostrá el diff completo resultante y esperá un "aprobado" explícito del
+   usuario.** Esto aplica a CUALQUIER forma de combinar código de más de una rama —
+   `git merge`, `git cherry-pick`, o reconstrucción manual con la herramienta de edición
+   (la receta de abajo) — antes de que ese resultado se pushee y/o se mergee a `main`.
+   Concretamente:
+   - Después de combinar (y antes de pushear/mergear), mostrale al usuario el diff real
+     y completo contra el punto de partida (`git diff <base>..HEAD`), no un resumen en
+     prosa de "qué se combinó". Si el diff es muy largo, mostralo en partes, pero mostralo
+     — no lo reemplaces por una descripción.
+   - Esperá una respuesta que diga explícitamente **"aprobado"** (o equivalente inequívoco
+     y específico a ESE diff) antes de pushear o mergear.
+   - **Una instrucción general dada ANTES de ver el diff — como "mergea", "constrúyelo
+     sobre todo lo pendiente", o similar — NO cuenta como esa aprobación**, aunque haya
+     sido dicha con la intención de autorizar el trabajo. La aprobación tiene que venir
+     DESPUÉS de mostrar el diff completo, sobre ese diff específico.
+   - Esto aplica en cadena: si combinás rama A y B, mostrás el diff y te aprueban, y
+     DESPUÉS agregás una rama C encima, hace falta un nuevo diff + nueva aprobación antes
+     de pushear/mergear esa versión ampliada — la aprobación de A+B no cubre A+B+C.
+   - Por qué existe esta regla: una sesión combinó 5 ramas (incluida una — "chat general" —
+     que el usuario había pedido agregar al backlog y construir, pero nunca vio como diff
+     antes de que se mergeara) usando `git cherry-pick` (no bloqueado por
+     `.claude/settings.json`, a diferencia de `git merge`/`rebase`) sin pedir esta
+     confirmación puntual, interpretando una instrucción general anterior como suficiente.
+     El usuario no había visto el resultado combinado antes de que llegara a `main`.
 
 ## Estado de ramas
 
@@ -1504,10 +1529,15 @@ rama entera desde main actualizado:
 7. Prueba end-to-end contra la DB real SOLO si tienes `.env` en ese worktree (los worktrees no lo
    traen por defecto, está en `.gitignore` a propósito). Si no lo tienes, dilo explícitamente al
    reportar en vez de saltarte la prueba en silencio, y que el usuario decida si mergea igual.
-8. Commit, push, `gh pr close <viejo> --comment "..."`, `gh pr create`, verifica
+8. **Commit local, pero todavía NO push ni PR.** Primero mostrale al usuario el diff completo
+   (`git diff <punto-de-partida>..HEAD`, no un resumen) de lo que vas a llevar a producción, y
+   esperá un "aprobado" explícito sobre ESE diff (ver regla 8 de "Reglas para cualquier sesión",
+   arriba — una instrucción general dada antes de ver el diff no alcanza). Si combinaste más de
+   una rama en este proceso, este es el diff de la combinación completa, no de una rama sola.
+9. Recién con el "aprobado": push, `gh pr close <viejo> --comment "..."`, `gh pr create`, verifica
    `gh pr view <nuevo> --json mergeable,mergeStateStatus` da CLEAN/MERGEABLE, luego
    `gh pr merge <nuevo> --merge --delete-branch=false`.
-9. Registra el merge en "Historial de merges a main" (arriba) con el hash del commit de merge.
+10. Registra el merge en "Historial de merges a main" (arriba) con el hash del commit de merge.
 
 ### Para varias ramas en conflicto entre sí (delegación en paralelo)
 
@@ -1524,6 +1554,11 @@ infla el costo en tokens. Mejor:
   originalmente (según su propia sección en COORDINACION.md), y que siga esta receta.
 - El hilo principal (rama-integracion) solo necesita el resumen de cada uno para decidir el
   siguiente paso, no los diffs ni las pruebas completas.
+- **El paso 8/9 de la receta (mostrar el diff completo y esperar "aprobado" antes de
+  push/PR/merge) lo hace el hilo principal, con el usuario, no cada subagente por su
+  cuenta.** Un subagente puede commitear localmente, pero no debe pushear, abrir PR, ni
+  mergear — eso queda para cuando el hilo principal junte el resultado final (de una rama
+  o de varias combinadas) y lo muestre completo al usuario.
 
 ## Onboarding para una sesión nueva (nuevo "trabajador")
 
@@ -1892,6 +1927,106 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   Depende de: tarea 4 (notificaciones push). Puede
   correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
   no depende de ellas.
+
+### Ronda — pulido y detalles de producto (2026-08-13, propuesta por el usuario)
+
+Siete tareas de pulido, ninguna asignada todavía — **quedan registradas para despachar
+después, no se toman ahora**. Mismo criterio que el resto del backlog: quien tome una de
+estas decide los detalles concretos (textos, números, nombres de rutas) en el momento de
+implementar y lo documenta en su propia sección de "Estado de ramas" ANTES de escribir
+código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas por el usuario.
+
+- [ ] **A. Estados vacíos con tema jungla.** Cuando no hay pendientes, ideas o
+  recordatorios, mostrar una ilustración temática en vez de una pantalla en blanco —
+  reusar el mismo enfoque SVG de la ilustración de monstera (`<path>` + `<mask>` para
+  fenestraciones) ya usado en el rediseño visual (`views/partials/monstera.ejs`) y en la
+  planta compañera (`views/partials/planta.ejs`), para que no sea una ilustración nueva
+  desconectada del resto. Un estado distinto por sección (Pendientes, Ideas,
+  Recordatorios) — decidir en el momento si son 3 variantes de la misma ilustración base
+  o 3 ilustraciones separadas, y el texto corto y cálido de cada una (documentar el texto
+  elegido, no dejarlo "por ahí" solo en el código). — asignada a: sin asignar — Depende
+  de: nada (el sistema de ilustraciones ya existe, tarea 5).
+
+- [ ] **B. Onboarding para usuarios nuevos.** Recorrido corto (3-4 pasos) inmediatamente
+  después de `POST /registro`, explicando Pendientes/Ideas/Recordatorios y terminando en
+  la elección de especie de planta (que hoy pasa dentro del formulario de registro mismo,
+  tarea 8 — decidir en el momento si el onboarding absorbe ese paso o si sigue en el
+  registro y el onboarding solo lo menciona, y documentar cuál). Debe poder saltarse en
+  cualquier paso. Se muestra UNA sola vez — decidir dónde vive esa bandera (columna nueva
+  en `usuarios`, ej. `onboarding_visto`, es lo más simple y consistente con el resto del
+  esquema) y documentarlo. — asignada a: sin asignar — Depende de: tarea 8 (selección de
+  especie, ya existe).
+
+- [ ] **C. Página de perfil/ajustes.** Ruta nueva (decidir el nombre exacto, ej.
+  `/ajustes` o `/perfil` — ser consistente con el resto de nombres de ruta en español ya
+  usados en el proyecto — y documentarlo) con: cambiar nombre visible, cambiar la especie
+  de planta ya elegida (revisar si esto debe resetear la etapa de crecimiento o no —
+  probablemente no, la etapa depende de moneda ganada de por vida, no de la especie —
+  documentar la decisión igual), activar/desactivar sonidos (decidir dónde se guarda esa
+  preferencia — `localStorage` alcanza acá, a diferencia del tema visual, porque no hace
+  falta que el servidor la conozca de antemano para evitar parpadeo — documentar el
+  porqué de la diferencia con la tarea del tema), activar/desactivar notificaciones push
+  (esto ya tiene su mecanismo — botón "Activar notificaciones" — decidir cómo se
+  desactiva: ¿borrar la fila de `push_subscriptions`, o una columna de opt-out separada
+  que preserve la suscripción por si se reactiva? documentar), y alternar claro/oscuro
+  manualmente (el toggle en el nav ya existe — esta página solo necesita reflejar/exponer
+  la misma preferencia `usuarios.tema`, no duplicar el mecanismo). — asignada a: sin
+  asignar — Depende de: nada funcionalmente, pero tiene sentido después de A/B para no
+  pisarse con esos cambios de navegación.
+
+- [ ] **D. Invitar amigos con enlace/código.** Código corto o enlace único por usuario
+  (decidir el formato — un token corto tipo el ya usado para `codigo_recuperacion_hash`
+  es un precedente directo en este proyecto, reusar ese criterio de generarlo
+  hasheado/de un solo uso o de vida larga, documentar cuál de los dos y por qué) que al
+  abrirse lleva directo al registro con la solicitud de amistad pre-cargada. El código NO
+  debe exponer datos sensibles del usuario que invita — en particular, nunca debe ser
+  simplemente su `id` numérico ni su `nombre_usuario` en texto plano si eso permite
+  enumerar cuentas; decidir el mecanismo exacto (token aleatorio opaco guardado en una
+  tabla/columna que lo resuelve al `usuario_id` real del lado del servidor) y
+  documentarlo. — asignada a: sin asignar — Depende de: sistema de amigos (ya existe).
+
+- [ ] **E. Términos de servicio y política de privacidad + borrado de cuenta.** Página
+  estática (decidir la ruta, ej. `/terminos` — documentar) explicando qué datos se
+  guardan (cuenta, pendientes, mensajes, y si aplica la ubicación implícita en las
+  notificaciones push — VAPID/push no comparte ubicación geográfica real, aclarar eso
+  explícitamente en el texto para no sobre-declarar) y para qué se usan. Enlazarla desde
+  `/registro`. Agregar una opción en ajustes (ver tarea C) para que el usuario elimine su
+  cuenta — **esto es un DELETE real, no borrado lógico** (a diferencia del resto de la
+  app, que usa `eliminado = TRUE` en `pendientes` — acá es a pedido explícito del dueño
+  de los datos, así que corresponde borrar de verdad): pendientes propios, mensajes
+  propios (1-a-1 y de la sala general), amistades donde participa, suscripciones push,
+  tokens de Google Calendar si los tiene, saldo/transacciones de moneda, y la fila de
+  `usuarios` misma. Decidir en el momento el orden de los DELETE respetando las foreign
+  keys existentes (o si hace falta `ON DELETE CASCADE` nuevo en alguna, documentarlo) y
+  qué pasa con mensajes/pendientes que OTROS usuarios referencian de este usuario borrado
+  (ej. un pendiente que este usuario tenía asignado por un amigo — decidir si se
+  desasigna o si el pendiente se borra igual, documentar el criterio). — asignada a: sin
+  asignar — Depende de: nada, pero tocar esto con cuidado por ser destructivo de verdad.
+
+- [ ] **F. Búsqueda y filtros en pendientes/ideas.** Buscar por texto, filtrar por
+  categoría existente, y filtrar por estado (completado/pendiente). **Reusar el patrón de
+  query ya existente en `GET /`** (que ya arma la consulta con `categoriaFiltro`/`q` de
+  forma incremental) **en vez de duplicar la lógica** — extenderlo o extraerlo a un
+  helper compartido si `/ideas` también lo necesita, decidir cuál de las dos y
+  documentarlo. — asignada a: sin asignar — Depende de: nada (categorías y búsqueda en
+  pendientes ya existen; esto es extender el filtro de estado y llevar el mismo patrón a
+  `/ideas`).
+
+- [ ] **G. PWA instalable de verdad.** `manifest.json` ya existe — revisar si falta algo
+  (`start_url`, `display`, `theme_color` ya actualizado a la paleta Jungla/Monstera —
+  confirmar que coincide con `#2D5A3D` usado en `partials/head.ejs`). Service worker
+  (`public/sw.js`) ya existe y ya maneja `push`/`notificationclick` (tarea 4) — esta
+  tarea NO crea uno nuevo, evalúa si el que ya está alcanza para el ciclo de vida de
+  instalación de una PWA (cache de assets estáticos, offline básico) o si hace falta
+  ampliarlo, y documentar qué se agregó. Iconos en varios tamaños — hoy solo existen
+  `icon-192.png`/`icon-512.png` (rasterizados, quedaron sin regenerar con la ilustración
+  nueva del rediseño visual, ver la sección de `rama-tema-jungla` más arriba — evaluar si
+  esta tarea es el momento de regenerarlos o si sigue pendiente aparte, documentar la
+  decisión). Validar el flujo real de "agregar a pantalla de inicio" en Android y iOS
+  (Safari/iOS tiene su propio criterio de instalabilidad, distinto de Chrome/Android —
+  probar ambos, no asumir que uno implica el otro). — asignada a: sin asignar — Depende
+  de: notificaciones push (tarea 4, ya mergeada — la dependencia ya está satisfecha,
+  comparten `public/sw.js`).
 
 ## Cómo agregar un trabajador nuevo (para el usuario)
 

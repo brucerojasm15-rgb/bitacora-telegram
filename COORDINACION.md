@@ -806,6 +806,62 @@
   `chat_general_visto_hasta` efectivamente baja el contador de
   `noLeidosGeneral` a 0 al abrir la sala, y que la paginación con `?antes=`
   trae la tanda correcta.
+
+### rama-notificaciones-recordatorios
+- Estado: commiteada, sin probar contra la DB real (ver "Qué se verificó").
+- Tarea: notificaciones push para recordatorios (tarea 4 del roadmap
+  2026-08-12) — depende de la tarea 3 (rama-captura-rapida, commiteada
+  74e5c3b/1ad1dcd, todavía no mergeada a main). Creada desde
+  `origin/main` actualizado (PR #35, commit 2c929e6) en un worktree nuevo
+  (`a-worktrees/rama-notificaciones-recordatorios`) — NO incluye todavía el
+  código de rama-captura-rapida porque esa rama no está mergeada; la tabla
+  `recordatorios` que necesita esta tarea ya existe desde antes (la crea el
+  bot), así que no hay bloqueo real.
+- Decisiones de esquema (tomadas al implementar):
+  1. **No se separa la suscripción push por función.** Ya existe un botón
+     "Activar notificaciones" en `index.ejs` que suscribe al navegador
+     contra `push_subscriptions` y ya se usa para el aviso diario genérico
+     (`revisarYNotificarSiNoHayHechosHoy`). Se reusa la misma suscripción
+     para recordatorios en vez de pedir un segundo permiso/botón — un
+     usuario que ya activó notificaciones no debería tener que activarlas
+     de nuevo para que le avisen sus recordatorios.
+  2. **`push_subscriptions` sí necesitaba `usuario_id`.** Antes no lo tenía
+     — `enviarPushATodos()` manda a *todas* las suscripciones sin filtrar,
+     lo cual está bien para el aviso diario genérico pero mandaría el
+     recordatorio de un usuario a los navegadores de todos los demás. Se
+     agrega `ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS
+     usuario_id INT REFERENCES usuarios(id)` (nullable — las suscripciones
+     viejas quedan sin dueño y se siguen usando solo para el aviso
+     genérico, no para recordatorios) y `/suscribir` ahora guarda
+     `req.usuarioId` en el INSERT (y lo actualiza si el endpoint ya
+     existía, por si el mismo navegador quedó suscrito con otra sesión
+     antes).
+  3. **Cron nuevo, cada minuto:** seguí el mismo patrón que
+     `revisarYNotificarSiNoHayHechosHoy` (node-cron, ya en package.json).
+     `revisarYNotificarRecordatoriosPendientes()` busca
+     `recordatorios` con `avisado = FALSE AND cuando <= now() AND
+     usuario_id IS NOT NULL` (los que no tienen dueño no se pueden
+     dirigir a nadie, se ignoran), manda el push con
+     `enviarPushAUsuario(usuario_id, ...)` (función nueva, mismo código
+     que `enviarPushATodos` pero filtrado por `usuario_id`), y marca
+     `avisado = TRUE` después de intentarlo — no reintenta si el push falla,
+     mismo criterio de "mejor esfuerzo" que ya usa el resto del sistema de
+     push (no hay cola de reintentos en ningún lado).
+- Archivos tocados: server.js (ALTER TABLE, `/suscribir`, nueva función
+  `enviarPushAUsuario`, nuevo cron `revisarYNotificarRecordatoriosPendientes`
+  cada minuto). No hizo falta tocar `sw.js` (el `push` handler ya es
+  genérico: título/cuerpo/acciones desde el payload) ni el botón de
+  `index.ejs` (ya manda la suscripción con
+  sesión activa).
+- Qué se verificó: `node --check server.js` sin errores. **No se probó
+  contra la DB real** — este worktree nuevo no tiene `pendientes-web/.env`
+  (está en `.gitignore`, `git worktree add` no lo copia) y el usuario pidió
+  seguir sin resolver eso por ahora. Falta antes de mergear: confirmar que
+  el `ALTER TABLE` corre limpio, que `/suscribir` guarda `usuario_id`
+  correctamente, y sobre todo probar el cron end-to-end (crear un
+  recordatorio con `cuando` en el pasado desde `/captura` — o directo por
+  SQL — y confirmar que en el siguiente minuto llega el push solo al
+  usuario dueño, no a otras suscripciones, y que `avisado` queda en TRUE).
 - Commit: pendiente de crear en esta misma sesión.
 
 ### rama-integracion
@@ -1200,8 +1256,8 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   si alcanza o hace falta asociarla a `usuario_id`), y un proceso (cron,
   mismo patrón que `revisarYNotificarSiNoHayHechosHoy` con `node-cron`) que
   revise recordatorios pendientes y dispare la notificación a la hora
-  indicada. — asignada a: sin asignar (sugerido:
-  `rama-notificaciones-recordatorios`) — Depende de: tarea 3.
+  indicada. — asignada a: `rama-notificaciones-recordatorios` (en progreso
+  — ver su sección en "Estado de ramas") — Depende de: tarea 3.
 
 - [ ] **5. Rediseño visual "Jungla/Monstera".** Paleta modo claro (fondo
   `#F4F1E8`, verde `#2D5A3D`, acento `#D4A574`) y modo oscuro (fondo

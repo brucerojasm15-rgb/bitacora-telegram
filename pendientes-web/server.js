@@ -404,6 +404,12 @@ async function ensureSchema() {
       creado TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-notificaciones-recordatorios: decisión de esquema documentada en
+  // COORDINACION.md — nullable porque las suscripciones viejas (aviso
+  // diario genérico) no tienen dueño y siguen funcionando igual.
+  await pool.query(`
+    ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS amistades (
       id SERIAL PRIMARY KEY,
@@ -640,9 +646,16 @@ app.post('/suscribir', async (req, res) => {
     );
     if (existente.rows.length === 0) {
       await pool.query(
-        'INSERT INTO push_subscriptions (endpoint, p256dh, auth) VALUES ($1, $2, $3)',
-        [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]
+        'INSERT INTO push_subscriptions (endpoint, p256dh, auth, usuario_id) VALUES ($1, $2, $3, $4)',
+        [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth, req.usuarioId]
       );
+    } else {
+      // El mismo navegador puede haber quedado suscrito bajo otra sesión
+      // (dispositivo compartido) — el dueño se actualiza al usuario actual.
+      await pool.query('UPDATE push_subscriptions SET usuario_id = $1 WHERE endpoint = $2', [
+        req.usuarioId,
+        subscription.endpoint,
+      ]);
     }
   } catch (err) {
     console.error('Error guardando suscripcion:', err.message);
@@ -670,6 +683,38 @@ async function enviarPushATodos(payloadObjeto) {
 
   const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
   return { enviadas, total: rows.length };
+}
+
+async function enviarPushAUsuario(usuarioId, payloadObjeto) {
+  const { rows } = await pool.query(
+    'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE usuario_id = $1',
+    [usuarioId]
+  );
+  const payload = JSON.stringify(payloadObjeto);
+
+  const resultados = await Promise.allSettled(
+    rows.map((s) =>
+      webpush
+        .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
+        .catch(async (err) => {
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [s.id]);
+          }
+          throw err;
+        })
+    )
+  );
+
+  const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
+  return { enviadas, total: rows.length };
+}
+
+function payloadRecordatorio(texto) {
+  return {
+    title: 'Recordatorio',
+    body: texto,
+    data: { defaultUrl: '/recordatorios' },
+  };
 }
 
 function payloadRecordatorioDiario() {
@@ -718,6 +763,34 @@ function cronDesdeHora(horaStr) {
 }
 
 cron.schedule(cronDesdeHora(process.env.HORA_NOTIFICACION), revisarYNotificarSiNoHayHechosHoy, {
+  timezone: 'America/Lima',
+});
+
+// rama-notificaciones-recordatorios: corre cada minuto (los recordatorios
+// se guardan con minuto exacto desde /captura, un cron menos frecuente
+// los avisaría tarde). Los que no tienen usuario_id (creados antes de esta
+// rama, o directo por el bot sin dueño) se ignoran: no hay a quién avisar.
+async function revisarYNotificarRecordatoriosPendientes() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, texto, usuario_id FROM recordatorios
+      WHERE avisado = FALSE AND cuando <= now() AND usuario_id IS NOT NULL
+    `);
+    for (const r of rows) {
+      try {
+        const { enviadas, total } = await enviarPushAUsuario(r.usuario_id, payloadRecordatorio(r.texto));
+        console.log(`[cron] Recordatorio #${r.id}: notificado a ${enviadas}/${total} suscripcion(es) del usuario ${r.usuario_id}.`);
+      } catch (err) {
+        console.error(`[cron] Error notificando recordatorio #${r.id}:`, err.message);
+      }
+      await pool.query('UPDATE recordatorios SET avisado = TRUE WHERE id = $1', [r.id]);
+    }
+  } catch (err) {
+    console.error('[cron] Error en el job de recordatorios:', err.message);
+  }
+}
+
+cron.schedule('* * * * *', revisarYNotificarRecordatoriosPendientes, {
   timezone: 'America/Lima',
 });
 

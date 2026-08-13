@@ -1320,6 +1320,22 @@
   independiente del límite de intentos ya existente. Probado end-to-end
   contra la DB real antes de abrir el PR (ver su sección arriba) y
   verificado en producción. Commit de merge 752a1cd.
+- 2026-08-12 — merge de rama-tema-jungla (b42d3bd) → main vía PR #36
+  (mergeStateStatus CLEAN): combina las tareas 3 (captura rápida), 4
+  (push recordatorios), 6 (trazabilidad social), 10 (Google Calendar,
+  **solo esqueleto sin probar**), chat general (fuera del roadmap
+  numerado), 5 (rediseño visual "Jungla/Monstera") y 7 (moneda virtual)
+  — 5 ramas independientes reconciliadas a mano (sin `git merge`, ver
+  sección `rama-tema-jungla` arriba) más el tema visual y la moneda
+  construidos encima. **A diferencia de los merges anteriores de esta
+  tabla, este NO se probó contra la DB real antes de mergear** — solo
+  `node --check` + `ejs.renderFile` con datos simulados en cada paso.
+  Pendiente urgente post-merge: confirmar que las migraciones nuevas
+  (`push_subscriptions.usuario_id`, `mensajes_generales`,
+  `eventos_completado`, `moneda_transacciones`,
+  `usuarios.saldo_moneda`/`tema`, `google_calendar_tokens`, etc.) corren
+  limpio contra Railway, y mirar el rediseño visual en un navegador de
+  verdad por primera vez. Commit de merge f6a2847.
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 

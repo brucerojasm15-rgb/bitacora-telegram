@@ -1255,8 +1255,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   si alcanza o hace falta asociarla a `usuario_id`), y un proceso (cron,
   mismo patrón que `revisarYNotificarSiNoHayHechosHoy` con `node-cron`) que
   revise recordatorios pendientes y dispare la notificación a la hora
-  indicada. — asignada a: `rama-notificaciones-recordatorios` (en progreso
-  — ver su sección en "Estado de ramas") — Depende de: tarea 3.
+  indicada. — asignada a: `rama-notificaciones-recordatorios` (commiteada,
+  sin probar contra la DB real — ver su sección en "Estado de ramas") —
+  Depende de: tarea 3.
 
 - [ ] **5. Rediseño visual "Jungla/Monstera".** Paleta modo claro (fondo
   `#F4F1E8`, verde `#2D5A3D`, acento `#D4A574`) y modo oscuro (fondo

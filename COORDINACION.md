@@ -1366,6 +1366,66 @@
   que los renders ya verificados en las secciones de arriba siguen
   vigentes.
 
+### rama-pwa-instalable
+- Estado: commiteada, sin probar en un dispositivo real.
+- Tarea: G de "Ronda — pulido y detalles de producto" — PWA instalable de
+  verdad.
+- Qué faltaba y qué se hizo:
+  1. `manifest.json` ya tenía `start_url`, `scope`, `display: standalone`,
+     e íconos 192/512 — el checklist de instalabilidad de Chrome/Android
+     (HTTPS + manifest válido + icono 192 + icono 512 + service worker con
+     handler de `fetch`) ya se cumplía. Lo que SÍ estaba mal:
+     `theme_color`/`background_color` seguían en `#15161b` (paleta oscura
+     vieja, de antes del rediseño) — los actualicé a `#2D5A3D`/`#F4F1E8`
+     para que coincidan con `--accent` y el `theme-color` que ya usa
+     `partials/head.ejs`.
+  2. El service worker (`public/sw.js`) ya manejaba `push`/
+     `notificationclick` (tarea 4) — no se tocó esa parte. Se amplió el
+     cacheo: se sube el `CACHE_NAME` a `v2` (para que el `activate` viejo
+     limpie el cache `v1` y no queden assets huérfanos), se agrega
+     `/favicon.svg` a `STATIC_ASSETS` (quedó afuera cuando se creó en el
+     rediseño visual — bug chico, no relacionado con la ilustración
+     nueva), y se agrega manejo explícito de navegaciones: si una carga de
+     página falla por falta de red, se sirve `/offline.html` (nuevo,
+     cacheado) en vez del error genérico del navegador. Las páginas reales
+     (`/`, `/pendientes`, etc.) siguen sin cachearse — dependen de sesión y
+     DB, cachearlas mostraría datos viejos como si fueran actuales.
+  3. **Íconos en varios tamaños — decisión: diferido, no regenerados en
+     esta tarea.** Los `icon-192.png`/`icon-512.png` actuales son PNG
+     rasterizados con el diseño VIEJO (de antes del rediseño Jungla/
+     Monstera) — ya se había documentado esto como pendiente en la sección
+     de `rama-tema-jungla`. Regenerarlos requiere una herramienta de
+     generación/edición de imágenes que no está disponible en este
+     entorno (son PNG, no SVG — no alcanza con escribir código). El
+     checklist de instalabilidad ya se cumple con los 2 tamaños actuales
+     aunque tengan el diseño viejo; agregar tamaños intermedios (72/96/
+     128/144/152/384) sería pulido extra, no un bloqueante, así que
+     también queda fuera de esta tarea. Recomendación: cuando alguien
+     tenga acceso a una herramienta de imágenes, regenerar 192/512 (y
+     opcionalmente los tamaños intermedios) con la ilustración de monstera
+     sobre el verde de marca.
+- Qué se verificó (sin dispositivo real):
+  - `manifest.json` es JSON válido y cumple el checklist estándar de
+    instalabilidad de Chrome/Android (campos obligatorios presentes,
+    íconos 192 y 512 con `type`/`sizes` correctos).
+  - `node --check` en `sw.js` (sintaxis, aunque corre en el navegador).
+  - Confirmé en `partials/head.ejs` que ya existen `apple-touch-icon`,
+    `apple-mobile-web-app-capable`, `apple-mobile-web-app-title` — los
+    metatags que iOS/Safari usa en vez del manifest para "Agregar a
+    pantalla de inicio" ya estaban.
+  - Producción ya sirve por HTTPS (Railway) — condición previa para que
+    cualquier navegador considere instalable la PWA.
+- **Lo que NO se pudo verificar acá y necesita que el usuario lo pruebe en
+  un teléfono real:** el flujo de "Agregar a pantalla de inicio" en
+  Chrome/Android (debería ofrecerse solo o vía el menú) y en Safari/iOS
+  (manual, vía el botón compartir → "Agregar a inicio" — iOS no respeta
+  `beforeinstallprompt` como Chrome, así que ahí no hay banner automático,
+  es esperable). También probar que `/offline.html` aparece de verdad
+  poniendo el teléfono en modo avión después de haber cargado la app una
+  vez (para que el service worker ya esté instalado).
+- Archivos tocados: `public/manifest.json`, `public/sw.js`,
+  `public/offline.html` (nuevo).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -2024,7 +2084,9 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   esta tarea es el momento de regenerarlos o si sigue pendiente aparte, documentar la
   decisión). Validar el flujo real de "agregar a pantalla de inicio" en Android y iOS
   (Safari/iOS tiene su propio criterio de instalabilidad, distinto de Chrome/Android —
-  probar ambos, no asumir que uno implica el otro). — asignada a: sin asignar — Depende
+  probar ambos, no asumir que uno implica el otro). — asignada a:
+  `rama-pwa-instalable` (commiteada, sin probar en dispositivo real — ver
+  su sección en "Estado de ramas") — Depende
   de: notificaciones push (tarea 4, ya mergeada — la dependencia ya está satisfecha,
   comparten `public/sw.js`).
 

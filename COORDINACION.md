@@ -1893,6 +1893,106 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
   no depende de ellas.
 
+### Ronda — pulido y detalles de producto (2026-08-13, propuesta por el usuario)
+
+Siete tareas de pulido, ninguna asignada todavía — **quedan registradas para despachar
+después, no se toman ahora**. Mismo criterio que el resto del backlog: quien tome una de
+estas decide los detalles concretos (textos, números, nombres de rutas) en el momento de
+implementar y lo documenta en su propia sección de "Estado de ramas" ANTES de escribir
+código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas por el usuario.
+
+- [ ] **A. Estados vacíos con tema jungla.** Cuando no hay pendientes, ideas o
+  recordatorios, mostrar una ilustración temática en vez de una pantalla en blanco —
+  reusar el mismo enfoque SVG de la ilustración de monstera (`<path>` + `<mask>` para
+  fenestraciones) ya usado en el rediseño visual (`views/partials/monstera.ejs`) y en la
+  planta compañera (`views/partials/planta.ejs`), para que no sea una ilustración nueva
+  desconectada del resto. Un estado distinto por sección (Pendientes, Ideas,
+  Recordatorios) — decidir en el momento si son 3 variantes de la misma ilustración base
+  o 3 ilustraciones separadas, y el texto corto y cálido de cada una (documentar el texto
+  elegido, no dejarlo "por ahí" solo en el código). — asignada a: sin asignar — Depende
+  de: nada (el sistema de ilustraciones ya existe, tarea 5).
+
+- [ ] **B. Onboarding para usuarios nuevos.** Recorrido corto (3-4 pasos) inmediatamente
+  después de `POST /registro`, explicando Pendientes/Ideas/Recordatorios y terminando en
+  la elección de especie de planta (que hoy pasa dentro del formulario de registro mismo,
+  tarea 8 — decidir en el momento si el onboarding absorbe ese paso o si sigue en el
+  registro y el onboarding solo lo menciona, y documentar cuál). Debe poder saltarse en
+  cualquier paso. Se muestra UNA sola vez — decidir dónde vive esa bandera (columna nueva
+  en `usuarios`, ej. `onboarding_visto`, es lo más simple y consistente con el resto del
+  esquema) y documentarlo. — asignada a: sin asignar — Depende de: tarea 8 (selección de
+  especie, ya existe).
+
+- [ ] **C. Página de perfil/ajustes.** Ruta nueva (decidir el nombre exacto, ej.
+  `/ajustes` o `/perfil` — ser consistente con el resto de nombres de ruta en español ya
+  usados en el proyecto — y documentarlo) con: cambiar nombre visible, cambiar la especie
+  de planta ya elegida (revisar si esto debe resetear la etapa de crecimiento o no —
+  probablemente no, la etapa depende de moneda ganada de por vida, no de la especie —
+  documentar la decisión igual), activar/desactivar sonidos (decidir dónde se guarda esa
+  preferencia — `localStorage` alcanza acá, a diferencia del tema visual, porque no hace
+  falta que el servidor la conozca de antemano para evitar parpadeo — documentar el
+  porqué de la diferencia con la tarea del tema), activar/desactivar notificaciones push
+  (esto ya tiene su mecanismo — botón "Activar notificaciones" — decidir cómo se
+  desactiva: ¿borrar la fila de `push_subscriptions`, o una columna de opt-out separada
+  que preserve la suscripción por si se reactiva? documentar), y alternar claro/oscuro
+  manualmente (el toggle en el nav ya existe — esta página solo necesita reflejar/exponer
+  la misma preferencia `usuarios.tema`, no duplicar el mecanismo). — asignada a: sin
+  asignar — Depende de: nada funcionalmente, pero tiene sentido después de A/B para no
+  pisarse con esos cambios de navegación.
+
+- [ ] **D. Invitar amigos con enlace/código.** Código corto o enlace único por usuario
+  (decidir el formato — un token corto tipo el ya usado para `codigo_recuperacion_hash`
+  es un precedente directo en este proyecto, reusar ese criterio de generarlo
+  hasheado/de un solo uso o de vida larga, documentar cuál de los dos y por qué) que al
+  abrirse lleva directo al registro con la solicitud de amistad pre-cargada. El código NO
+  debe exponer datos sensibles del usuario que invita — en particular, nunca debe ser
+  simplemente su `id` numérico ni su `nombre_usuario` en texto plano si eso permite
+  enumerar cuentas; decidir el mecanismo exacto (token aleatorio opaco guardado en una
+  tabla/columna que lo resuelve al `usuario_id` real del lado del servidor) y
+  documentarlo. — asignada a: sin asignar — Depende de: sistema de amigos (ya existe).
+
+- [ ] **E. Términos de servicio y política de privacidad + borrado de cuenta.** Página
+  estática (decidir la ruta, ej. `/terminos` — documentar) explicando qué datos se
+  guardan (cuenta, pendientes, mensajes, y si aplica la ubicación implícita en las
+  notificaciones push — VAPID/push no comparte ubicación geográfica real, aclarar eso
+  explícitamente en el texto para no sobre-declarar) y para qué se usan. Enlazarla desde
+  `/registro`. Agregar una opción en ajustes (ver tarea C) para que el usuario elimine su
+  cuenta — **esto es un DELETE real, no borrado lógico** (a diferencia del resto de la
+  app, que usa `eliminado = TRUE` en `pendientes` — acá es a pedido explícito del dueño
+  de los datos, así que corresponde borrar de verdad): pendientes propios, mensajes
+  propios (1-a-1 y de la sala general), amistades donde participa, suscripciones push,
+  tokens de Google Calendar si los tiene, saldo/transacciones de moneda, y la fila de
+  `usuarios` misma. Decidir en el momento el orden de los DELETE respetando las foreign
+  keys existentes (o si hace falta `ON DELETE CASCADE` nuevo en alguna, documentarlo) y
+  qué pasa con mensajes/pendientes que OTROS usuarios referencian de este usuario borrado
+  (ej. un pendiente que este usuario tenía asignado por un amigo — decidir si se
+  desasigna o si el pendiente se borra igual, documentar el criterio). — asignada a: sin
+  asignar — Depende de: nada, pero tocar esto con cuidado por ser destructivo de verdad.
+
+- [ ] **F. Búsqueda y filtros en pendientes/ideas.** Buscar por texto, filtrar por
+  categoría existente, y filtrar por estado (completado/pendiente). **Reusar el patrón de
+  query ya existente en `GET /`** (que ya arma la consulta con `categoriaFiltro`/`q` de
+  forma incremental) **en vez de duplicar la lógica** — extenderlo o extraerlo a un
+  helper compartido si `/ideas` también lo necesita, decidir cuál de las dos y
+  documentarlo. — asignada a: sin asignar — Depende de: nada (categorías y búsqueda en
+  pendientes ya existen; esto es extender el filtro de estado y llevar el mismo patrón a
+  `/ideas`).
+
+- [ ] **G. PWA instalable de verdad.** `manifest.json` ya existe — revisar si falta algo
+  (`start_url`, `display`, `theme_color` ya actualizado a la paleta Jungla/Monstera —
+  confirmar que coincide con `#2D5A3D` usado en `partials/head.ejs`). Service worker
+  (`public/sw.js`) ya existe y ya maneja `push`/`notificationclick` (tarea 4) — esta
+  tarea NO crea uno nuevo, evalúa si el que ya está alcanza para el ciclo de vida de
+  instalación de una PWA (cache de assets estáticos, offline básico) o si hace falta
+  ampliarlo, y documentar qué se agregó. Iconos en varios tamaños — hoy solo existen
+  `icon-192.png`/`icon-512.png` (rasterizados, quedaron sin regenerar con la ilustración
+  nueva del rediseño visual, ver la sección de `rama-tema-jungla` más arriba — evaluar si
+  esta tarea es el momento de regenerarlos o si sigue pendiente aparte, documentar la
+  decisión). Validar el flujo real de "agregar a pantalla de inicio" en Android y iOS
+  (Safari/iOS tiene su propio criterio de instalabilidad, distinto de Chrome/Android —
+  probar ambos, no asumir que uno implica el otro). — asignada a: sin asignar — Depende
+  de: notificaciones push (tarea 4, ya mergeada — la dependencia ya está satisfecha,
+  comparten `public/sw.js`).
+
 ## Cómo agregar un trabajador nuevo (para el usuario)
 
 1. Escribe la tarea nueva en "Backlog de tareas" arriba (o pídele a cualquier sesión

@@ -1157,6 +1157,71 @@
   localmente, tocar el toggle unas cuantas veces, y mirar las 3
   ilustraciones de monstera.
 
+### rama-moneda-virtual
+- Estado: commiteada (sobre `rama-tema-jungla`, no rama propia), sin
+  probar contra la DB real.
+- Tarea: sistema de moneda virtual (tarea 7 del roadmap 2026-08-12) —
+  depende de la tarea 6 (trazabilidad social), ya en esta misma rama.
+- Decisiones numéricas (constantes nombradas en `server.js`, junto a la
+  ruta `POST /pendientes/:id/completar`):
+  - `MONEDA_POR_TAREA_ASIGNADA = 10`: monto base por tarea asignada
+    completada. Número redondo, fácil de razonar; con esta base + bonus de
+    racha, un día activo entre dos amigos (2-5 tareas) queda cómodo debajo
+    del límite diario sin agotarlo de entrada.
+  - `REPARTO_COMPLETA_PCT = 0.7` / `REPARTO_ASIGNO_PCT = 0.3`: tal cual pide
+    el enunciado. En el código, la parte de quien asignó se calcula como
+    `total - parteCompleta` (no `total * 0.3`) para que la suma de las dos
+    partes nunca pierda una moneda por redondeo — verificado a mano con
+    varios valores de racha (0, 1, 3, 7 días) antes de commitear.
+  - `BONUS_MONEDA_POR_DIA_RACHA = 2`: se suma al pozo ANTES de repartir
+    70/30 (no solo a quien completa), para que también le convenga a quien
+    asigna sostener una racha real con su amigo. Racha reusa
+    `calcularRacha`/`formatearDiaLima` ya existentes en `/estadisticas`,
+    pero contada sobre `eventos_completado.fecha` (fecha de completado) en
+    vez de `pendientes.creado`, con su propia columna
+    `eventos_completado.cuenta_para_racha` (ver anti-granjeo abajo).
+  - `LIMITE_MONEDA_DIARIA = 100` monedas ganadas por día por usuario
+    (`origen = 'ganada'` solamente). Con la base+bonus de arriba, hacen
+    falta varias tareas seguidas con racha alta en el mismo día para
+    acercarse al límite — deja margen para un día muy activo sin ser
+    efectivamente ilimitado. `pagarMoneda()` paga parcial si el límite ya
+    está casi consumido, nunca niega la transacción entera.
+  - `UMBRAL_ANTI_GRANJEO_MINUTOS = 10`: si se completa una tarea asignada
+    antes de que pasen 10 minutos desde que `asignado_en` se marcó (columna
+    nueva en `pendientes`, se setea en `POST /pendientes/:id/asignar`), se
+    paga el monto base igual pero con bonus de racha en 0 y
+    `cuenta_para_racha = FALSE` (no participa en el cálculo de racha
+    futuro) — mismo espíritu que `VENCIDO_DIAS`: un número que ningún uso
+    legítimo rural/familiar rozaría por accidente, pero que sí frena
+    asignar-y-completar-al-toque para farmear.
+- Modelo de datos: tabla nueva `moneda_transacciones` (log inmutable:
+  usuario_id, cantidad, `origen` TEXT `'ganada'`/`'comprada'`, motivo,
+  `evento_completado_id` opcional, fecha) MÁS `usuarios.saldo_moneda INT`
+  (acumulado de lectura rápida, no hay que sumar el log cada vez). La
+  columna `origen` ya distingue `ganada` de `comprada` desde ahora — eso lo
+  pide explícitamente la tarea 8 más adelante ("modelo de datos preparado
+  para compra futura con dinero real"), y no cuesta nada agregarla ya en
+  vez de una migración después; nada de esta tarea escribe `'comprada'`
+  todavía, queda reservado.
+- Superficie visible (fuera del pedido explícito de la tarea, pero sin
+  esto el sistema es invisible/no verificable): se agregó el saldo propio
+  en `/trazabilidad` ("Tu saldo: N monedas", ícono nuevo `moneda` en
+  `partials/icono.ejs`). La vista real de saldo/planta es tarea de la
+  tarea 8, esto es solo un número de referencia.
+- Archivos tocados: `server.js` (schema en `ensureSchema`, `asignado_en`
+  en `/asignar`, constantes + helpers `rachaTareasAsignadas`/
+  `monedaGanadaHoy`/`pagarMoneda`, `POST /pendientes/:id/completar`
+  reescrita para pagar dentro de la misma transacción que ya insertaba en
+  `eventos_completado`), `views/trazabilidad.ejs`, `views/partials/icono.ejs`.
+- Qué se verificó: `node --check server.js` limpio; `ejs.renderFile` de
+  `trazabilidad.ejs` en los 2 estados (con datos y con error) incluyendo el
+  saldo nuevo; grep de emoji sobre todo `server.js` + `.ejs` en cero;
+  matemática del reparto 70/30 verificada a mano para 4 valores de racha
+  distintos, sin pérdida de redondeo en ningún caso. **No probado contra la
+  DB real** (sin `.env` en este worktree) — falta confirmar en producción
+  que el `ALTER TABLE`/`CREATE TABLE` corre limpio y que completar una
+  tarea asignada de verdad acredita el saldo a las dos personas.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -1610,8 +1675,9 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   un tiempo sospechosamente corto desde que fueron asignadas — decidir el
   umbral de tiempo mínimo y documentarlo (con el mismo espíritu que
   `VENCIDO_DIAS` en estadísticas: una constante nombrada y explicada). —
-  asignada a: sin asignar (sugerido: `rama-moneda-virtual`) — Depende de:
-  tarea 6.
+  asignada a: `rama-moneda-virtual` (commiteada sobre `rama-tema-jungla`,
+  sin probar contra la DB real — ver su sección en "Estado de ramas") —
+  Depende de: tarea 6.
 
 - [ ] **8. IA compañera visual — Fase 1.** Selección de especie de planta al
   registrarse (monstera, cactus, ficus, suculenta — mínimo 4 opciones), cada

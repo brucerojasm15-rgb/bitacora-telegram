@@ -598,6 +598,28 @@ async function ensureSchema() {
       fecha TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-moneda-virtual (tarea 7 del roadmap): decisión de esquema
+  // documentada en COORDINACION.md.
+  await pool.query(`
+    ALTER TABLE eventos_completado ADD COLUMN IF NOT EXISTS cuenta_para_racha BOOLEAN NOT NULL DEFAULT TRUE
+  `);
+  await pool.query(`
+    ALTER TABLE pendientes ADD COLUMN IF NOT EXISTS asignado_en TIMESTAMP
+  `);
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS saldo_moneda INT NOT NULL DEFAULT 0
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS moneda_transacciones (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      cantidad INT NOT NULL,
+      origen TEXT NOT NULL DEFAULT 'ganada',
+      motivo TEXT,
+      evento_completado_id INT REFERENCES eventos_completado(id),
+      fecha TIMESTAMP DEFAULT now()
+    )
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -697,38 +719,118 @@ app.post('/pendientes', async (req, res) => {
 // dos lugares. El único comportamiento extra para el caso asignado es el
 // evento de trazabilidad + la notificación, ambos condicionados a que la
 // tarea tuviera `asignado_a` (es decir, que fuera una tarea compartida).
+// rama-moneda-virtual (tarea 7 del roadmap): decisiones documentadas en
+// COORDINACION.md — moneda base por tarea asignada completada, reparto
+// 70/30 entre quien completa y quien asignó (redondeado sobre el total ya
+// con bonus, para que la suma de las dos partes nunca "pierda" una
+// moneda por redondeo), bonus por racha de días consecutivos completando
+// tareas asignadas, límite diario por persona, y umbral anti-granjeo.
+const MONEDA_POR_TAREA_ASIGNADA = 10;
+const REPARTO_COMPLETA_PCT = 0.7;
+const REPARTO_ASIGNO_PCT = 0.3; // documentado como constante nombrada; en el código se calcula como el resto (total - parteCompleta) para que la suma nunca pierda una moneda por redondeo — REPARTO_COMPLETA_PCT + REPARTO_ASIGNO_PCT debe sumar 1.
+const BONUS_MONEDA_POR_DIA_RACHA = 2;
+const LIMITE_MONEDA_DIARIA = 100;
+const UMBRAL_ANTI_GRANJEO_MINUTOS = 10;
+
+async function rachaTareasAsignadas(client, usuarioId) {
+  const { rows } = await client.query(
+    'SELECT fecha FROM eventos_completado WHERE completado_por = $1 AND cuenta_para_racha = TRUE',
+    [usuarioId]
+  );
+  const dias = new Set(rows.map((r) => formatearDiaLima(r.fecha)));
+  return calcularRacha(dias);
+}
+
+async function monedaGanadaHoy(client, usuarioId) {
+  const { rows } = await client.query(
+    `SELECT COALESCE(SUM(cantidad), 0)::int AS total FROM moneda_transacciones
+     WHERE usuario_id = $1 AND origen = 'ganada'
+       AND fecha >= date_trunc('day', now() AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima'`,
+    [usuarioId]
+  );
+  return rows[0].total;
+}
+
+// Devuelve cuánto se pagó realmente (puede ser menos que `cantidad` si el
+// límite diario ya estaba parcialmente consumido, o 0 si ya se alcanzó).
+async function pagarMoneda(client, usuarioId, cantidad, motivo, eventoCompletadoId) {
+  if (cantidad <= 0) return 0;
+  const yaGanadaHoy = await monedaGanadaHoy(client, usuarioId);
+  const aPagar = Math.min(cantidad, Math.max(0, LIMITE_MONEDA_DIARIA - yaGanadaHoy));
+  if (aPagar <= 0) return 0;
+  await client.query(
+    "INSERT INTO moneda_transacciones (usuario_id, cantidad, origen, motivo, evento_completado_id) VALUES ($1, $2, 'ganada', $3, $4)",
+    [usuarioId, aPagar, motivo, eventoCompletadoId]
+  );
+  await client.query('UPDATE usuarios SET saldo_moneda = saldo_moneda + $1 WHERE id = $2', [aPagar, usuarioId]);
+  return aPagar;
+}
+
 app.post('/pendientes/:id/completar', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).send('id inválido');
   }
+  const client = await pool.connect();
+  let notificarA = null;
+  let comentario = null;
   try {
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `UPDATE pendientes SET hecho = TRUE
        WHERE id = $1 AND eliminado = FALSE AND (usuario_id = $2 OR asignado_a = $2)
-       RETURNING id, usuario_id, asignado_a`,
+       RETURNING id, usuario_id, asignado_a, asignado_en`,
       [id, req.usuarioId]
     );
     const pendiente = rows[0];
     if (pendiente && pendiente.asignado_a) {
-      const comentario = (req.body.comentario || '').trim() || null;
-      await pool.query(
-        'INSERT INTO eventos_completado (pendiente_id, completado_por, comentario) VALUES ($1, $2, $3)',
-        [pendiente.id, req.usuarioId, comentario]
+      comentario = (req.body.comentario || '').trim() || null;
+
+      const segundosDesdeAsignado = pendiente.asignado_en
+        ? (Date.now() - new Date(pendiente.asignado_en).getTime()) / 1000
+        : Infinity;
+      const esGranjeoSospechoso = segundosDesdeAsignado < UMBRAL_ANTI_GRANJEO_MINUTOS * 60;
+
+      const { rows: eventoRows } = await client.query(
+        'INSERT INTO eventos_completado (pendiente_id, completado_por, comentario, cuenta_para_racha) VALUES ($1, $2, $3, $4) RETURNING id',
+        [pendiente.id, req.usuarioId, comentario, !esGranjeoSospechoso]
       );
+      const eventoId = eventoRows[0].id;
+
+      // El bonus por racha se suma al pozo ANTES de repartir 70/30, así que
+      // también favorece a quien asignó (le conviene armar rachas reales
+      // con su amigo, no solo al que completa). Si es un completado
+      // sospechosamente rápido, el bonus queda en 0 (no se paga completo,
+      // como pide el enunciado) y el evento no cuenta para la racha futura.
+      let bonusRacha = 0;
+      if (!esGranjeoSospechoso) {
+        const racha = await rachaTareasAsignadas(client, req.usuarioId);
+        bonusRacha = racha * BONUS_MONEDA_POR_DIA_RACHA;
+      }
+      const totalMoneda = MONEDA_POR_TAREA_ASIGNADA + bonusRacha;
+      const parteCompleta = Math.round(totalMoneda * REPARTO_COMPLETA_PCT);
+      const parteAsigno = totalMoneda - parteCompleta;
+
+      await pagarMoneda(client, req.usuarioId, parteCompleta, `Completar pendiente #${pendiente.id}`, eventoId);
+      await pagarMoneda(client, pendiente.usuario_id, parteAsigno, `Tarea asignada #${pendiente.id} completada`, eventoId);
+
       // Se notifica al OTRO miembro de la tarea compartida, sea cual sea el
       // rol de quien completó (el dueño original o la persona asignada).
-      const notificarA = req.usuarioId === pendiente.usuario_id ? pendiente.asignado_a : pendiente.usuario_id;
-      if (notificarA) {
-        enviarPushAUsuario(notificarA, {
-          title: 'Tarea completada',
-          body: comentario ? `Se completó una tarea compartida: "${comentario}"` : 'Se completó una tarea compartida.',
-          data: { defaultUrl: '/' },
-        }).catch((err) => console.error('Error notificando tarea completada:', err.message));
-      }
+      notificarA = req.usuarioId === pendiente.usuario_id ? pendiente.asignado_a : pendiente.usuario_id;
     }
+    await client.query('COMMIT');
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error marcando pendiente como hecho:', err.message);
+  } finally {
+    client.release();
+  }
+  if (notificarA) {
+    enviarPushAUsuario(notificarA, {
+      title: 'Tarea completada',
+      body: comentario ? `Se completó una tarea compartida: "${comentario}"` : 'Se completó una tarea compartida.',
+      data: { defaultUrl: '/' },
+    }).catch((err) => console.error('Error notificando tarea completada:', err.message));
   }
   res.redirect('/');
 });
@@ -1354,7 +1456,7 @@ app.post('/pendientes/:id/asignar', async (req, res) => {
 
     if (!nombreUsuario) {
       // Selector vacío = quitar la asignación actual.
-      await pool.query('UPDATE pendientes SET asignado_a = NULL WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
+      await pool.query('UPDATE pendientes SET asignado_a = NULL, asignado_en = NULL WHERE id = $1 AND usuario_id = $2', [id, req.usuarioId]);
       return res.redirect('/pendientes/' + id + '/editar');
     }
 
@@ -1374,7 +1476,10 @@ app.post('/pendientes/:id/asignar', async (req, res) => {
       return res.status(403).send('Solo puedes asignar pendientes a un amigo (amistad aceptada).');
     }
 
-    await pool.query('UPDATE pendientes SET asignado_a = $1 WHERE id = $2 AND usuario_id = $3', [destinatario.id, id, req.usuarioId]);
+    // rama-moneda-virtual: asignado_en marca cuándo empezó la asignación
+    // actual, para el umbral anti-granjeo al completar (ver constante
+    // UMBRAL_ANTI_GRANJEO_MINUTOS más abajo).
+    await pool.query('UPDATE pendientes SET asignado_a = $1, asignado_en = now() WHERE id = $2 AND usuario_id = $3', [destinatario.id, id, req.usuarioId]);
   } catch (err) {
     console.error('Error asignando pendiente:', err.message);
     return res.status(500).send('No se pudo asignar el pendiente.');
@@ -1577,7 +1682,7 @@ app.get('/trazabilidad', async (req, res) => {
     const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
     if (!pertenece) {
       return res.status(403).render('trazabilidad', {
-        eventos: [], conteoSemana: [], amistadId: null, pagina: 0, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, error: 'No tienes acceso a esta amistad.',
+        eventos: [], conteoSemana: [], amistadId: null, pagina: 0, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda: 0, error: 'No tienes acceso a esta amistad.',
       });
     }
     const { rows: amistadRows } = await pool.query(
@@ -1612,10 +1717,16 @@ app.get('/trazabilidad', async (req, res) => {
       [usuario_a_id, usuario_b_id]
     );
 
-    res.render('trazabilidad', { eventos, conteoSemana, amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, error: null });
+    // rama-moneda-virtual: saldo propio, para verificar que el sistema de
+    // moneda está pagando de verdad (la vista real del saldo/planta la
+    // arma la tarea 8, esto es solo un número de referencia por ahora).
+    const { rows: saldoRows } = await pool.query('SELECT saldo_moneda FROM usuarios WHERE id = $1', [req.usuarioId]);
+    const saldoMoneda = saldoRows[0] ? saldoRows[0].saldo_moneda : 0;
+
+    res.render('trazabilidad', { eventos, conteoSemana, amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda, error: null });
   } catch (err) {
     console.error('Error consultando trazabilidad:', err.message);
-    res.status(500).render('trazabilidad', { eventos: [], conteoSemana: [], amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, error: 'No se pudo leer la base de datos.' });
+    res.status(500).render('trazabilidad', { eventos: [], conteoSemana: [], amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda: 0, error: 'No se pudo leer la base de datos.' });
   }
 });
 

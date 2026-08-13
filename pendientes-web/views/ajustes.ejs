@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Ajustes' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'ajustes' }) %> Ajustes</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+
+      <% if (typeof guardado !== 'undefined' && guardado === 'nombre') { %>
+        <p class="notificacion">Nombre de usuario actualizado.</p>
+      <% } else if (typeof guardado !== 'undefined' && guardado === 'especie') { %>
+        <p class="notificacion">Especie de planta actualizada.</p>
+      <% } else if (typeof guardado !== 'undefined' && guardado === 'notificaciones') { %>
+        <p class="notificacion">Notificaciones desactivadas en este navegador.</p>
+      <% } %>
+
+      <section class="ajustes-grupo">
+        <h2>Cuenta</h2>
+        <form method="POST" action="/ajustes/nombre" class="ajustes-form">
+          <label for="ajustes-nombre">Nombre de usuario</label>
+          <input type="text" name="nombre_usuario" id="ajustes-nombre" value="<%= nombreUsuario %>"
+                 minlength="3" maxlength="20" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+          <button type="submit">Guardar</button>
+        </form>
+      </section>
+
+      <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'planta' }) %> Planta compañera</h2>
+        <form method="POST" action="/ajustes/especie" class="ajustes-form">
+          <label for="ajustes-especie">Especie</label>
+          <select name="especie" id="ajustes-especie">
+            <% especies.forEach((esp) => { %>
+              <option value="<%= esp %>" <%= esp === especieActual ? 'selected' : '' %>>
+                <%= esp.charAt(0).toUpperCase() + esp.slice(1) %>
+              </option>
+            <% }) %>
+          </select>
+          <button type="submit">Guardar</button>
+        </form>
+        <p class="ajustes-nota">Cambiar de especie no reinicia el crecimiento — la etapa depende de la moneda que ya ganaste, no de qué planta elijas.</p>
+      </section>
+
+      <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'campana' }) %> Notificaciones</h2>
+        <% if (notificacionesActivas) { %>
+          <p class="ajustes-estado">Activas en este navegador.</p>
+          <form method="POST" action="/ajustes/notificaciones" class="ajustes-form">
+            <button type="submit">Desactivar</button>
+          </form>
+        <% } else { %>
+          <p class="ajustes-estado">No activadas en este navegador.</p>
+          <button type="button" id="ajustes-activar-notificaciones">Activar</button>
+        <% } %>
+      </section>
+
+      <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'rayo' }) %> Sonidos</h2>
+        <label class="ajustes-switch">
+          <input type="checkbox" id="ajustes-sonidos">
+          Reproducir sonidos al enviar, completar o eliminar
+        </label>
+      </section>
+
+      <section class="ajustes-grupo">
+        <h2>Tema</h2>
+        <div class="ajustes-tema-opciones" id="ajustes-tema-opciones">
+          <button type="button" data-tema="claro">Claro</button>
+          <button type="button" data-tema="oscuro">Oscuro</button>
+          <button type="button" data-tema="sistema">Automático</button>
+        </div>
+      </section>
+
+    <% } %>
+  </main>
+
+  <script>
+    // Sonidos: checkbox refleja/escribe la misma clave que lee public/sonidos.js.
+    const chkSonidos = document.getElementById('ajustes-sonidos');
+    if (chkSonidos) {
+      chkSonidos.checked = localStorage.getItem('sonidosActivos') !== 'no';
+      chkSonidos.addEventListener('change', () => {
+        localStorage.setItem('sonidosActivos', chkSonidos.checked ? 'si' : 'no');
+      });
+    }
+
+    // Tema: mismo endpoint que ya usa el toggle del nav, sin duplicar mecanismo.
+    document.querySelectorAll('#ajustes-tema-opciones button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        fetch('/preferencia-tema', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tema: btn.dataset.tema }),
+        }).then(() => {
+          if (btn.dataset.tema === 'sistema') {
+            document.documentElement.removeAttribute('data-theme');
+          } else {
+            document.documentElement.setAttribute('data-theme', btn.dataset.tema === 'oscuro' ? 'dark' : 'light');
+          }
+        }).catch(() => {});
+      });
+    });
+
+    // Activar notificaciones: mismo flujo que ya usa el botón de index.ejs.
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+    }
+    document.getElementById('ajustes-activar-notificaciones')?.addEventListener('click', async () => {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          alert('Este navegador no soporta notificaciones push.');
+          return;
+        }
+        const permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') {
+          alert('No diste permiso para las notificaciones.');
+          return;
+        }
+        const registro = await navigator.serviceWorker.ready;
+        const suscripcion = await registro.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array('<%= vapidPublicKey %>'),
+        });
+        await fetch('/suscribir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: suscripcion.toJSON() }),
+        });
+        location.reload();
+      } catch (err) {
+        alert('No se pudo activar: ' + err.message);
+      }
+    });
+  </script>
+<%- include('partials/scripts') %>
+</body>
+</html>

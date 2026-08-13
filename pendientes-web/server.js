@@ -2031,6 +2031,84 @@ app.post('/ia/usar-comodin', async (req, res) => {
   res.redirect('/ia');
 });
 
+// rama-ajustes (Ronda — pulido y detalles de producto): decisiones
+// documentadas en COORDINACION.md — "nombre visible" es nombre_usuario
+// (no un campo nuevo), cambiar de especie no reinicia la etapa (se
+// calcula siempre de la moneda ganada de por vida), sonidos vive en
+// localStorage (no en la cuenta), desactivar push borra la(s) fila(s) de
+// push_subscriptions, y el tema reusa POST /preferencia-tema tal cual.
+app.get('/ajustes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT nombre_usuario, ia_especie FROM usuarios WHERE id = $1',
+      [req.usuarioId]
+    );
+    const usuario = rows[0];
+    const { rows: pushRows } = await pool.query(
+      'SELECT 1 FROM push_subscriptions WHERE usuario_id = $1 LIMIT 1',
+      [req.usuarioId]
+    );
+    res.render('ajustes', {
+      nombreUsuario: usuario ? usuario.nombre_usuario : '',
+      especieActual: usuario && usuario.ia_especie ? usuario.ia_especie : 'monstera',
+      especies: IA_ESPECIES,
+      notificacionesActivas: pushRows.length > 0,
+      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      error: null,
+      guardado: null,
+    });
+  } catch (err) {
+    console.error('Error consultando ajustes:', err.message);
+    res.status(500).render('ajustes', {
+      nombreUsuario: '', especieActual: 'monstera', especies: IA_ESPECIES,
+      notificacionesActivas: false, vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      error: 'No se pudo leer la base de datos.', guardado: null,
+    });
+  }
+});
+
+app.post('/ajustes/nombre', async (req, res) => {
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
+  if (!NOMBRE_USUARIO_REGEX.test(nombreUsuario)) {
+    return res.status(400).send('El usuario debe tener entre 3 y 20 caracteres (letras, números o _).');
+  }
+  try {
+    await pool.query('UPDATE usuarios SET nombre_usuario = $1 WHERE id = $2', [nombreUsuario, req.usuarioId]);
+    req.session.nombre_usuario = nombreUsuario;
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).send('Ese nombre de usuario ya está en uso.');
+    }
+    console.error('Error cambiando nombre de usuario:', err.message);
+    return res.status(500).send('No se pudo guardar el nombre.');
+  }
+  res.redirect('/ajustes?guardado=nombre');
+});
+
+app.post('/ajustes/especie', async (req, res) => {
+  const especie = req.body.especie;
+  if (!IA_ESPECIES.includes(especie)) {
+    return res.status(400).send('Especie inválida.');
+  }
+  try {
+    await pool.query('UPDATE usuarios SET ia_especie = $1 WHERE id = $2', [especie, req.usuarioId]);
+  } catch (err) {
+    console.error('Error cambiando especie:', err.message);
+    return res.status(500).send('No se pudo guardar la especie.');
+  }
+  res.redirect('/ajustes?guardado=especie');
+});
+
+app.post('/ajustes/notificaciones', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM push_subscriptions WHERE usuario_id = $1', [req.usuarioId]);
+  } catch (err) {
+    console.error('Error desactivando notificaciones:', err.message);
+    return res.status(500).send('No se pudo desactivar.');
+  }
+  res.redirect('/ajustes?guardado=notificaciones');
+});
+
 // Vista y rutas de chat. Todavía no está enlazada al menú de navegación
 // principal (partials/nav.ejs) ni depende de la tabla amistades, que se
 // construye en otra rama.

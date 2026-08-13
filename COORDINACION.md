@@ -1222,6 +1222,125 @@
   que el `ALTER TABLE`/`CREATE TABLE` corre limpio y que completar una
   tarea asignada de verdad acredita el saldo a las dos personas.
 
+### rama-ia-companera-fase1
+- Estado: commiteada, sin probar contra la DB real (mismo motivo de
+  siempre — sin `.env` en este worktree).
+- Tarea: IA compañera visual — Fase 1 (tarea 8 del roadmap 2026-08-12).
+  Depende de la tarea 7 (moneda virtual), ya mergeada a `main`. Construida
+  directo sobre `rama-tema-jungla` (sin rama aparte), igual que la 7.
+- Decisiones numéricas y de modelado (tomadas antes de implementar):
+  - **Curva de moneda por etapa: `[0, 50, 200, 500]`** (semilla/brote/
+    joven/adulta). Progresiva a propósito (cada salto cuesta más que
+    alcanzar el anterior). Pensada para uso real entre 2 amigos —
+    `LIMITE_MONEDA_DIARIA = 100`/día de la tarea 7 es difícil de agotar
+    todos los días, así que asumí un promedio más realista de 1-3 tareas
+    asignadas completadas por día (~20-30 monedas/día): brote a los ~2
+    días activos (una recompensa rápida y motivadora), joven a la ~1
+    semana, adulta a las ~3 semanas (un logro real, no algo que se
+    alcanza en un día).
+  - **La etapa NO se persiste como columna** — se calcula en vivo
+    (`etapaPorMoneda`) a partir de la moneda **ganada de por vida**
+    (`origen IN ('ganada','comprada')` de `moneda_transacciones`), nunca
+    del `saldo_moneda` gastable. Motivo: si la etapa dependiera del saldo
+    actual, gastar moneda en un skin haría "retroceder" la planta —
+    contraintuitivo y desalentaría gastar. Así, gastar nunca resta
+    crecimiento, solo el saldo disponible para comprar cosas nuevas.
+  - **Especie y nombre sí se persisten**: `usuarios.ia_especie` (elegida
+    una sola vez, al registrarse, en `POST /registro`), `usuarios.
+    ia_nombre` (editable libremente, gratis — es solo texto, no un
+    recurso visual/funcional). `usuarios.ia_skin`/`ia_tema_extra` guardan
+    la última compra activa de cada tipo (no hay inventario de varios
+    skins simultáneos en esta fase, comprar uno nuevo reemplaza al
+    anterior).
+  - **Origen `'gastada'` nuevo en `moneda_transacciones.origen`** — la
+    tarea 7 solo pedía distinguir `'ganada'` de `'comprada'` (para la
+    compra futura de moneda con dinero real, todavía sin implementar).
+    Hacía falta un tercer valor para registrar el GASTO de moneda en el
+    mismo log en vez de abrir una tabla aparte; `cantidad` va negativa en
+    esas filas. No es una columna nueva, solo un valor de texto más en
+    una columna que ya no tenía `CHECK` — no hizo falta migración.
+  - **Costos**: skin `30`, tema visual extra `60`, comodín "perdonar
+    racha" `40` — números elegidos para que un skin sea alcanzable con
+    2-3 tareas asignadas, y el comodín/tema un poco más esforzados sin
+    ser inalcanzables. Constantes nombradas (`IA_COSTO_SKIN`, etc.), no
+    números sueltos.
+  - **El comodín de "perdonar racha" NO toca la racha de `/estadisticas`
+    ni la de la tarea 7 que paga moneda** (`rachaTareasAsignadas`) — eso
+    hubiera significado modificar lógica de pago ya probada, para una
+    Fase 1 que ni siquiera tiene IA real todavía. En cambio, usarlo
+    inserta una fila en una tabla nueva `racha_protecciones` (fecha
+    "perdonada" para ese usuario) que SOLO afecta la racha que se
+    muestra dentro de `/ia` (`observacionesIA`, que arma su propio set de
+    días incluyendo los protegidos antes de llamar a `calcularRacha`).
+    Documentado en el propio código. Si en el futuro se quiere que el
+    comodín también proteja la racha de pago de la tarea 7, es un cambio
+    aparte y deliberado, no algo que se coló acá.
+  - Especies (`monstera`, `cactus`, `ficus`, `suculenta`) ilustradas en
+    `views/partials/planta.ejs`, mismo patrón SVG que `partials/
+    monstera.ejs` (de hecho la etapa "adulta" de la especie monstera
+    reusa exactamente ese mismo `<path>`/`<mask>`, para quedar coherente
+    con el resto de la marca). En la etapa "semilla" las 4 especies se
+    ven iguales a propósito — todavía no hay nada que las distinga.
+- Archivos tocados: `server.js` (schema, constantes `IA_*`,
+  `etapaPorMoneda`, `monedaAcumuladaDeVida`, `gastarMoneda`,
+  `observacionesIA`, rutas `GET /ia`, `POST /ia/nombre`, `POST
+  /ia/comprar`, `POST /ia/usar-comodin`, `GET`/`POST /registro`
+  ampliadas), `views/partials/planta.ejs` (nuevo), `views/ia.ejs`
+  (nuevo), `views/registro.ejs` (selector de especie), `views/partials/
+  nav.ejs` (link nuevo), `views/partials/icono.ejs` (ícono `planta`
+  nuevo), `public/style.css` (`.especie-*`, `.ia-*`, con su bloque
+  `prefers-reduced-motion` para la animación de transición de etapa).
+- Qué se verificó: `node --check server.js` limpio; CSS con llaves
+  balanceadas; `ejs.renderFile` de `registro.ejs` e `ia.ejs` (estado
+  normal, etapa máxima, y camino de error) sin errores; las 16
+  combinaciones especie×etapa de `partials/planta.ejs` renderizan y
+  contienen un `<svg>` válido; grep de emoji sobre todo el proyecto en
+  cero. **No probado contra la DB real** (sin `.env` en este worktree) —
+  falta confirmar que las columnas/tabla nuevas migran limpio, que
+  elegir especie al registrarse la guarda, y que gastar/ganar moneda
+  mueve la etapa como se espera.
+
+### rama-tema-jungla (limpieza)
+- Estado: commiteada.
+- Tarea: pasada de simplificación/optimización sobre todo lo agregado hoy
+  (rango `2c929e6..HEAD`, tareas 3/4/5/6/7/8/10-esqueleto + chat general),
+  escrito por agentes distintos que no se vieron entre sí — sin cambiar
+  comportamiento, código ya en producción vía PR #36.
+- Simplificado: `enviarPushATodos` y `enviarPushAUsuario` solo diferían en
+  el WHERE de la consulta — el envío + limpieza de suscripciones muertas
+  (404/410) era código idéntico duplicado. Factorizado en
+  `enviarPushASubscripciones(rows, payloadObjeto)`, llamado por ambas con
+  su propio SELECT. Firmas públicas y comportamiento sin cambios
+  (verificado: mismos call sites, mismo shape de retorno `{enviadas,
+  total}`).
+- Evaluado y dejado como estaba (a propósito, forzar la unificación
+  complicaba más de lo que simplificaba):
+  - El `<mask>` de fenestraciones de monstera en `partials/monstera.ejs`
+    vs. el de `partials/planta.ejs` (etapa adulta de la especie monstera):
+    son dos ilustraciones independientes en contextos distintos (marca fija
+    vs. tabla de 16 combinaciones especie×etapa) — compartir el `<mask>`
+    real exigiría anidar un partial dentro de otro con scoping de id
+    cruzado, más complejidad que las ~4 líneas que se ahorrarían.
+  - Los dos cron (`revisarYNotificarSiNoHayHechosHoy` vs.
+    `revisarYNotificarRecordatoriosPendientes`): estructura real distinta
+    (uno chequea un conteo y manda un broadcast condicional, el otro itera
+    N filas mandando push individual y actualizando cada una) — no hay
+    abstracción común limpia que valga la pena.
+  - Los `~9` queries secuenciales de `POST /pendientes/:id/completar`
+    cuando hay `asignado_a` (UPDATE + INSERT evento + 2×pagarMoneda de 3
+    queries cada uno + racha): parece mucho pero es una acción humana
+    infrecuente (completar UNA tarea), no un path caliente — no es un N+1
+    real, es una transacción con varios pasos. Priorizar claridad sobre
+    ahorrar un par de queries acá no vale la pena.
+- Sin bugs reales encontrados durante la revisión (solo la duplicación ya
+  descrita, que es prolijidad, no un bug).
+- Qué se verificó: `node --check server.js` limpio, confirmado que los 3
+  call sites de `enviarPushATodos`/`enviarPushAUsuario` no cambiaron
+  (mismos argumentos, mismo retorno desestructurado), grep de emoji sobre
+  todo el proyecto en cero. No se tocó ninguna vista en esta pasada, así
+  que los renders ya verificados en las secciones de arriba siguen
+  vigentes.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -1714,7 +1833,8 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   dinero real** (columna de origen en la tabla de moneda: `ganada` vs
   `comprada`, o un enum — decidir y documentar) **pero sin integrar ningún
   proveedor de pagos todavía** — eso no es parte de esta tarea. — asignada a:
-  sin asignar (sugerido: `rama-ia-companera-fase1`) — Depende de: tarea 7.
+  `rama-ia-companera-fase1` (commiteada, sin probar contra la DB real —
+  ver su sección en "Estado de ramas") — Depende de: tarea 7.
 
 - [ ] **9. [BLOQUEADA — no despachar todavía] IA compañera conversacional
   real — Fase 2.** Integrar la API de Claude para que la planta hable de

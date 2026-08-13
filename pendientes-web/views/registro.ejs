@@ -16,6 +16,22 @@
       <input type="text" name="nombre_usuario" placeholder="Usuario" value="<%= nombreUsuario %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" minlength="3" maxlength="20" required autofocus>
       <input type="password" name="pin" placeholder="PIN (4 a 6 dígitos)" inputmode="numeric" pattern="\d{4,6}" required>
       <input type="password" name="confirmar_pin" placeholder="Repite el PIN" inputmode="numeric" pattern="\d{4,6}" required>
+
+      <fieldset class="especie-picker">
+        <legend>Elegí tu planta compañera</legend>
+        <div class="especie-opciones">
+          <% especies.forEach((esp, i) => { %>
+            <label class="especie-opcion">
+              <input type="radio" name="especie" value="<%= esp %>" <%= i === 0 ? 'checked' : '' %>>
+              <span class="especie-tarjeta">
+                <%- include('partials/planta', { especie: esp, etapa: 0, tamano: 48, idSufijo: 'reg-' + esp }) %>
+                <span class="especie-nombre"><%= esp.charAt(0).toUpperCase() + esp.slice(1) %></span>
+              </span>
+            </label>
+          <% }) %>
+        </div>
+      </fieldset>
+
       <button type="submit">Crear cuenta</button>
     </form>
 

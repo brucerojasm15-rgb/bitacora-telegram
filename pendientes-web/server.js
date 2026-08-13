@@ -351,30 +351,33 @@ app.get('/registro', (req, res) => {
   if (req.session && req.session.usuario_id) {
     return res.redirect('/');
   }
-  res.render('registro', { error: null, nombreUsuario: '' });
+  res.render('registro', { error: null, nombreUsuario: '', especies: IA_ESPECIES });
 });
 
 app.post('/registro', limitarIntentos('registro'), async (req, res) => {
   const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
   const pin = req.body.pin || '';
   const confirmarPin = req.body.confirmar_pin || '';
+  const especie = IA_ESPECIES.includes(req.body.especie) ? req.body.especie : IA_ESPECIES[0];
 
   if (!NOMBRE_USUARIO_REGEX.test(nombreUsuario)) {
     return res.render('registro', {
       error: 'El usuario debe tener entre 3 y 20 caracteres (letras, números o _).',
       nombreUsuario,
+      especies: IA_ESPECIES,
     });
   }
   if (!PIN_REGEX.test(pin)) {
-    return res.render('registro', { error: 'El PIN debe ser numérico, de 4 a 6 dígitos.', nombreUsuario });
+    return res.render('registro', { error: 'El PIN debe ser numérico, de 4 a 6 dígitos.', nombreUsuario, especies: IA_ESPECIES });
   }
   if (pin !== confirmarPin) {
-    return res.render('registro', { error: 'El PIN y su confirmación no coinciden.', nombreUsuario });
+    return res.render('registro', { error: 'El PIN y su confirmación no coinciden.', nombreUsuario, especies: IA_ESPECIES });
   }
   if (limiteRegistrosAlcanzado(req.ip)) {
     return res.render('registro', {
       error: 'Se alcanzó el límite de cuentas nuevas desde esta red en la última hora. Intenta de nuevo más tarde.',
       nombreUsuario,
+      especies: IA_ESPECIES,
     });
   }
 
@@ -382,9 +385,10 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     const pinHash = crearPinHash(pin);
     const codigoRecuperacion = generarCodigoRecuperacion();
     const codigoRecuperacionHash = crearPinHash(codigoRecuperacion);
+    const nombreIaPorDefecto = especie.charAt(0).toUpperCase() + especie.slice(1);
     const { rows } = await pool.query(
-      'INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash) VALUES ($1, $2, $3) RETURNING id',
-      [nombreUsuario, pinHash, codigoRecuperacionHash]
+      'INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash, ia_especie, ia_nombre) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [nombreUsuario, pinHash, codigoRecuperacionHash, especie, nombreIaPorDefecto]
     );
     registrarAltaExitosa(req.ip);
     req.session.usuario_id = rows[0].id;
@@ -396,10 +400,10 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     });
   } catch (err) {
     if (err.code === '23505') {
-      return res.render('registro', { error: 'Ese nombre de usuario ya está en uso.', nombreUsuario });
+      return res.render('registro', { error: 'Ese nombre de usuario ya está en uso.', nombreUsuario, especies: IA_ESPECIES });
     }
     console.error('Error en registro:', err.message);
-    res.status(500).render('registro', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario });
+    res.status(500).render('registro', { error: 'Error del servidor, intenta de nuevo.', nombreUsuario, especies: IA_ESPECIES });
   }
 });
 
@@ -620,6 +624,30 @@ async function ensureSchema() {
       fecha TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-ia-companera-fase1 (tarea 8 del roadmap): decisiones documentadas
+  // en COORDINACION.md. ia_especie/ia_etapa NO se persiste como columna: la
+  // etapa se calcula en vivo a partir de moneda_transacciones (ver
+  // etapaPorMoneda más abajo) para que nunca pueda desincronizarse.
+  await pool.query(`
+    ALTER TABLE usuarios
+      ADD COLUMN IF NOT EXISTS ia_especie TEXT,
+      ADD COLUMN IF NOT EXISTS ia_skin TEXT NOT NULL DEFAULT 'clasico',
+      ADD COLUMN IF NOT EXISTS ia_nombre TEXT,
+      ADD COLUMN IF NOT EXISTS ia_tema_extra TEXT,
+      ADD COLUMN IF NOT EXISTS comodines_perdon_disponibles INT NOT NULL DEFAULT 0
+  `);
+  // Días "perdonados": cuentan como si hubiera actividad para la racha que
+  // se muestra en /ia (NO toca la racha de /estadisticas ni la de la tarea
+  // 7 que paga moneda — queda deliberadamente aislado, ver COORDINACION.md).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS racha_protecciones (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      fecha DATE NOT NULL,
+      creado TIMESTAMP DEFAULT now(),
+      UNIQUE (usuario_id, fecha)
+    )
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -764,6 +792,101 @@ async function pagarMoneda(client, usuarioId, cantidad, motivo, eventoCompletado
   );
   await client.query('UPDATE usuarios SET saldo_moneda = saldo_moneda + $1 WHERE id = $2', [aPagar, usuarioId]);
   return aPagar;
+}
+
+// rama-ia-companera-fase1 (tarea 8 del roadmap): decisiones numéricas
+// documentadas en COORDINACION.md. La planta crece con la moneda GANADA DE
+// POR VIDA (ganada + comprada, nunca el saldo gastable), para que comprar
+// un skin o un comodín no la haga "retroceder". Curva progresiva: cada
+// salto cuesta más que alcanzar el anterior — pensada para uso real entre
+// 2 amigos (ver LIMITE_MONEDA_DIARIA=100/día de la tarea 7, difícil de
+// agotar todos los días): brote a los ~2 días activos típicos, joven a
+// la ~1 semana, adulta a las ~3 semanas.
+const IA_ESPECIES = ['monstera', 'cactus', 'ficus', 'suculenta'];
+const IA_ETAPAS = ['semilla', 'brote', 'joven', 'adulta'];
+const IA_UMBRAL_ETAPA = [0, 50, 200, 500];
+
+// Costos en moneda gastable (usuarios.saldo_moneda) de cada uso, documentados
+// junto a la constante como pide el enunciado. El nombre de la IA es
+// gratuito (es solo un texto, no un recurso visual/funcional nuevo) — no
+// tiene constante de costo.
+const IA_COSTO_SKIN = 30;
+const IA_COSTO_COMODIN_PERDON = 40;
+const IA_COSTO_TEMA_EXTRA = 60;
+const IA_SKINS_DISPONIBLES = ['clasico', 'alegre', 'zen', 'nocturno'];
+const IA_TEMAS_EXTRA_DISPONIBLES = ['atardecer', 'lluvia'];
+
+function etapaPorMoneda(totalDeVida) {
+  let indice = 0;
+  for (let i = IA_UMBRAL_ETAPA.length - 1; i >= 0; i--) {
+    if (totalDeVida >= IA_UMBRAL_ETAPA[i]) {
+      indice = i;
+      break;
+    }
+  }
+  const siguienteUmbral = indice < IA_UMBRAL_ETAPA.length - 1 ? IA_UMBRAL_ETAPA[indice + 1] : null;
+  return { indice, nombre: IA_ETAPAS[indice], siguienteUmbral };
+}
+
+async function monedaAcumuladaDeVida(usuarioId) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(cantidad), 0)::int AS total FROM moneda_transacciones
+     WHERE usuario_id = $1 AND origen IN ('ganada', 'comprada')`,
+    [usuarioId]
+  );
+  return rows[0].total;
+}
+
+// Origen 'gastada' es una extensión chica sobre el enum de la tarea 7
+// (que solo pedía distinguir 'ganada' de 'comprada' para la compra futura
+// de moneda con dinero real) — hacía falta un tercer valor para registrar
+// el GASTO de moneda en el mismo log, sin mezclarlo con ninguno de los
+// otros dos. cantidad va negativa para que el log siga sumando al total
+// real gastado/ganado si algún día se audita entero.
+async function gastarMoneda(client, usuarioId, cantidad, motivo) {
+  const { rows } = await client.query('SELECT saldo_moneda FROM usuarios WHERE id = $1 FOR UPDATE', [usuarioId]);
+  const saldo = rows[0] ? rows[0].saldo_moneda : 0;
+  if (saldo < cantidad) return false;
+  await client.query('UPDATE usuarios SET saldo_moneda = saldo_moneda - $1 WHERE id = $2', [cantidad, usuarioId]);
+  await client.query(
+    "INSERT INTO moneda_transacciones (usuario_id, cantidad, origen, motivo) VALUES ($1, $2, 'gastada', $3)",
+    [usuarioId, -cantidad, motivo]
+  );
+  return true;
+}
+
+// Observaciones simples sobre datos propios del usuario — estadística sobre
+// tablas ya existentes, sin llamar ningún modelo de IA (a propósito, la
+// tarea 8 es Fase 1: la conversación real es Fase 2, tarea 9, todavía
+// bloqueada). Reusa formatearDiaLima/calcularRacha de /estadisticas.
+async function observacionesIA(usuarioId) {
+  const observaciones = [];
+  const [completados, protegidos, horaMasFrecuente] = await Promise.all([
+    pool.query('SELECT creado FROM pendientes WHERE hecho = TRUE AND eliminado = FALSE AND usuario_id = $1', [usuarioId]),
+    pool.query('SELECT fecha FROM racha_protecciones WHERE usuario_id = $1', [usuarioId]),
+    pool.query(
+      `SELECT EXTRACT(HOUR FROM creado AT TIME ZONE 'America/Lima')::int AS hora, COUNT(*)::int AS cantidad
+       FROM pendientes WHERE hecho = TRUE AND eliminado = FALSE AND usuario_id = $1
+       GROUP BY hora ORDER BY cantidad DESC LIMIT 1`,
+      [usuarioId]
+    ),
+  ]);
+
+  const diasConActividad = new Set(completados.rows.map((r) => formatearDiaLima(r.creado)));
+  protegidos.rows.forEach((r) => diasConActividad.add(formatearDiaLima(r.fecha)));
+  const racha = calcularRacha(diasConActividad);
+  if (racha > 0) {
+    observaciones.push(`Llevás ${racha} día(s) seguidos completando algo. Así se cuida una racha.`);
+  } else {
+    observaciones.push('Todavía no armaste una racha — completar algo hoy es un buen comienzo.');
+  }
+
+  if (horaMasFrecuente.rows[0]) {
+    observaciones.push(`Sos más activo cerca de las ${horaMasFrecuente.rows[0].hora}:00.`);
+  }
+
+  observaciones.push(`Completaste ${completados.rows.length} pendiente(s) en total desde que empezaste.`);
+  return observaciones;
 }
 
 app.post('/pendientes/:id/completar', async (req, res) => {
@@ -935,8 +1058,10 @@ app.post('/suscribir', async (req, res) => {
   res.status(201).send('ok');
 });
 
-async function enviarPushATodos(payloadObjeto) {
-  const { rows } = await pool.query('SELECT id, endpoint, p256dh, auth FROM push_subscriptions');
+// rama-tema-jungla (limpieza): enviarPushATodos y enviarPushAUsuario solo
+// diferían en el WHERE de la consulta — el envío y la limpieza de
+// suscripciones muertas (404/410) eran idénticos, factorizados acá.
+async function enviarPushASubscripciones(rows, payloadObjeto) {
   const payload = JSON.stringify(payloadObjeto);
 
   const resultados = await Promise.allSettled(
@@ -956,28 +1081,17 @@ async function enviarPushATodos(payloadObjeto) {
   return { enviadas, total: rows.length };
 }
 
+async function enviarPushATodos(payloadObjeto) {
+  const { rows } = await pool.query('SELECT id, endpoint, p256dh, auth FROM push_subscriptions');
+  return enviarPushASubscripciones(rows, payloadObjeto);
+}
+
 async function enviarPushAUsuario(usuarioId, payloadObjeto) {
   const { rows } = await pool.query(
     'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE usuario_id = $1',
     [usuarioId]
   );
-  const payload = JSON.stringify(payloadObjeto);
-
-  const resultados = await Promise.allSettled(
-    rows.map((s) =>
-      webpush
-        .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
-        .catch(async (err) => {
-          if (err.statusCode === 404 || err.statusCode === 410) {
-            await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [s.id]);
-          }
-          throw err;
-        })
-    )
-  );
-
-  const enviadas = resultados.filter((r) => r.status === 'fulfilled').length;
-  return { enviadas, total: rows.length };
+  return enviarPushASubscripciones(rows, payloadObjeto);
 }
 
 function payloadRecordatorio(texto) {
@@ -1728,6 +1842,151 @@ app.get('/trazabilidad', async (req, res) => {
     console.error('Error consultando trazabilidad:', err.message);
     res.status(500).render('trazabilidad', { eventos: [], conteoSemana: [], amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda: 0, error: 'No se pudo leer la base de datos.' });
   }
+});
+
+// rama-ia-companera-fase1 (tarea 8 del roadmap): sin llamar ningún modelo
+// de IA todavía (eso es la Fase 2, tarea 9, bloqueada) — esto es la
+// planta/mascota visual, la tienda de moneda, y observaciones simples
+// sobre datos propios del usuario.
+app.get('/ia', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda, comodines_perdon_disponibles FROM usuarios WHERE id = $1',
+      [req.usuarioId]
+    );
+    const usuario = rows[0];
+    if (!usuario || !usuario.ia_especie) {
+      // Cuentas creadas antes de esta rama no tienen especie elegida —
+      // se les asigna monstera por defecto (la especie insignia de la app)
+      // en vez de bloquear la vista o forzar un flujo de "elegir ahora".
+      await pool.query(
+        "UPDATE usuarios SET ia_especie = 'monstera', ia_nombre = COALESCE(ia_nombre, 'Monstera') WHERE id = $1",
+        [req.usuarioId]
+      );
+    }
+    const especie = usuario && usuario.ia_especie ? usuario.ia_especie : 'monstera';
+    const totalDeVida = await monedaAcumuladaDeVida(req.usuarioId);
+    const etapa = etapaPorMoneda(totalDeVida);
+    const observaciones = await observacionesIA(req.usuarioId);
+
+    res.render('ia', {
+      especie,
+      etapa,
+      totalDeVida,
+      nombreIa: (usuario && usuario.ia_nombre) || especie,
+      skinActual: (usuario && usuario.ia_skin) || 'clasico',
+      temaExtraActual: usuario ? usuario.ia_tema_extra : null,
+      saldoMoneda: usuario ? usuario.saldo_moneda : 0,
+      comodinesDisponibles: usuario ? usuario.comodines_perdon_disponibles : 0,
+      observaciones,
+      skinsDisponibles: IA_SKINS_DISPONIBLES,
+      temasExtraDisponibles: IA_TEMAS_EXTRA_DISPONIBLES,
+      costoSkin: IA_COSTO_SKIN,
+      costoComodin: IA_COSTO_COMODIN_PERDON,
+      costoTemaExtra: IA_COSTO_TEMA_EXTRA,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando la IA compañera:', err.message);
+    res.status(500).render('ia', {
+      especie: 'monstera', etapa: etapaPorMoneda(0), totalDeVida: 0, nombreIa: 'tu planta', skinActual: 'clasico',
+      temaExtraActual: null, saldoMoneda: 0, comodinesDisponibles: 0, observaciones: [], skinsDisponibles: IA_SKINS_DISPONIBLES,
+      temasExtraDisponibles: IA_TEMAS_EXTRA_DISPONIBLES, costoSkin: IA_COSTO_SKIN, costoComodin: IA_COSTO_COMODIN_PERDON,
+      costoTemaExtra: IA_COSTO_TEMA_EXTRA, error: 'No se pudo cargar tu planta compañera.',
+    });
+  }
+});
+
+app.post('/ia/nombre', async (req, res) => {
+  const nombre = (req.body.nombre || '').trim().slice(0, 30);
+  if (!nombre) {
+    return res.status(400).send('El nombre no puede estar vacío.');
+  }
+  try {
+    await pool.query('UPDATE usuarios SET ia_nombre = $1 WHERE id = $2', [nombre, req.usuarioId]);
+  } catch (err) {
+    console.error('Error renombrando la IA:', err.message);
+    return res.status(500).send('No se pudo guardar el nombre.');
+  }
+  res.redirect('/ia');
+});
+
+// Un solo endpoint para las 3 compras de moneda de la Fase 1 (skin, tema
+// extra, comodín) — mismo patrón simple que ya usa el resto del proyecto
+// para acciones con pocas variantes válidas (ver /captura con su `tipo`).
+app.post('/ia/comprar', async (req, res) => {
+  const tipo = req.body.tipo;
+  const valor = req.body.valor;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let ok = false;
+    if (tipo === 'skin' && IA_SKINS_DISPONIBLES.includes(valor)) {
+      ok = await gastarMoneda(client, req.usuarioId, IA_COSTO_SKIN, `Skin: ${valor}`);
+      if (ok) await client.query('UPDATE usuarios SET ia_skin = $1 WHERE id = $2', [valor, req.usuarioId]);
+    } else if (tipo === 'tema_extra' && IA_TEMAS_EXTRA_DISPONIBLES.includes(valor)) {
+      ok = await gastarMoneda(client, req.usuarioId, IA_COSTO_TEMA_EXTRA, `Tema extra: ${valor}`);
+      if (ok) await client.query('UPDATE usuarios SET ia_tema_extra = $1 WHERE id = $2', [valor, req.usuarioId]);
+    } else if (tipo === 'comodin_perdon') {
+      ok = await gastarMoneda(client, req.usuarioId, IA_COSTO_COMODIN_PERDON, 'Comodín: perdonar racha');
+      if (ok) await client.query('UPDATE usuarios SET comodines_perdon_disponibles = comodines_perdon_disponibles + 1 WHERE id = $1', [req.usuarioId]);
+    } else {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).send('Compra inválida.');
+    }
+    if (!ok) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).send('No te alcanza la moneda.');
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error en compra de la IA:', err.message);
+    return res.status(500).send('No se pudo completar la compra.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/ia');
+});
+
+// Consume un comodín ya comprado para marcar HOY como día protegido: no
+// paga moneda de nuevo (eso ya pasó al completar tareas) ni toca la racha
+// de /estadisticas ni la que paga la tarea 7 — solo la racha que se
+// muestra en /ia (ver observacionesIA), a propósito para no arriesgar la
+// lógica de pago ya probada.
+app.post('/ia/usar-comodin', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT comodines_perdon_disponibles FROM usuarios WHERE id = $1 FOR UPDATE',
+      [req.usuarioId]
+    );
+    if (!rows[0] || rows[0].comodines_perdon_disponibles <= 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).send('No tenés comodines disponibles.');
+    }
+    await client.query(
+      'UPDATE usuarios SET comodines_perdon_disponibles = comodines_perdon_disponibles - 1 WHERE id = $1',
+      [req.usuarioId]
+    );
+    await client.query(
+      `INSERT INTO racha_protecciones (usuario_id, fecha) VALUES ($1, (now() AT TIME ZONE 'America/Lima')::date)
+       ON CONFLICT (usuario_id, fecha) DO NOTHING`,
+      [req.usuarioId]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error usando comodín:', err.message);
+    return res.status(500).send('No se pudo usar el comodín.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/ia');
 });
 
 // Vista y rutas de chat. Todavía no está enlazada al menú de navegación

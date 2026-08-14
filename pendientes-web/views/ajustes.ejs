@@ -12,9 +12,9 @@
       <p class="error"><%= error %></p>
     <% } else { %>
 
-      <% if (typeof alertaGastoIa !== 'undefined' && alertaGastoIa) { %>
+      <% if (typeof alertaLlamadasIa !== 'undefined' && alertaLlamadasIa) { %>
         <div class="aviso-asignacion">
-          <p>⚠️ Gasto de IA este mes: $<%= gastoIaEsteMes.toFixed(2) %> (umbral de aviso: $<%= umbralAlertaGastoIa.toFixed(2) %>) — revisá <code>ia_llamadas</code> si esperabas menos.</p>
+          <p>⚠️ Llamadas a la IA hoy: <%= llamadasIaHoy %> (umbral de aviso: <%= umbralAlertaLlamadasIa %> de las 14,400 diarias del tier gratis de Groq) — revisá <code>ia_llamadas</code> si esperabas menos uso.</p>
         </div>
       <% } %>
 

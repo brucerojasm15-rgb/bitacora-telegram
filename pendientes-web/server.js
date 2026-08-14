@@ -8,7 +8,6 @@ const { Pool } = require('pg');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const { google } = require('googleapis');
-const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,12 +39,18 @@ const googleOAuthClient =
     : null;
 
 // rama-ia-companera-fase2 (tarea 9 del roadmap, ver COORDINACION.md): mismo
-// patrón que googleOAuthClient arriba — sin ANTHROPIC_API_KEY en .env,
-// anthropicClient queda en null y las rutas /ia/chat devuelven 500
+// patrón que googleOAuthClient arriba — sin GROQ_API_KEY en .env,
+// groqClient queda en null y las rutas /ia/chat devuelven 500
 // "no configurada" en vez de fallar feo.
-const anthropicClient = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
+//
+// CAMBIO DE PROVEEDOR (2026-08-13, ver COORDINACION.md): de Claude API a
+// Groq (nivel gratis, sin tarjeta) — sin presupuesto para Claude por
+// ahora. Groq expone una API compatible con el formato de chat completions
+// de OpenAI — fetch directo (Node >=20 trae fetch nativo) en vez de agregar
+// una dependencia nueva, dado que es un solo endpoint y un solo shape de
+// respuesta (ver llamarGroq más abajo).
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const groqClient = process.env.GROQ_API_KEY ? { apiKey: process.env.GROQ_API_KEY } : null;
 
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
@@ -1066,9 +1071,16 @@ const IA_TEMAS_EXTRA_DISPONIBLES = ['atardecer', 'lluvia'];
 // decisiones documentadas en COORDINACION.md. Gratis para todos los
 // usuarios logueados (sin gating de premium); 40 mensajes/usuario/MES
 // (no por día, dentro del rango 30-50 pedido) es el tope de seguridad de
-// gasto, no una restricción de negocio. Haiku 4.5 por ser el modelo más
-// barato, coherente con que el acceso es gratis.
-const MODELO_IA_CHAT = 'claude-haiku-4-5';
+// uso, no una restricción de negocio.
+//
+// CAMBIO DE PROVEEDOR (2026-08-13, ver COORDINACION.md): de Claude API a
+// Groq (nivel gratis, sin tarjeta) — sin presupuesto para Claude por
+// ahora. Llama 3.3 70B es el modelo de mejor calidad del tier gratis de
+// Groq. Límites de la cuenta gratuita: 30 req/min y 14,400 req/día — con
+// 40 mensajes/usuario/mes hay margen de sobra salvo un pico raro de uso
+// simultáneo (el límite por MINUTO no se maneja acá todavía, solo el
+// diario, ver UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA).
+const MODELO_IA_CHAT = 'llama-3.3-70b-versatile';
 const LIMITE_MENSAJES_IA_POR_MES = 40;
 // Cada 15 mensajes nuevos del usuario se dispara una actualización del
 // perfil acumulado (ver actualizarPerfilIaSiCorresponde) — con el tope de
@@ -1076,17 +1088,16 @@ const LIMITE_MENSAJES_IA_POR_MES = 40;
 // mes, suficiente para no quedar desactualizado sin ser una llamada extra
 // por cada mensaje.
 const UMBRAL_ACTUALIZAR_PERFIL = 15;
-// Precios de Haiku 4.5 (USD por millón de tokens) — usados tanto para las
-// llamadas de chat como las de actualización de perfil.
-const PRECIO_IA_ENTRADA_POR_MTOK = 1.0;
-const PRECIO_IA_SALIDA_POR_MTOK = 5.0;
-// Alerta de gasto mensual (agregada 2026-08-13, pedido explícito del
-// usuario, ver PLAN-tarea-9.md): puramente informativa, nunca bloquea el
-// servicio. $20 elegido en el extremo superior del rango $15-20 pedido —
-// incluso 50 usuarios agotando el límite mensual todos los meses da
-// ~$6/mes (ver tabla de costo estimado en COORDINACION.md), así que cruzar
-// $20 señala algo fuera de lo esperado, no crecimiento orgánico normal.
-const UMBRAL_ALERTA_GASTO_IA_USD = 20;
+// Groq es gratis en el tier usado — costo_usd queda en 0, pero se sigue
+// registrando en ia_llamadas (modelo, tokens, latencia) como log de uso
+// real por si en el futuro se vuelve a evaluar un modelo pago.
+const COSTO_IA_USD = 0;
+// Alerta de USO diario (reemplaza la alerta de gasto en dólares de la v2
+// con Claude, ver COORDINACION.md) — puramente informativa, nunca bloquea
+// el servicio. Lo que puede fallar ahora no es el costo (Groq es gratis),
+// sino el límite de 14,400 llamadas/día de la cuenta gratuita; 10,000 da
+// margen para avisar antes de llegar al tope real.
+const UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA = 10000;
 
 function etapaPorMoneda(totalDeVida) {
   let indice = 0;
@@ -1164,9 +1175,33 @@ async function observacionesIA(usuarioId) {
 // rama-ia-companera-fase2 (tarea 9 del roadmap): IA conversacional real —
 // decisiones documentadas en COORDINACION.md.
 
-function calcularCostoIaUsd(usage) {
-  return (usage.input_tokens / 1e6) * PRECIO_IA_ENTRADA_POR_MTOK
-       + (usage.output_tokens / 1e6) * PRECIO_IA_SALIDA_POR_MTOK;
+// Groq expone una API compatible con el formato de chat completions de
+// OpenAI — un solo endpoint, un solo shape de respuesta, por eso fetch
+// directo alcanza sin agregar una dependencia nueva (ver GROQ_API_URL más
+// arriba). Usada tanto para el chat normal como para la actualización de
+// perfil (ver actualizarPerfilIaSiCorresponde).
+async function llamarGroq({ system, messages, maxTokens }) {
+  const respuesta = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${groqClient.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: MODELO_IA_CHAT,
+      max_tokens: maxTokens,
+      messages: [{ role: 'system', content: system }, ...messages],
+    }),
+  });
+  const datos = await respuesta.json();
+  if (!respuesta.ok) {
+    throw new Error((datos.error && datos.error.message) || `Groq respondió ${respuesta.status}`);
+  }
+  return {
+    texto: ((datos.choices[0] && datos.choices[0].message.content) || '').trim(),
+    tokensEntrada: datos.usage.prompt_tokens,
+    tokensSalida: datos.usage.completion_tokens,
+  };
 }
 
 // Reseteo por MES calendario America/Lima (no por día — decisión v2, ver
@@ -1183,28 +1218,29 @@ async function contarMensajesIaEsteMes(usuarioId) {
   return rows[0].cantidad;
 }
 
-// Alerta de gasto mensual (agregada 2026-08-13, ver UMBRAL_ALERTA_GASTO_IA_USD
-// y COORDINACION.md): total global (sin usuario_id) de costo_usd en
-// ia_llamadas del mes calendario America/Lima actual, sumando chat + perfil
-// de todos los usuarios. Nunca bloquea el servicio — es puramente informativa.
-async function obtenerGastoIaEsteMes() {
+// Alerta de uso diario (reemplaza la alerta de gasto en dólares de la v2
+// con Claude — ver UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA y COORDINACION.md):
+// total global (sin usuario_id) de llamadas a Groq (chat + perfil, todos
+// los usuarios, éxito o error) del día calendario America/Lima actual.
+// Nunca bloquea el servicio — es puramente informativa.
+async function contarLlamadasIaHoy() {
   const { rows } = await pool.query(
-    `SELECT COALESCE(SUM(costo_usd), 0)::numeric AS total FROM ia_llamadas
-     WHERE date_trunc('month', fecha AT TIME ZONE 'America/Lima')
-       = date_trunc('month', now() AT TIME ZONE 'America/Lima')`
+    `SELECT COUNT(*)::int AS total FROM ia_llamadas
+     WHERE date_trunc('day', fecha AT TIME ZONE 'America/Lima')
+       = date_trunc('day', now() AT TIME ZONE 'America/Lima')`
   );
-  return Number(rows[0].total);
+  return rows[0].total;
 }
 
 // Se llama después de cada INSERT exitoso en ia_llamadas (chat o perfil).
-// Se chequea en cada request que agrega costo, sin deduplicar — es una
-// sola query de agregación barata, y en una app de este tamaño no genera
-// spam de log real (ver COORDINACION.md).
-async function avisarSiGastoIaSuperaUmbral() {
-  const total = await obtenerGastoIaEsteMes();
-  if (total >= UMBRAL_ALERTA_GASTO_IA_USD) {
+// Se chequea en cada request que agrega una llamada, sin deduplicar — es
+// una sola query de agregación barata, y en una app de este tamaño no
+// genera spam de log real (ver COORDINACION.md).
+async function avisarSiLlamadasIaSeAcercanAlLimite() {
+  const total = await contarLlamadasIaHoy();
+  if (total >= UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA) {
     console.warn(
-      `⚠️ Gasto de IA este mes: $${total.toFixed(2)} (umbral de aviso: $${UMBRAL_ALERTA_GASTO_IA_USD.toFixed(2)})`
+      `⚠️ Llamadas a Groq hoy: ${total} (umbral de aviso: ${UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA} de las 14,400 diarias del tier gratis)`
     );
   }
 }
@@ -1322,26 +1358,19 @@ async function actualizarPerfilIaSiCorresponde(usuarioId) {
 
   const inicio = Date.now();
   try {
-    const response = await anthropicClient.messages.create({
-      model: MODELO_IA_CHAT,
-      max_tokens: 200,
+    const { texto: resumen, tokensEntrada, tokensSalida } = await llamarGroq({
       system: systemResumen,
       messages: [{ role: 'user', content: conversacion }],
+      maxTokens: 200,
     });
     const latenciaMs = Date.now() - inicio;
-    const resumen = response.content
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join(' ')
-      .trim();
-    const costo = calcularCostoIaUsd(response.usage);
 
     await pool.query(
       `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms)
        VALUES ($1, $2, 'perfil', $3, $4, $5, $6)`,
-      [usuarioId, MODELO_IA_CHAT, response.usage.input_tokens, response.usage.output_tokens, costo, latenciaMs]
+      [usuarioId, MODELO_IA_CHAT, tokensEntrada, tokensSalida, COSTO_IA_USD, latenciaMs]
     );
-    await avisarSiGastoIaSuperaUmbral();
+    await avisarSiLlamadasIaSeAcercanAlLimite();
     await pool.query(
       `INSERT INTO perfil_ia (usuario_id, resumen, mensajes_en_resumen)
        VALUES ($1, $2, $3)
@@ -2597,8 +2626,8 @@ app.post('/ia/chat', async (req, res) => {
     return res.status(400).send('El mensaje no puede estar vacío.');
   }
   // Cliente condicional — mismo patrón que googleOAuthClient (server.js:32-39).
-  if (!anthropicClient) {
-    return res.status(500).send('IA conversacional no configurada (falta ANTHROPIC_API_KEY).');
+  if (!groqClient) {
+    return res.status(500).send('IA conversacional no configurada (falta GROQ_API_KEY).');
   }
   try {
     // Límite mensual: se chequea ANTES de llamar a la API y ANTES de
@@ -2610,7 +2639,7 @@ app.post('/ia/chat', async (req, res) => {
     }
 
     // El mensaje del usuario se guarda SIEMPRE, incluso si la llamada a
-    // Anthropic falla después — no debe perderse.
+    // Groq falla después — no debe perderse.
     await pool.query(
       "INSERT INTO mensajes_ia (usuario_id, rol, texto) VALUES ($1, 'usuario', $2)",
       [req.usuarioId, texto]
@@ -2625,19 +2654,12 @@ app.post('/ia/chat', async (req, res) => {
 
     const inicio = Date.now();
     try {
-      const response = await anthropicClient.messages.create({
-        model: MODELO_IA_CHAT,
-        max_tokens: 1024,
+      const { texto: respuestaTexto, tokensEntrada, tokensSalida } = await llamarGroq({
         system,
         messages,
+        maxTokens: 1024,
       });
       const latenciaMs = Date.now() - inicio;
-      const respuestaTexto = response.content
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join(' ')
-        .trim();
-      const costo = calcularCostoIaUsd(response.usage);
 
       await pool.query(
         "INSERT INTO mensajes_ia (usuario_id, rol, texto) VALUES ($1, 'ia', $2)",
@@ -2646,9 +2668,9 @@ app.post('/ia/chat', async (req, res) => {
       await pool.query(
         `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms)
          VALUES ($1, $2, 'chat', $3, $4, $5, $6)`,
-        [req.usuarioId, MODELO_IA_CHAT, response.usage.input_tokens, response.usage.output_tokens, costo, latenciaMs]
+        [req.usuarioId, MODELO_IA_CHAT, tokensEntrada, tokensSalida, COSTO_IA_USD, latenciaMs]
       );
-      await avisarSiGastoIaSuperaUmbral();
+      await avisarSiLlamadasIaSeAcercanAlLimite();
 
       // El disparador de perfil corre después de guardar la respuesta
       // exitosa, y su propio try/catch evita que una falla ahí rompa la
@@ -2661,12 +2683,11 @@ app.post('/ia/chat', async (req, res) => {
 
       return res.redirect('/ia/chat');
     } catch (errIa) {
-      // Excepciones tipadas del SDK (Anthropic.RateLimitError,
-      // Anthropic.APIConnectionError, subclases de Anthropic.APIError) se
-      // manejan todas igual acá: no hay comportamiento distinto por tipo
-      // en este diseño, solo se loguean uniformemente.
+      // Con fetch directo a Groq no hay taxonomía de errores tipados como
+      // la del SDK de Anthropic — un único catch genérico, mismo criterio
+      // que ya se había elegido para las fallas de la API anterior.
       const latenciaMs = Date.now() - inicio;
-      console.error('Error llamando a la API de Claude:', errIa.message);
+      console.error('Error llamando a la API de Groq:', errIa.message);
       await pool.query(
         `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms, error)
          VALUES ($1, $2, 'chat', 0, 0, 0, $3, $4)`,
@@ -2697,18 +2718,18 @@ app.get('/ajustes', async (req, res) => {
       'SELECT 1 FROM push_subscriptions WHERE usuario_id = $1 LIMIT 1',
       [req.usuarioId]
     );
-    // rama-ia-companera-fase2 (alerta de gasto mensual, ver
+    // rama-ia-companera-fase2 (alerta de uso diario, ver
     // PLAN-tarea-9.md/COORDINACION.md): sin concepto de rol/admin en el
     // esquema — mismo criterio ya usado para restringir POST
     // /notificar-prueba, comparación directa contra el nombre de usuario
     // guardado en la sesión. Solo se corre la query extra para 'bruce',
     // para no pagar el costo de la agregación en cada visita de
     // cualquier otro usuario.
-    let gastoIaEsteMes = null;
-    let alertaGastoIa = false;
+    let llamadasIaHoy = null;
+    let alertaLlamadasIa = false;
     if (req.session.nombre_usuario === 'bruce') {
-      gastoIaEsteMes = await obtenerGastoIaEsteMes();
-      alertaGastoIa = gastoIaEsteMes >= UMBRAL_ALERTA_GASTO_IA_USD;
+      llamadasIaHoy = await contarLlamadasIaHoy();
+      alertaLlamadasIa = llamadasIaHoy >= UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA;
     }
     res.render('ajustes', {
       nombreUsuario: usuario ? usuario.nombre_usuario : '',
@@ -2718,9 +2739,9 @@ app.get('/ajustes', async (req, res) => {
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
       error: null,
       guardado: null,
-      gastoIaEsteMes,
-      alertaGastoIa,
-      umbralAlertaGastoIa: UMBRAL_ALERTA_GASTO_IA_USD,
+      llamadasIaHoy,
+      alertaLlamadasIa,
+      umbralAlertaLlamadasIa: UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA,
     });
   } catch (err) {
     console.error('Error consultando ajustes:', err.message);
@@ -2728,7 +2749,7 @@ app.get('/ajustes', async (req, res) => {
       nombreUsuario: '', especieActual: 'monstera', especies: IA_ESPECIES,
       notificacionesActivas: false, vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
       error: 'No se pudo leer la base de datos.', guardado: null,
-      gastoIaEsteMes: null, alertaGastoIa: false, umbralAlertaGastoIa: UMBRAL_ALERTA_GASTO_IA_USD,
+      llamadasIaHoy: null, alertaLlamadasIa: false, umbralAlertaLlamadasIa: UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA,
     });
   }
 });

@@ -2299,6 +2299,83 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   vistas, alerta de gasto) no cambió — el texto SQL de `AT TIME ZONE
   'America/Lima'` ya estaba bien escrito, el problema era solo el tipo de
   columna.
+- **CAMBIO DE PROVEEDOR (2026-08-13, antes de mergear el PR #53, pedido
+  explícito del usuario): de Claude API a Groq.** Motivo: sin presupuesto
+  para pagar Claude por ahora; Groq da un nivel gratis genuino (sin
+  tarjeta), sirviendo Llama en vez de modelos de Anthropic.
+  - `package.json`: se quitó `@anthropic-ai/sdk`. Groq expone una API
+    compatible con el formato de chat completions de OpenAI — se eligió
+    **fetch directo** (Node `>=20` trae fetch nativo) en vez de agregar el
+    paquete `openai` como dependencia nueva, dado que es un solo endpoint
+    (`https://api.groq.com/openai/v1/chat/completions`) y un solo shape de
+    respuesta — más simple que sumar otra librería para un caso de uso tan
+    chico. `npm install` corrido para regenerar `package-lock.json` sin el
+    paquete de Anthropic (21 paquetes removidos).
+  - `.env.example`: `ANTHROPIC_API_KEY` reemplazada por `GROQ_API_KEY`
+    (con el link a `https://console.groq.com/keys`).
+  - `server.js`: `anthropicClient` → `groqClient` (mismo patrón
+    condicional, `null` sin la env var, mismo 500 "no configurada" pero
+    con el nombre de variable correcto). Nueva función `llamarGroq({
+    system, messages, maxTokens })` (reemplaza las dos llamadas directas a
+    `anthropicClient.messages.create`, una para el chat y otra para
+    `actualizarPerfilIaSiCorresponde` — antes tenían formas de respuesta
+    distintas del SDK de Anthropic, ahora comparten un único helper porque
+    el formato de respuesta de Groq/OpenAI es el mismo en los dos casos).
+    `MODELO_IA_CHAT` pasó de `'claude-haiku-4-5'` a
+    `'llama-3.3-70b-versatile'` (el de mejor calidad del tier gratis de
+    Groq). Límites de la cuenta gratuita de Groq: 30 req/min y 14,400
+    req/día — con 40 mensajes/usuario/mes hay margen de sobra salvo un
+    pico raro de uso simultáneo; **el límite por minuto no se maneja en
+    código todavía**, solo el diario (ver el punto siguiente).
+  - `calcularCostoIaUsd`/`PRECIO_IA_ENTRADA_POR_MTOK`/
+    `PRECIO_IA_SALIDA_POR_MTOK` se eliminaron — reemplazados por una
+    constante `COSTO_IA_USD = 0` (Groq es gratis en el tier usado). Las
+    columnas de `ia_llamadas` (`modelo`, `tokens_entrada`, `tokens_salida`,
+    `costo_usd`, `latencia_ms`) se mantuvieron tal cual, tokens/latencia
+    siguen siendo reales — sirven como registro de uso real por si en el
+    futuro se vuelve a evaluar un modelo pago.
+  - **Alerta cambia de propósito** (pedido explícito del usuario): ya no
+    tiene sentido alertar por gasto en dólares (Groq es gratis), lo que
+    puede fallar ahora es el límite de 14,400 llamadas/día de la cuenta
+    gratuita. `obtenerGastoIaEsteMes`/`avisarSiGastoIaSuperaUmbral`/
+    `UMBRAL_ALERTA_GASTO_IA_USD` (20) → `contarLlamadasIaHoy`/
+    `avisarSiLlamadasIaSeAcercanAlLimite`/
+    `UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA` (10,000 de las 14,400 diarias).
+    Mismo criterio de dónde se chequea (después de cada `INSERT` exitoso
+    en `ia_llamadas`, sin deduplicar) y mismo criterio de corte por día
+    calendario `America/Lima` (`date_trunc('day', fecha AT TIME ZONE
+    'America/Lima')`, correcto porque `ia_llamadas.fecha` ya es
+    `TIMESTAMPTZ` desde el punto anterior). `GET /ajustes` y
+    `views/ajustes.ejs`: mismas variables renombradas
+    (`gastoIaEsteMes`/`alertaGastoIa`/`umbralAlertaGastoIa` →
+    `llamadasIaHoy`/`alertaLlamadasIa`/`umbralAlertaLlamadasIa`), mismo
+    gating a `nombre_usuario === 'bruce'`, sin cambios de estilo/CSS.
+  - **Verificación real, contra la DB de Railway y contra el endpoint real
+    de Groq** (con un usuario de prueba descartable `test_groq_tmp1`,
+    borrado con todas sus filas al terminar): arrancando una instancia
+    aparte del servidor con una `GROQ_API_KEY` inventada (nunca guardada en
+    `.env`), confirmé (a) `GET /ia/chat` sin gating (200 directo); (b) un
+    `POST /ia/chat` real dispara una llamada real a
+    `api.groq.com/openai/v1/chat/completions`, que devuelve
+    `401 "Invalid API Key"` — la ruta lo captura, guarda igual el mensaje
+    del usuario, e inserta una fila en `ia_llamadas` con
+    `motivo='chat'`, tokens/costo en 0, `latencia_ms` real, y el error
+    real de Groq; (c) insertando 40 mensajes reales del usuario, `GET
+    /ia/chat` mostró "0 de 40" y el mensaje 41 fue bloqueado con
+    `redirect ?error=limite_mensual` **antes** de guardarse y **antes** de
+    llamar a la API (confirmado por consulta directa: ni el mensaje 41 ni
+    una fila nueva en `ia_llamadas` quedaron guardados); (d) con los 40
+    mensajes ya insertados, repliqué la condición exacta de
+    `actualizarPerfilIaSiCorresponde` contra los datos reales
+    (`totalMensajes=40`, `mensajesEnResumen=0` → dispara, correcto) — **no
+    pude probar el round-trip completo del disparador** (necesita una
+    llamada exitosa a Groq, que requiere una key real, igual limitación ya
+    reportada antes con Claude); (e) `contarLlamadasIaHoy()` devolvió 3,
+    coincidiendo exactamente con las 3 llamadas reales de prueba hechas
+    ese día. `node --check` + `npm run ci` (28 vistas) limpios.
+  - **Sigue pendiente, igual que con Claude**: no hay `GROQ_API_KEY` real
+    disponible todavía — falta una conversación real de punta a punta y el
+    disparador de perfil con una respuesta real generada por Groq.
 
 ### rama-integracion
 - Estado: —

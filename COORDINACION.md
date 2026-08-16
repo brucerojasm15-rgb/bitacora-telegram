@@ -3011,10 +3011,18 @@ el tiempo total sin generar conflictos de archivo entre ellas.
      releer un resumen de una página + el capítulo nuevo, no el libro
      entero cada vez.
 
-  Falta decidir en el momento de implementar (ambas piezas): si se le
-  notifica al usuario el resultado (push, o solo visible al entrar a la
-  app), y si las dos piezas corren en el mismo disparador/hora o por
-  separado. — asignada a: sin asignar — Depende de: tarea 7 (moneda
+  **Dónde aparece la reflexión (decidido 2026-08-16): dentro del chat de la
+  IA compañera (tarea 9), como si la planta lo dijera** — no push aparte,
+  no tarjeta nueva en el dashboard. Reusa la interfaz de chat que ya existe
+  en vez de sumar una superficie de UI nueva; se siente parte de la
+  conversación con la planta, no una notificación de sistema. Falta decidir
+  en el momento de implementar: si aparece como el primer mensaje la
+  próxima vez que el usuario abre el chat después de la corrida periódica,
+  o si además dispara algún indicador tipo "no leído" (mismo patrón que ya
+  usa el chat de amigos) para que el usuario note que la planta tiene algo
+  nuevo que contarle. El pago de monedas (pieza 1, determinística) sigue
+  sin definir dónde se muestra — puede ser distinto a esto, no asumir que
+  van juntos. — asignada a: sin asignar — Depende de: tarea 7 (moneda
   virtual), tarea 9 (IA compañera, perfil acumulado) y de la Fase 1 de v0.2
   (segmentación/etiquetado de ideas, ver sección `rama-segmentacion-ideas`
   en "Estado de ramas"). Pedido por el usuario el 2026-08-16.

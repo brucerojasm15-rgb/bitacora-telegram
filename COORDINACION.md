@@ -2131,6 +2131,78 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   `pg_dump` dentro de `docker run postgres:18` en vez de instalar el cliente
   del sistema, así siempre coincide con la versión del servidor.
 
+### rama-segmentacion-ideas
+- Estado: commiteada localmente, **sin push/PR** — pendiente de que el
+  usuario vea el diff completo y diga "aprobado" (regla 8) antes de
+  cualquier push. Esta es la Fase 1 de v0.2, despachada sola primero
+  (Fases 2/3/4 dependen de que esta quede aprobada y en main).
+- Tarea: al guardar una Idea en Captura rápida, partirla con Groq en
+  pensamientos atómicos + etiqueta corta de tema cada uno, antes de
+  insertar filas. Migración retroactiva (script aparte, no corrida en modo
+  real) sobre las ideas existentes, con respaldo previo para poder
+  revertir.
+- Cambios en `server.js`:
+  - `groqClient`/`GROQ_API_URL`/`MODELO_IA_SEGMENTACION` (línea ~41):
+    **reimplementados en esta rama**, mismo patrón que
+    `rama-ia-companera-fase2` (fetch nativo, endpoint compatible con OpenAI
+    chat completions) — NO se reusó el código de esa rama porque todavía no
+    está mergeada a main (tiene un merge sin resolver contra `origin/main`,
+    ver su propia sección en este mismo archivo). **Cuando ambas ramas
+    lleguen a main, hay que dedupear en un solo `groqClient`/`llamarGroq`
+    compartido** — quien mergee la segunda de las dos, ojo con esto.
+  - `ensureSchema()`: `ALTER TABLE ideas ADD COLUMN IF NOT EXISTS etiqueta
+    TEXT` + `CREATE TABLE IF NOT EXISTS ideas_backup_pre_segmentacion` (solo
+    estructura; la población es responsabilidad del script de migración, no
+    de `ensureSchema`, que corre en cada arranque del server).
+  - `segmentarIdeaConGroq(texto)`: llama a Groq pidiendo JSON
+    `{"pensamientos":[{"texto","etiqueta"}]}`. Nunca lanza — cualquier fallo
+    (sin `GROQ_API_KEY`, Groq caído, JSON inválido, respuesta vacía) cae a
+    devolver `[{texto original, etiqueta: null}]`, la Idea nunca se pierde.
+  - `POST /captura` (rama `tipo === 'idea'`): ahora llama a
+    `segmentarIdeaConGroq` y hace un `INSERT` por pensamiento dentro de una
+    transacción (mismo estilo que `POST /pendientes/:id/editar`).
+- Archivo nuevo: `scripts/migrar_segmentar_ideas.js` — migración
+  retroactiva sobre las ideas existentes. Modo `--dry-run` por defecto (no
+  toca `ideas`, solo imprime); `--ejecutar` muta de verdad (respalda primero
+  en `ideas_backup_pre_segmentacion` si está vacía, transacción por idea).
+- `.env.example`: documentada `GROQ_API_KEY` (mismo texto que
+  `rama-ia-companera-fase2`, adaptado a que esta rama tiene su propio
+  cliente).
+- Qué se verificó contra la DB real de Railway (worktree con `.env` copiado
+  a mano, usuario descartable `test_seg_ideas_tmp` creado vía `POST
+  /registro` real, borrado al terminar junto con sus ideas de prueba):
+  - `POST /captura` con una idea compuesta (3 pensamientos claramente
+    distintos) y una idea corta/atómica → ambas 302, insertadas
+    correctamente con el fallback activo (sin `GROQ_API_KEY` disponible en
+    esta máquina, ver hueco abajo). Confirmado en DB: 1 fila por captura,
+    columna `etiqueta` presente y en `NULL` (comportamiento esperado del
+    fallback, no un bug).
+  - `node scripts/migrar_segmentar_ideas.js` (dry-run) corrido sobre las
+    233 ideas reales existentes: conexión, conteo, formato de salida y
+    población del respaldo confirmados end-to-end. **No se probó la calidad
+    real del corte de Groq** (mismo motivo: sin `GROQ_API_KEY`) — cada idea
+    cayó al fallback (1 pensamiento, sin etiqueta). El respaldo que quedó
+    poblado durante esta prueba se limpió (`DELETE FROM
+    ideas_backup_pre_segmentacion`) antes de terminar, para que la primera
+    corrida real (cuando haya API key) tome un snapshot limpio de las 233
+    ideas reales, no uno contaminado con datos de prueba.
+  - `npm run ci` (30 archivos) sin errores.
+  - Heurística aparte (no es output de Groq, es solo longitud de texto):
+    de las 233 ideas reales, 89 superan los 300 caracteres — candidatas
+    fuertes a partirse en varios pensamientos una vez que se pruebe con una
+    key real.
+- **Hueco/pendiente conocido — bloqueante para aprobar con confianza**: no
+  hay ninguna `GROQ_API_KEY` real disponible en esta máquina (se buscó en
+  los `.env` de los 3 worktrees existentes — `a`, `a-chat`,
+  `rama-ia-companera-fase2` — ninguno la tiene). Todo lo de arriba está
+  probado con el fallback activo, nunca con una segmentación real. Antes de
+  aprobar esta rama, el usuario debería (a) conseguir una key gratis en
+  https://console.groq.com/keys, (b) correr el dry-run de nuevo con esa key
+  y revisar la calidad real del corte sobre algunas de sus 233 ideas reales
+  antes de decidir si aprueba `--ejecutar`.
+- Commit: `1af4658` ("Fase 1 de v0.2: segmentacion y etiquetado de ideas con
+  Groq").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

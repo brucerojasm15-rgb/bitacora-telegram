@@ -3230,6 +3230,20 @@ se vuelven mucho más caros de arreglar después con más usuarios y más
 datos reales en juego. Ninguna asignada todavía, quedan registradas para
 despachar cuando el usuario decida priorizarlas.
 
+**Prioridad (decidida con el usuario, 2026-08-16) — NO bloquea la v0.2, que
+sigue siendo solo Fases 1-4 (segmentación → metas → racha → interfaz),
+actualmente en curso (Fase 1):**
+1. **v0.2 primero** — terminar Fases 1-4 antes de tocar cualquier cosa de
+   esta sección.
+2. **Urgente en cuanto haya lugar, el resto puede esperar:** solo **H
+   (backups automáticos)** e **I (rotar la key de Groq / higiene de
+   secretos)** — riesgo real de pérdida de datos o de credencial expuesta,
+   no depende de que la app crezca para justificarse.
+3. **Todo lo demás (J-P, y la tarea 11 completa) espera a que el usuario
+   decida en serio que quiere crecer más allá del grupo chico actual** —
+   son decisiones de producto/infraestructura que no tienen sentido
+   construir antes de esa decisión.
+
 - [ ] **H. Backups automáticos de Postgres.** Hoy no existe ninguno — el
   único respaldo que hay en toda la base es el snapshot manual y puntual
   `ideas_backup_pre_segmentacion` creado para la migración de la tarea de

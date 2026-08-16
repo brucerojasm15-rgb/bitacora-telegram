@@ -3022,10 +3022,44 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   usa el chat de amigos) para que el usuario note que la planta tiene algo
   nuevo que contarle. El pago de monedas (pieza 1, determinística) sigue
   sin definir dónde se muestra — puede ser distinto a esto, no asumir que
-  van juntos. — asignada a: sin asignar — Depende de: tarea 7 (moneda
-  virtual), tarea 9 (IA compañera, perfil acumulado) y de la Fase 1 de v0.2
+  van juntos.
+
+  **Restricciones adicionales, agregadas 2026-08-16 (revisión de diseño
+  antes de implementar, no cambian el enfoque de arriba, lo acotan):**
+  - **Tono de la reflexión: siempre neutral o positivo, nunca de reproche.**
+    Nunca frasear como "no cumpliste" o "bajaste" — mezclar una moneda que
+    el usuario valora con un juicio negativo sobre su actividad/hábitos
+    personales genera ansiedad en vez de motivación. Dar al usuario una
+    forma real de desactivar este análisis si no lo quiere (columna tipo
+    `usuarios.reflexion_ia_activa boolean default true`, o similar).
+  - **El tope de moneda ganable por día (tarea 7) tiene que cubrir AMBAS
+    fuentes**, no solo tareas asignadas — con esta tarea 11 sumando una
+    segunda fuente de moneda, decidir explícitamente si el límite diario es
+    compartido entre las dos o independiente por fuente. No asumir un
+    default sin decidirlo y documentarlo.
+  - **Versionar el protocolo de la fórmula.** Cuando se defina la fórmula
+    de monedas (pieza 1), guardar un número/id de versión junto a cada pago
+    histórico (ej. columna `protocolo_version` en la tabla de movimientos
+    de moneda) — si la fórmula cambia más adelante, sin esto no hay forma
+    de distinguir qué monedas se ganaron con qué criterio.
+  — asignada a: sin asignar — Depende de: tarea 7 (moneda virtual), tarea 9
+  (IA compañera, perfil acumulado) y de la Fase 1 de v0.2
   (segmentación/etiquetado de ideas, ver sección `rama-segmentacion-ideas`
   en "Estado de ramas"). Pedido por el usuario el 2026-08-16.
+
+- [ ] **12. Helper compartido para pruebas contra la DB real.** Deuda
+  técnica identificada 2026-08-16, no un pedido de producto: casi cada
+  rama del historial de este archivo prueba su trabajo con el mismo patrón
+  (crear usuario(s) descartable(s) vía `POST /registro` real, ejercitar la
+  ruta nueva, borrar todo al terminar) reescrito desde cero cada vez en un
+  script `_test_*.js` temporal. Extraer eso a un helper compartido (ej.
+  `scripts/test-helpers.js`: `crearUsuarioDescartable()`,
+  `borrarUsuarioYDatos(id)`) para que las próximas ramas lo importen en vez
+  de reinventarlo. Alcance chico a propósito: NO es un framework de testing
+  nuevo, NO reemplaza `npm run ci` (que sigue siendo solo sintaxis/
+  plantillas) — solo reduce duplicación en las pruebas manuales end-to-end
+  que ya se vienen haciendo contra Railway. — asignada a: sin asignar —
+  No depende de ninguna otra tarea, puede tomarse en cualquier momento.
 
 ### Ronda — pulido y detalles de producto (2026-08-13, propuesta por el usuario)
 

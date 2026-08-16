@@ -2975,6 +2975,27 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
   no depende de ellas.
 
+- [ ] **11. Pago de monedas por análisis periódico de la IA (no en tiempo real).**
+  Extiende la tarea 7 (moneda virtual) — hoy ligada solo a completar tareas
+  *asignadas* por un amigo. Esta pieza es sobre la actividad propia del
+  usuario: en vez de pagar moneda al momento de cada captura, la IA
+  compañera (tarea 9) revisa periódicamente, a una hora determinada (mismo
+  patrón de disparador periódico que el "perfil acumulado" de la tarea 9 —
+  cron diario/semanal, NO en cada mensaje ni cada captura), el historial de
+  lo que el usuario fue anotando (ideas ya segmentadas/etiquetadas por la
+  Fase 1 de v0.2, pendientes completados, hechos, etc.) y recién ahí decide
+  cuántas monedas le corresponden según ese análisis. **Protocolo de cuántas
+  monedas por qué: todavía NO está definido — es lo primero que hay que
+  decidir antes de implementar esto, no asumir un criterio.** También
+  decidir y documentar en el momento de implementar: la hora/frecuencia
+  exacta del análisis, si se le notifica al usuario el resultado (push, o
+  solo visible al entrar a la app), y cómo evitar pagar de más si el
+  análisis se corre dos veces sobre el mismo período. — asignada a: sin
+  asignar — Depende de: tarea 7 (moneda virtual) y tarea 9 (IA compañera,
+  para el mecanismo de análisis periódico ya pensado ahí) y de la Fase 1 de
+  v0.2 (segmentación/etiquetado de ideas, ver sección `rama-segmentacion-
+  ideas` en "Estado de ramas"). Pedido por el usuario el 2026-08-16.
+
 ### Ronda — pulido y detalles de producto (2026-08-13, propuesta por el usuario)
 
 Siete tareas de pulido, ninguna asignada todavía — **quedan registradas para despachar

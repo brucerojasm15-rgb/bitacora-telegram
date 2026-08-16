@@ -38,6 +38,19 @@ const googleOAuthClient =
       )
     : null;
 
+// rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): mismo
+// patrón que rama-ia-companera-fase2 (Groq, API compatible con OpenAI chat
+// completions, fetch nativo sin SDK nuevo) — reimplementado acá en vez de
+// importarlo porque esa rama todavía no está mergeada a main (tiene un
+// merge sin resolver contra origin/main, ver su COORDINACION.md) y esta
+// rama no depende de que lo esté. Cuando ambas ramas lleguen a main, hay
+// que dedupear en un solo groqClient/llamarGroq compartido. Sin
+// GROQ_API_KEY en .env, groqClient queda en null y segmentarIdeaConGroq
+// cae a su fallback sin segmentar (ver más abajo) en vez de fallar feo.
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const MODELO_IA_SEGMENTACION = 'llama-3.3-70b-versatile';
+const groqClient = process.env.GROQ_API_KEY ? { apiKey: process.env.GROQ_API_KEY } : null;
+
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
 app.set('trust proxy', 1); // Railway hace proxy/TLS-termination; necesario para cookies "secure"
@@ -610,6 +623,28 @@ async function ensureSchema() {
   `);
   await pool.query(`
     ALTER TABLE ideas ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
+  `);
+  // rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): etiqueta
+  // corta de tema por idea — desde esta rama, una fila de `ideas` es un
+  // pensamiento atómico, no necesariamente la captura completa del usuario.
+  // NULL en filas que Groq no pudo etiquetar (ver segmentarIdeaConGroq).
+  await pool.query(`
+    ALTER TABLE ideas ADD COLUMN IF NOT EXISTS etiqueta TEXT
+  `);
+  // Snapshot de `ideas` tal cual estaba ANTES de la migración retroactiva de
+  // segmentación (scripts/migrar_segmentar_ideas.js) — permite revertir si
+  // el corte de Groq queda mal. Solo estructura acá; la población (una sola
+  // vez, si está vacía) la hace el script, no ensureSchema, que corre en
+  // cada arranque del server.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ideas_backup_pre_segmentacion (
+      id INT,
+      fecha TEXT,
+      idea TEXT,
+      estado TEXT,
+      usuario_id INT,
+      respaldado_en TIMESTAMP DEFAULT now()
+    )
   `);
   await pool.query(`
     ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
@@ -1499,6 +1534,63 @@ function localsCaptura(extra) {
   );
 }
 
+// rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): parte una
+// Idea de Captura rápida en pensamientos atómicos + etiqueta corta de tema
+// cada uno — base técnica de Metas (Fase 2) y Racha (Fase 3). Nunca lanza:
+// cualquier fallo (sin GROQ_API_KEY, Groq caído, JSON inválido) cae a
+// devolver el texto original sin cortar y etiqueta null — la Idea del
+// usuario nunca se pierde por un problema de la IA.
+async function segmentarIdeaConGroq(texto) {
+  const sinSegmentar = [{ texto, etiqueta: null }];
+  if (!groqClient) return sinSegmentar;
+
+  const system = `Recibís una "idea" que un usuario escribió de corrido en una app de bitácora personal.
+Tu trabajo: partirla en pensamientos atómicos (una idea/tarea/observación completa por pensamiento) y ponerle una etiqueta corta de tema a cada uno (1-3 palabras, minúsculas, sin tildes, ej: "trabajo", "salud", "fundo", "compras").
+Si el texto YA es un solo pensamiento atómico, devolvelo tal cual en un único elemento — no inventes cortes artificiales.
+No agregues, resumas ni interpretes contenido que no esté en el texto original; solo separá y etiquetá.
+Respondé ÚNICAMENTE con JSON en este formato exacto, sin texto adicional ni markdown:
+{"pensamientos":[{"texto":"...","etiqueta":"..."}]}`;
+
+  try {
+    const respuesta = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${groqClient.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODELO_IA_SEGMENTACION,
+        max_tokens: 1024,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: texto },
+        ],
+      }),
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) {
+      throw new Error((datos.error && datos.error.message) || `Groq respondió ${respuesta.status}`);
+    }
+    const contenido = (datos.choices[0] && datos.choices[0].message.content) || '';
+    const parseado = JSON.parse(contenido);
+    const pensamientos = Array.isArray(parseado.pensamientos) ? parseado.pensamientos : [];
+    const limpios = pensamientos
+      .map((p) => ({
+        texto: typeof p.texto === 'string' ? p.texto.trim() : '',
+        etiqueta:
+          typeof p.etiqueta === 'string' && p.etiqueta.trim()
+            ? p.etiqueta.trim().toLowerCase().slice(0, 40)
+            : null,
+      }))
+      .filter((p) => p.texto);
+    return limpios.length ? limpios : sinSegmentar;
+  } catch (err) {
+    console.error('Error segmentando idea con Groq (se guarda sin segmentar):', err.message);
+    return sinSegmentar;
+  }
+}
+
 app.get('/captura', (req, res) => {
   res.render('captura', localsCaptura({
     guardado: req.query.guardado === '1',
@@ -1577,10 +1669,27 @@ app.post('/captura', async (req, res) => {
         [texto, req.usuarioId, asignarA]
       );
     } else if (tipo === 'idea') {
-      await pool.query(
-        'INSERT INTO ideas (fecha, idea, estado, usuario_id) VALUES ($1, $2, NULL, $3)',
-        [new Date().toISOString(), texto, req.usuarioId]
-      );
+      // rama-segmentacion-ideas: una Idea capturada puede volverse varias
+      // filas (un pensamiento atómico cada una) — transacción para que
+      // quede todo o nada, mismo estilo que POST /pendientes/:id/editar.
+      const pensamientos = await segmentarIdeaConGroq(texto);
+      const fecha = new Date().toISOString();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const p of pensamientos) {
+          await client.query(
+            'INSERT INTO ideas (fecha, idea, estado, usuario_id, etiqueta) VALUES ($1, $2, NULL, $3, $4)',
+            [fecha, p.texto, req.usuarioId, p.etiqueta]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     } else {
       await pool.query(
         'INSERT INTO recordatorios (texto, cuando, avisado, usuario_id) VALUES ($1, $2, FALSE, $3)',

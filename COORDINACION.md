@@ -3218,6 +3218,133 @@ código, no acá — acá va el enunciado y las decisiones que ya vienen fijadas
   (15 casos, ver "Historial de merges a main") — Depende
   de: sistema de asignación de tareas (ya existe).
 
+### Fundación técnica para crecer exponencialmente (2026-08-16, pedido por el usuario)
+
+**Objetivo explícito del usuario:** que la app tenga base sólida para crecer
+mucho (más allá del grupo chico de amigos/familia para el que está pensada
+hoy, ver `rama-limite-registro`) hasta llegar a tener un juego incorporado
+de verdad, en el espíritu de algo tipo Happy Pets (mascota/planta que
+evoluciona, moneda, logros, social). Esto NO es una lista de features de
+producto — son huecos de infraestructura que, si no se resuelven ahora,
+se vuelven mucho más caros de arreglar después con más usuarios y más
+datos reales en juego. Ninguna asignada todavía, quedan registradas para
+despachar cuando el usuario decida priorizarlas.
+
+- [ ] **H. Backups automáticos de Postgres.** Hoy no existe ninguno — el
+  único respaldo que hay en toda la base es el snapshot manual y puntual
+  `ideas_backup_pre_segmentacion` creado para la migración de la tarea de
+  Fase 1 de v0.2 (ver `rama-segmentacion-ideas`), que cubre una sola tabla
+  para una sola migración, no la base entera. Configurar backups
+  automáticos de Railway (o `pg_dump` programado) con una política de
+  retención definida y documentada. Cuantos más usuarios reales tenga la
+  app, más caro es perder datos y menos aceptable es no tener esto. —
+  asignada a: sin asignar — No depende de nada, se puede tomar en
+  cualquier momento; cuanto antes, mejor.
+
+- [ ] **I. Higiene de secretos.** La `GROQ_API_KEY` usada para probar la
+  Fase 1 de v0.2 (rama-segmentacion-ideas) se compartió en texto plano
+  dentro de una conversación de Claude Code el 2026-08-16 — rotarla en
+  console.groq.com/keys cuando se cierre esa rama, y evitar el mismo
+  patrón para claves futuras (usar el flujo de variables de entorno de
+  Railway directamente en vez de pegarlas en un chat). Documentar en este
+  archivo (o en un `SECRETS.md` aparte) qué claves existen, dónde viven, y
+  cuándo fue la última rotación de cada una — hoy esa información no está
+  centralizada en ningún lado. — asignada a: sin asignar.
+
+- [ ] **J. Dedupe del cliente Groq.** Ya documentado como pendiente en dos
+  lugares (ver secciones de `rama-ia-companera-fase2` y
+  `rama-segmentacion-ideas`): hay DOS implementaciones idénticas del mismo
+  cliente HTTP a Groq, cada rama reimplementó la suya porque la otra no
+  estaba mergeada a `main` todavía. Cuando ambas lleguen a `main`,
+  consolidar en un solo `groqClient`/`llamarGroq` compartido — si esto se
+  pospone, cada feature nueva que use IA (incluida la reflexión narrativa
+  de la tarea 11) va a agregar su propia copia más, multiplicando el
+  problema en vez de resolverlo. — asignada a: sin asignar — Depende de:
+  que ambas ramas lleguen a `main` primero.
+
+- [ ] **K. Resolver el merge sin terminar de `rama-ia-companera-fase2`.**
+  Tiene un conflicto real en `COORDINACION.md` contra `origin/main` sin
+  resolver (detectado 2026-08-15/16, ver su propia sección en "Estado de
+  ramas"). Cuanto más tiempo pase sin resolverlo, más diverge esa rama de
+  `main` y más doloroso se pone terminarlo — es la rama que tiene la
+  integración de Groq que varias tareas nuevas (9, 11) ya asumen como
+  dependencia. — asignada a: sin asignar — Bloquea indirectamente a la
+  tarea 9 completa y a la pieza de reflexión narrativa de la tarea 11.
+
+- [ ] **L. Observabilidad real en producción.** Todo el logging hoy es
+  `console.log`/`console.error` — en Railway eso es difícil de buscar y
+  fácil de perder. Antes de tener muchos usuarios reales dependiendo de la
+  app: (a) logging estructurado con un nivel mínimo de severidad, (b)
+  alerta (email/Telegram/lo que sea barato) si el server se cae o si
+  Postgres se desconecta — hoy nadie se entera de una caída hasta que un
+  usuario se queja. — asignada a: sin asignar.
+
+- [ ] **M. Suite de pruebas de regresión automatizada.** `npm run ci`
+  (`scripts/verificar.js`) solo valida sintaxis y que las plantillas
+  `.ejs` compilan — no prueba comportamiento. Cada feature nueva se prueba
+  a mano, una vez, contra la DB real de Railway, con un script `_test_*.js`
+  que después se borra (ver el patrón repetido en casi todas las secciones
+  de "Estado de ramas" de este archivo) — no queda como regresión para el
+  futuro. Con más features y más gente tocando el mismo `server.js`, el
+  riesgo de romper algo viejo sin darse cuenta crece. No hace falta un
+  framework pesado — hasta un puñado de tests de integración reales
+  (levantar el server, pegarle con `fetch`, contra una DB de prueba)
+  corriendo en el mismo `ci.yml` ya sería un salto grande. Depende de la
+  tarea 12 (helper compartido de pruebas) para no reinventar el setup en
+  cada test. — asignada a: sin asignar — Depende de: tarea 12.
+
+- [ ] **N. Gestión de cupo de IA a escala — más allá de Groq.** Lección
+  real del 2026-08-16 (ver `rama-segmentacion-ideas`): con una sola cuenta
+  procesando 233 ideas de un solo usuario, el tope diario gratis de Groq
+  (100,000 tokens/día) **se agotó en menos de un día**, y tardó más de 24h
+  en liberarse. La `GROQ_API_KEY` es una sola, compartida por toda la app
+  — con más usuarios usando captura + IA compañera + reflexión narrativa
+  (tarea 11) al mismo tiempo, ese tope compartido se va a agotar mucho más
+  rápido y sin aviso. Antes de crecer en usuarios, definir: (a) un
+  presupuesto de tokens por usuario/día (no solo el límite global de
+  Groq), con degradación elegante (fallback sin segmentar, como ya hace el
+  código, en vez de romper) cuando se alcanza; (b) si conviene pasar a un
+  tier pago de Groq antes de que el gratis se vuelva un cuello de botella
+  constante; (c) un lugar centralizado (tabla o dashboard simple) que
+  muestre cuánto cupo se lleva usado, para no descubrirlo a mitad de una
+  migración como pasó hoy. — asignada a: sin asignar — Se vuelve más
+  urgente cuantos más usuarios reales usen las features de IA (tareas 9 y
+  11) al mismo tiempo.
+
+- [ ] **O. Modelo de datos unificado para el "juego".** Hoy la parte
+  tipo-juego está repartida en piezas separadas construidas en momentos
+  distintos: moneda (tarea 7), evolución de la planta por moneda (tarea
+  8), racha (`/estadisticas`, y la nueva racha diaria entre amigos de la
+  Fase 3 de v0.2), perfil acumulado de la IA (tarea 9), reflexión +
+  segunda fuente de moneda (tarea 11). Cada una define sus propias tablas
+  y columnas de forma aislada. Antes de que esto crezca hasta parecerse a
+  un juego real tipo Happy Pets (con más mecánicas: logros, cosméticos,
+  eventos, quizás intercambio entre amigos), vale la pena decidir un
+  "perfil de juego" central por usuario (ej. tabla `perfil_juego` o
+  similar) que consolide moneda total, nivel/etapa de evolución, rachas
+  activas — en vez de que cada mecánica nueva agregue su propia tabla
+  desconectada de las demás, lo que hace cada vez más difícil mostrar un
+  estado consistente del "juego" en un solo lugar (ej. un dashboard
+  resumen). Decidir el esquema exacto es trabajo de diseño, no algo para
+  asumir en este archivo. — asignada a: sin asignar — Depende de: tareas
+  7, 8, 9 y 11 (para saber qué datos reales existen antes de diseñar el
+  modelo consolidado).
+
+- [ ] **P. Revisar el límite de registro público — tensión con crecer
+  exponencialmente.** `rama-limite-registro` fijó `LIMITE_REGISTROS_
+  EXITOSOS_POR_HORA = 5` explícitamente **porque la app está pensada para
+  un grupo chico de amigos/familia, no una red pública** (ver esa sección
+  para el razonamiento completo). El objetivo de esta ronda nueva (crecer
+  exponencialmente hasta tener un juego tipo Happy Pets) **contradice esa
+  decisión anterior tal como está** — no se puede crecer mucho con un tope
+  de 5 altas/hora por IP. Esto no significa borrar el límite sin más (sigue
+  siendo la defensa contra farmeo de cuentas falsas) — significa que
+  alguien tiene que decidir conscientemente el número nuevo (o un esquema
+  distinto, ej. por cuenta/dominio en vez de por IP) cuando llegue el
+  momento de crecer de verdad, no dejar que quede desactualizado en
+  silencio. — asignada a: sin asignar — Depende de: decisión de negocio
+  del usuario sobre cuándo empezar a crecer más allá del círculo actual.
+
 ## Cómo agregar un trabajador nuevo (para el usuario)
 
 1. Escribe la tarea nueva en "Backlog de tareas" arriba (o pídele a cualquier sesión

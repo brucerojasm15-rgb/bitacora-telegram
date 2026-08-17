@@ -23,15 +23,16 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Instalar cliente de Postgres
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
       - name: Respaldar base de datos
+        # Usamos la imagen oficial de Postgres 18 (misma version que el
+        # servidor en Railway) para que pg_dump siempre coincida, en vez de
+        # depender de que versión traiga el runner de Ubuntu por defecto.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           fecha=$(date +%Y-%m-%d)
-          pg_dump "$DATABASE_URL" -Fc -f "backup_bitacora_${fecha}.dump"
+          docker run --rm -e DATABASE_URL="$DATABASE_URL" postgres:18 \
+            pg_dump "$DATABASE_URL" -Fc > "backup_bitacora_${fecha}.dump"
 
       - name: Subir respaldo como artefacto
         uses: actions/upload-artifact@v4

@@ -2124,8 +2124,12 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Hueco/pendiente conocido: nadie ha probado restaurar un backup del workflow
   todavía — recomendado hacerlo (contra una DB de prueba, no la de
   producción) antes de confiar en él para un incidente real.
-- Commit: sin hacer todavía — worktree limpio, esperando tu aprobación del
-  diff antes de commitear/pushear.
+- Commit: mergeada a main vía PR #54 (commit de merge 3d7783c). Primera
+  corrida manual falló: `pg_dump: aborting because of server version
+  mismatch` (el runner de Ubuntu trae pg_dump 16, el Postgres de Railway es
+  18). Arreglado en `rama-fix-backup-pgversion`: el paso de respaldo corre
+  `pg_dump` dentro de `docker run postgres:18` en vez de instalar el cliente
+  del sistema, así siempre coincide con la versión del servidor.
 
 ### rama-integracion
 - Estado: —

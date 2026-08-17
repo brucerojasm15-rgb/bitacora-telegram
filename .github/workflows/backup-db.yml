@@ -1,0 +1,41 @@
+name: Backup de Postgres
+
+# Respaldo automático diario de toda la base de datos de producción
+# (proyecto Railway "tender-upliftment", servicio "Postgres").
+#
+# Se guarda como artefacto de este workflow (Actions -> este run -> Artifacts),
+# en formato "custom" de pg_dump (comprimido, restaurable con pg_restore).
+# Retención: 30 días -> después de eso GitHub lo borra solo.
+#
+# Requiere el secreto de repo DATABASE_URL (la URL PÚBLICA de Postgres,
+# Railway -> servicio Postgres -> Connect -> Public Network -- este runner
+# no tiene acceso a la red privada de Railway).
+#
+# Para restaurar un respaldo:
+#   pg_restore --clean --if-exists -d "$DATABASE_URL" backup_bitacora_YYYY-MM-DD.dump
+
+on:
+  schedule:
+    - cron: "0 9 * * *"  # 09:00 UTC = 04:00 hora Perú, todos los días
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar cliente de Postgres
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Respaldar base de datos
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          fecha=$(date +%Y-%m-%d)
+          pg_dump "$DATABASE_URL" -Fc -f "backup_bitacora_${fecha}.dump"
+
+      - name: Subir respaldo como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-postgres-${{ github.run_id }}
+          path: backup_bitacora_*.dump
+          retention-days: 30

@@ -2094,6 +2094,39 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "Reconstruye rama-nav-mobile
   sobre main actualizado (rama-nav-mobile-v2)").
 
+### rama-fundacion-tecnica
+- Estado: commit hecho, lista para merge (pendiente de tu aprobación explícita
+  del diff, según la regla del 2026-08-13 — todavía no se pusheó).
+- Tarea: H (backups automáticos de Postgres) e I (higiene de secretos), del
+  backlog "Fundación técnica para crecer exponencialmente".
+- Qué se hizo:
+  - **I.** Se confirmó que la `GROQ_API_KEY` filtrada (creada 2026-08-16,
+    terminaba en `...MpY3`) nunca llegó a producción — solo vivía en
+    `a-worktrees/rama-segmentacion-ideas/pendientes-web/.env`. Se revocó en
+    console.groq.com/keys y se generó una nueva
+    (`bitacora-segmentacion-dev-2026-08-17`), ya actualizada en ese mismo
+    `.env`. Se creó `SECRETS.md` en la raíz del repo con el inventario de
+    todas las claves (producción y locales), dónde viven, y cómo rotarlas.
+  - **H.** Se agregó `.github/workflows/backup-db.yml` — respaldo diario
+    automático (cron 09:00 UTC / 04:00 hora Perú) de toda la base de Postgres
+    con `pg_dump -Fc`, subido como artefacto del workflow con retención de 30
+    días. Se configuró el secreto de GitHub Actions `DATABASE_URL` (URL
+    pública de Postgres) en el repo para que el workflow pueda correr.
+    Además, ya existe un respaldo manual completo (todas las tablas, no solo
+    `ideas`) tomado el 2026-08-17 antes de este trabajo, guardado localmente
+    fuera del repo (no en git) como red de seguridad mientras el workflow
+    automático no había corrido todavía.
+- Archivos tocados: `SECRETS.md` (nuevo), `.github/workflows/backup-db.yml`
+  (nuevo), `COORDINACION.md` (esta sección + tareas H/I marcadas abajo).
+- Qué se verificó: el workflow no se ha corrido todavía (corre solo, o se
+  puede disparar a mano desde Actions -> "Backup de Postgres" -> "Run
+  workflow"). No se verificó una restauración real (`pg_restore`).
+- Hueco/pendiente conocido: nadie ha probado restaurar un backup del workflow
+  todavía — recomendado hacerlo (contra una DB de prueba, no la de
+  producción) antes de confiar en él para un incidente real.
+- Commit: sin hacer todavía — worktree limpio, esperando tu aprobación del
+  diff antes de commitear/pushear.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -3244,26 +3277,15 @@ actualmente en curso (Fase 1):**
    son decisiones de producto/infraestructura que no tienen sentido
    construir antes de esa decisión.
 
-- [ ] **H. Backups automáticos de Postgres.** Hoy no existe ninguno — el
-  único respaldo que hay en toda la base es el snapshot manual y puntual
-  `ideas_backup_pre_segmentacion` creado para la migración de la tarea de
-  Fase 1 de v0.2 (ver `rama-segmentacion-ideas`), que cubre una sola tabla
-  para una sola migración, no la base entera. Configurar backups
-  automáticos de Railway (o `pg_dump` programado) con una política de
-  retención definida y documentada. Cuantos más usuarios reales tenga la
-  app, más caro es perder datos y menos aceptable es no tener esto. —
-  asignada a: sin asignar — No depende de nada, se puede tomar en
-  cualquier momento; cuanto antes, mejor.
+- [x] **H. Backups automáticos de Postgres.** Configurados vía
+  `.github/workflows/backup-db.yml` (cron diario, retención 30 días) —
+  asignada a: rama-fundacion-tecnica — lista para merge, ver su sección en
+  "Estado de ramas".
 
-- [ ] **I. Higiene de secretos.** La `GROQ_API_KEY` usada para probar la
-  Fase 1 de v0.2 (rama-segmentacion-ideas) se compartió en texto plano
-  dentro de una conversación de Claude Code el 2026-08-16 — rotarla en
-  console.groq.com/keys cuando se cierre esa rama, y evitar el mismo
-  patrón para claves futuras (usar el flujo de variables de entorno de
-  Railway directamente en vez de pegarlas en un chat). Documentar en este
-  archivo (o en un `SECRETS.md` aparte) qué claves existen, dónde viven, y
-  cuándo fue la última rotación de cada una — hoy esa información no está
-  centralizada en ningún lado. — asignada a: sin asignar.
+- [x] **I. Higiene de secretos.** `GROQ_API_KEY` filtrada rotada
+  (confirmado que nunca llegó a producción), inventario creado en
+  `SECRETS.md` — asignada a: rama-fundacion-tecnica — lista para merge, ver
+  su sección en "Estado de ramas".
 
 - [ ] **J. Dedupe del cliente Groq.** Ya documentado como pendiente en dos
   lugares (ver secciones de `rama-ia-companera-fase2` y

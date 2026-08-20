@@ -9,6 +9,7 @@
 //
 // Uso:
 //   node scripts/migrar_segmentar_ideas.js              (dry-run, no toca nada)
+//   node scripts/migrar_segmentar_ideas.js --limit=10    (dry-run, solo las primeras 10)
 //   node scripts/migrar_segmentar_ideas.js --ejecutar    (muta la DB real)
 
 require('dotenv').config();
@@ -20,12 +21,56 @@ const pool = new Pool({
 });
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODELO_IA_SEGMENTACION = 'llama-3.3-70b-versatile';
+// 'llama-3.3-70b-versatile' fue deprecado por Groq (confirmado 2026-08-17) --
+// ver la misma nota en server.js. reasoning_effort:'low' es obligatorio con
+// este modelo o rompe response_format:'json_object'.
+const MODELO_IA_SEGMENTACION = 'openai/gpt-oss-120b';
 const groqClient = process.env.GROQ_API_KEY ? { apiKey: process.env.GROQ_API_KEY } : null;
 
-// Copia de segmentarIdeaConGroq en server.js (misma lógica exacta) — si se
-// ajusta una, ajustar la otra. Documentado también en COORDINACION.md al
-// cerrar esta rama, para que quien mergee lo sepa.
+const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Rate limit del tier gratis de Groq (12000 TPM) — con 233 ideas seguidas
+// sin pausa, la mayoría choca. Groq devuelve en el mensaje de error cuántos
+// segundos esperar ("Please try again in 5.18s"); lo parseamos y reintentamos
+// en vez de rendirnos al primer 429. MAX_REINTENTOS_429 cubre rachas largas
+// sin loopear para siempre.
+const MAX_REINTENTOS_429 = 8;
+
+async function llamarGroqConReintento(system, texto) {
+  for (let intento = 0; intento <= MAX_REINTENTOS_429; intento++) {
+    const respuesta = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${groqClient.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODELO_IA_SEGMENTACION,
+        max_tokens: 1024,
+        reasoning_effort: 'low',
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: texto },
+        ],
+      }),
+    });
+    if (respuesta.status === 429 && intento < MAX_REINTENTOS_429) {
+      const datos = await respuesta.json().catch(() => ({}));
+      const mensaje = (datos.error && datos.error.message) || '';
+      const match = mensaje.match(/try again in ([\d.]+)s/i);
+      const esperaMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 300 : 2000 * (intento + 1);
+      console.error(`  (rate limit, esperando ${(esperaMs / 1000).toFixed(2)}s y reintentando...)`);
+      await esperar(esperaMs);
+      continue;
+    }
+    return respuesta;
+  }
+}
+
+// Copia de segmentarIdeaConGroq en server.js (misma lógica exacta, incluido
+// el reintento) — si se ajusta una, ajustar la otra. Documentado también en
+// COORDINACION.md al cerrar esta rama, para que quien mergee lo sepa.
 async function segmentarIdeaConGroq(texto) {
   const sinSegmentar = [{ texto, etiqueta: null }];
   if (!groqClient) return sinSegmentar;
@@ -38,22 +83,7 @@ Respondé ÚNICAMENTE con JSON en este formato exacto, sin texto adicional ni ma
 {"pensamientos":[{"texto":"...","etiqueta":"..."}]}`;
 
   try {
-    const respuesta = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${groqClient.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODELO_IA_SEGMENTACION,
-        max_tokens: 1024,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: texto },
-        ],
-      }),
-    });
+    const respuesta = await llamarGroqConReintento(system, texto);
     const datos = await respuesta.json();
     if (!respuesta.ok) {
       throw new Error((datos.error && datos.error.message) || `Groq respondió ${respuesta.status}`);
@@ -91,6 +121,10 @@ async function asegurarBackup() {
 
 async function main() {
   const ejecutar = process.argv.includes('--ejecutar');
+  const argDesde = process.argv.find((a) => a.startsWith('--desde='));
+  const desde = argDesde ? Number(argDesde.split('=')[1]) : null;
+  const argLimit = process.argv.find((a) => a.startsWith('--limit='));
+  const limit = argLimit ? Number(argLimit.split('=')[1]) : null;
 
   if (!groqClient) {
     console.log(
@@ -101,9 +135,15 @@ async function main() {
 
   await asegurarBackup();
 
-  const { rows: ideas } = await pool.query('SELECT id, fecha, idea, estado, usuario_id FROM ideas ORDER BY id');
+  let sql = desde ? 'SELECT id, fecha, idea, estado, usuario_id FROM ideas WHERE id >= $1 ORDER BY id' : 'SELECT id, fecha, idea, estado, usuario_id FROM ideas ORDER BY id';
+  const params = desde ? [desde] : [];
+  if (limit) {
+    sql += ` LIMIT $${params.length + 1}`;
+    params.push(limit);
+  }
+  const { rows: ideas } = await pool.query(sql, params);
   console.log(
-    `${ideas.length} idea(s) encontradas. Modo: ${ejecutar ? 'EJECUTAR (mutando la DB real)' : 'dry-run (solo mostrar, no toca `ideas`)'}.\n`
+    `${ideas.length} idea(s) encontradas${desde ? ` (retomando desde id >= ${desde})` : ''}${limit ? ` (limitado a ${limit})` : ''}. Modo: ${ejecutar ? 'EJECUTAR (mutando la DB real)' : 'dry-run (solo mostrar, no toca `ideas`)'}.\n`
   );
 
   let totalPensamientos = 0;

@@ -48,7 +48,14 @@ const googleOAuthClient =
 // GROQ_API_KEY en .env, groqClient queda en null y segmentarIdeaConGroq
 // cae a su fallback sin segmentar (ver más abajo) en vez de fallar feo.
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODELO_IA_SEGMENTACION = 'llama-3.3-70b-versatile';
+// 'llama-3.3-70b-versatile' fue deprecado por Groq (confirmado 2026-08-17,
+// ya no aparece en GET /v1/models) -- reemplazado por openai/gpt-oss-120b,
+// el mas parecido en capacidad todavia disponible en el tier gratis.
+// Requiere reasoning_effort:'low' en la llamada (ver llamarGroqConReintento)
+// porque sin eso el modelo mete su razonamiento interno dentro del JSON de
+// respuesta y rompe response_format:'json_object' (confirmado con pruebas
+// manuales contra la API real).
+const MODELO_IA_SEGMENTACION = 'openai/gpt-oss-120b';
 const groqClient = process.env.GROQ_API_KEY ? { apiKey: process.env.GROQ_API_KEY } : null;
 
 app.set('view engine', 'ejs');
@@ -1534,6 +1541,44 @@ function localsCaptura(extra) {
   );
 }
 
+// rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): reintento
+// ante rate limit (429) de Groq, parseando el "Please try again in Xs" del
+// propio mensaje de error. Acá (ruta HTTP en vivo) el tope de reintentos es
+// bajo — a diferencia del script de migración por lotes — para no colgar la
+// respuesta al usuario que está esperando guardar su Idea.
+const MAX_REINTENTOS_429_CAPTURA = 2;
+
+async function llamarGroqConReintento(system, texto) {
+  for (let intento = 0; intento <= MAX_REINTENTOS_429_CAPTURA; intento++) {
+    const respuesta = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${groqClient.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODELO_IA_SEGMENTACION,
+        max_tokens: 1024,
+        reasoning_effort: 'low',
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: texto },
+        ],
+      }),
+    });
+    if (respuesta.status === 429 && intento < MAX_REINTENTOS_429_CAPTURA) {
+      const datos = await respuesta.json().catch(() => ({}));
+      const mensaje = (datos.error && datos.error.message) || '';
+      const match = mensaje.match(/try again in ([\d.]+)s/i);
+      const esperaMs = Math.min(match ? Math.ceil(parseFloat(match[1]) * 1000) + 300 : 2000, 6000);
+      await new Promise((resolve) => setTimeout(resolve, esperaMs));
+      continue;
+    }
+    return respuesta;
+  }
+}
+
 // rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): parte una
 // Idea de Captura rápida en pensamientos atómicos + etiqueta corta de tema
 // cada uno — base técnica de Metas (Fase 2) y Racha (Fase 3). Nunca lanza:
@@ -1552,22 +1597,7 @@ Respondé ÚNICAMENTE con JSON en este formato exacto, sin texto adicional ni ma
 {"pensamientos":[{"texto":"...","etiqueta":"..."}]}`;
 
   try {
-    const respuesta = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${groqClient.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODELO_IA_SEGMENTACION,
-        max_tokens: 1024,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: texto },
-        ],
-      }),
-    });
+    const respuesta = await llamarGroqConReintento(system, texto);
     const datos = await respuesta.json();
     if (!respuesta.ok) {
       throw new Error((datos.error && datos.error.message) || `Groq respondió ${respuesta.status}`);

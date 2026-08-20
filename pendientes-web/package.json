@@ -1,7 +1,7 @@
 {
   "name": "pendientes-web",
   "version": "1.0.0",
-  "description": "Mini app de solo lectura para ver los pendientes guardados por el bot de Telegram",
+  "description": "zentIA -- bitacora personal con IA companera: pendientes, ideas, recordatorios, hechos, chat y amigos, todo en una app web propia (usuario+PIN, sin Telegram).",
   "main": "server.js",
   "engines": {
     "node": ">=20"

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Nueva contraseña' }) %>
+</head>
+<body>
+  <main class="login-main">
+    <h1><%- include('partials/icono', { nombre: 'candado' }) %> Bitácora</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } %>
+
+    <% if (token) { %>
+      <form method="POST" action="/recuperar-email/<%= token %>" class="login-form">
+        <input type="password" name="password" placeholder="Contraseña nueva (mínimo 8 caracteres)" autocomplete="new-password" minlength="8" required autofocus>
+        <input type="password" name="confirmar_password" placeholder="Repite la contraseña nueva" autocomplete="new-password" minlength="8" required>
+        <button type="submit">Fijar contraseña nueva</button>
+      </form>
+    <% } else { %>
+      <p><a href="/recuperar-email">Pedir un link nuevo</a></p>
+    <% } %>
+
+    <p><a href="/login">Volver a iniciar sesión</a></p>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

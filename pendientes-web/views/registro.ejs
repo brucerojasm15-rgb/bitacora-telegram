@@ -15,13 +15,21 @@
       <p class="notificacion"><%- include('partials/icono', { nombre: 'personas' }) %> Te invitó <strong>@<%= invitadoPor %></strong> — al crear tu cuenta le va a llegar una solicitud de amistad.</p>
     <% } %>
 
-    <form method="POST" action="/registro" class="login-form">
+    <% const metodoActivo = (typeof metodo !== 'undefined' && metodo === 'email') ? 'email' : 'pin'; %>
+    <% const emailPrevio = typeof emailIngresado !== 'undefined' ? emailIngresado : ''; %>
+
+    <div class="auth-metodo-toggle" id="auth-metodo-toggle">
+      <button type="button" data-metodo="pin" class="<%= metodoActivo === 'pin' ? 'activo' : '' %>">Usuario y PIN</button>
+      <button type="button" data-metodo="email" class="<%= metodoActivo === 'email' ? 'activo' : '' %>">Email y contraseña</button>
+    </div>
+
+    <form method="POST" action="/registro" class="login-form auth-metodo-form" data-metodo="pin" style="<%= metodoActivo === 'pin' ? '' : 'display:none' %>">
       <% if (codigoInvitacion) { %>
         <input type="hidden" name="invitacion" value="<%= codigoInvitacion %>">
       <% } %>
-      <input type="text" name="nombre_usuario" placeholder="Usuario" value="<%= nombreUsuario %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" minlength="3" maxlength="20" required autofocus>
-      <input type="password" name="pin" placeholder="PIN (4 a 6 dígitos)" inputmode="numeric" pattern="\d{4,6}" required>
-      <input type="password" name="confirmar_pin" placeholder="Repite el PIN" inputmode="numeric" pattern="\d{4,6}" required>
+      <input type="text" name="nombre_usuario" placeholder="Usuario" value="<%= nombreUsuario %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" minlength="3" maxlength="20" <%= metodoActivo === 'pin' ? 'required' : '' %> autofocus>
+      <input type="password" name="pin" placeholder="PIN (4 a 6 dígitos)" inputmode="numeric" pattern="\d{4,6}" <%= metodoActivo === 'pin' ? 'required' : '' %>>
+      <input type="password" name="confirmar_pin" placeholder="Repite el PIN" inputmode="numeric" pattern="\d{4,6}" <%= metodoActivo === 'pin' ? 'required' : '' %>>
 
       <fieldset class="especie-picker">
         <legend>Elegí tu planta compañera</legend>
@@ -41,9 +49,52 @@
       <button type="submit">Crear cuenta</button>
     </form>
 
+    <form method="POST" action="/registro/email" class="login-form auth-metodo-form" data-metodo="email" style="<%= metodoActivo === 'email' ? '' : 'display:none' %>">
+      <% if (codigoInvitacion) { %>
+        <input type="hidden" name="invitacion" value="<%= codigoInvitacion %>">
+      <% } %>
+      <input type="text" name="nombre_usuario" placeholder="Usuario" value="<%= nombreUsuario %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" minlength="3" maxlength="20" <%= metodoActivo === 'email' ? 'required' : '' %>>
+      <input type="email" name="email" placeholder="Email" value="<%= emailPrevio %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="email" <%= metodoActivo === 'email' ? 'required' : '' %>>
+      <input type="password" name="password" placeholder="Contraseña (mínimo 8 caracteres)" autocomplete="new-password" minlength="8" <%= metodoActivo === 'email' ? 'required' : '' %>>
+      <input type="password" name="confirmar_password" placeholder="Repite la contraseña" autocomplete="new-password" minlength="8" <%= metodoActivo === 'email' ? 'required' : '' %>>
+
+      <fieldset class="especie-picker">
+        <legend>Elegí tu planta compañera</legend>
+        <div class="especie-opciones">
+          <% especies.forEach((esp, i) => { %>
+            <label class="especie-opcion">
+              <input type="radio" name="especie" value="<%= esp %>" <%= i === 0 ? 'checked' : '' %>>
+              <span class="especie-tarjeta">
+                <%- include('partials/planta', { especie: esp, etapa: 0, tamano: 48, idSufijo: 'regemail-' + esp }) %>
+                <span class="especie-nombre"><%= esp.charAt(0).toUpperCase() + esp.slice(1) %></span>
+              </span>
+            </label>
+          <% }) %>
+        </div>
+      </fieldset>
+
+      <button type="submit">Crear cuenta</button>
+    </form>
+
     <p class="nota-terminos">Al crear una cuenta aceptás nuestros <a href="/terminos">términos y política de privacidad</a>.</p>
     <p><a href="/login">Ya tengo cuenta</a></p>
   </main>
+
+  <script>
+    document.querySelectorAll('#auth-metodo-toggle button').forEach((boton) => {
+      boton.addEventListener('click', () => {
+        const metodo = boton.dataset.metodo;
+        document.querySelectorAll('#auth-metodo-toggle button').forEach((b) => b.classList.toggle('activo', b === boton));
+        document.querySelectorAll('.auth-metodo-form').forEach((form) => {
+          const esEste = form.dataset.metodo === metodo;
+          form.style.display = esEste ? '' : 'none';
+          form.querySelectorAll('input[name]:not([type=hidden]):not([name=especie])').forEach((input) => {
+            input.required = esEste;
+          });
+        });
+      });
+    });
+  </script>
 
 <%- include('partials/scripts') %>
 </body>

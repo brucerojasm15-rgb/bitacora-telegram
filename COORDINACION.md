@@ -2793,6 +2793,61 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "fix: doble
   client.release() en /ia/comprar y /ia/usar-comodin").
 
+### rama-login-email
+- Estado: implementada localmente, commit hecho, **NO pusheada — esperando
+  "aprobado" del usuario, regla 8**.
+- Tarea: login por email+contraseña como opción ADICIONAL al de usuario+PIN
+  (no lo reemplaza). Diseño (ajustado a mitad de la tarea, ver más abajo):
+  evitar cuentas duplicadas para alguien que ya tiene usuario+PIN.
+  1. Usuario NUEVO: puede registrarse directo con email+contraseña en
+     `/registro/email` (fila nueva en `usuarios`, sin riesgo de duplicado).
+  2. Usuario EXISTENTE (usuario+PIN): va a `/ajustes` y vincula email+
+     contraseña a SU MISMA fila (`POST /ajustes/vincular-email`) — no crea
+     una cuenta nueva. Requiere su PIN actual para confirmar (agregar una
+     credencial de acceso es tan sensible como `/ajustes/eliminar-cuenta` —
+     mismo criterio: no debería alcanzar con tener la sesión abierta).
+  3. Login por email (`POST /login/email`) busca la fila que ya tiene ese
+     email vinculado — sin ambigüedad, no hay lógica de "fusionar cuentas".
+- Decisiones de diseño no explícitas en la tarea original, tomadas por mí
+  (revisar si el usuario no está de acuerdo):
+  - `nombre_usuario` e `ia_especie` siguen siendo obligatorios también en el
+    registro por email — son de identidad/social (se usan en amigos, chat,
+    invitaciones por @usuario), no de autenticación, así que no tiene
+    sentido que una cuenta se quede sin ellos solo por no tener PIN.
+  - `/ajustes/eliminar-cuenta` generalizado para aceptar PIN O contraseña
+    (lo que la cuenta realmente tenga) — antes de este cambio, una cuenta
+    100% por email (`pin_hash` NULL) nunca hubiera podido pasar la
+    verificación de `verificarPin()` y por lo tanto NUNCA hubiera podido
+    eliminar su propia cuenta. Mismo criterio aplicado a
+    `/ajustes/vincular-email` (pide PIN si lo tiene, contraseña si no).
+  - Token de reseteo de contraseña: hash con `sha256` (no `scrypt` como el
+    PIN) porque es un secreto de alta entropía generado por el servidor
+    (32 bytes aleatorios), no algo corto que un humano podría intentar
+    adivinar — permite buscarlo por igualdad directa en la query, cosa que
+    `scrypt` con salt por fila no permite. Expira en 1 hora, un solo uso,
+    y usar un token invalida cualquier otro pendiente del mismo usuario.
+  - `/recuperar-email` (pedir el link) siempre responde el mismo mensaje
+    genérico exista o no la cuenta con ese email — evita que el formulario
+    sirva para enumerar cuentas registradas.
+- Archivos tocados: `server.js` (require bcrypt/nodemailer, transporte Gmail
+  SMTP, esquema: columnas `usuarios.email`/`usuarios.password_hash` y tabla
+  `reseteos_password`, rutas `POST /login/email`, `POST /registro/email`,
+  `GET+POST /ajustes/vincular-email`, `GET+POST /recuperar-email`,
+  `GET+POST /recuperar-email/:token`, `POST /ajustes/eliminar-cuenta`
+  generalizada), `views/login.ejs` y `views/registro.ejs` (toggle de
+  método), `views/ajustes.ejs` (sección de vinculación + form de eliminar
+  condicional), `views/recuperar-email.ejs` y
+  `views/recuperar-email-confirmar.ejs` (nuevas), `public/style.css`
+  (`.auth-metodo-toggle`), `package.json` (+bcrypt, +nodemailer),
+  `.env.example` (+GMAIL_USER, +GMAIL_APP_PASSWORD).
+- Qué NO se verificó todavía: nada probado contra la DB real ni en local
+  (sin `npm install` corrido en este worktree, sin servidor levantado). El
+  envío real de email tampoco se probó (necesita `GMAIL_APP_PASSWORD` real).
+  Antes de mergear: correr `npm install`, levantar local, probar los 3
+  flujos (registro nuevo, vincular cuenta existente, reset por email) contra
+  una DB de prueba.
+- Worktree: `C:\Users\lenovo\Desktop\bitacora\worktrees\rama-login-email`.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

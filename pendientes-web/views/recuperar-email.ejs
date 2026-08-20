@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Restablecer contraseña' }) %>
+</head>
+<body>
+  <main class="login-main">
+    <h1><%- include('partials/icono', { nombre: 'candado' }) %> Bitácora</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } %>
+
+    <% if (enviado) { %>
+      <p class="notificacion">Si ese email existe y tiene una contraseña vinculada, te enviamos un link para restablecerla. Revisa tu bandeja (y spam).</p>
+      <p><a href="/login">Volver a iniciar sesión</a></p>
+    <% } else { %>
+      <form method="POST" action="/recuperar-email" class="login-form">
+        <input type="email" name="email" placeholder="Email" value="<%= email %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="email" required autofocus>
+        <button type="submit">Enviar link</button>
+      </form>
+      <p><a href="/login">Volver a iniciar sesión</a></p>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

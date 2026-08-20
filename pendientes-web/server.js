@@ -8,6 +8,8 @@ const { Pool } = require('pg');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const { google } = require('googleapis');
+const bcrypt = require('bcrypt');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,13 +42,9 @@ const googleOAuthClient =
 
 // rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): mismo
 // patrón que rama-ia-companera-fase2 (Groq, API compatible con OpenAI chat
-// completions, fetch nativo sin SDK nuevo) — reimplementado acá en vez de
-// importarlo porque esa rama todavía no está mergeada a main (tiene un
-// merge sin resolver contra origin/main, ver su COORDINACION.md) y esta
-// rama no depende de que lo esté. Cuando ambas ramas lleguen a main, hay
-// que dedupear en un solo groqClient/llamarGroq compartido. Sin
-// GROQ_API_KEY en .env, groqClient queda en null y segmentarIdeaConGroq
-// cae a su fallback sin segmentar (ver más abajo) en vez de fallar feo.
+// completions, fetch nativo sin SDK nuevo). Sin GROQ_API_KEY en .env,
+// groqClient queda en null y segmentarIdeaConGroq cae a su fallback sin
+// segmentar (ver más abajo) en vez de fallar feo.
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // 'llama-3.3-70b-versatile' fue deprecado por Groq (confirmado 2026-08-17,
 // ya no aparece en GET /v1/models) -- reemplazado por openai/gpt-oss-120b,
@@ -57,6 +55,36 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // manuales contra la API real).
 const MODELO_IA_SEGMENTACION = 'openai/gpt-oss-120b';
 const groqClient = process.env.GROQ_API_KEY ? { apiKey: process.env.GROQ_API_KEY } : null;
+
+// rama-login-email: mismo criterio que googleOAuthClient arriba -- sin
+// GMAIL_USER/GMAIL_APP_PASSWORD en .env, mailTransporter queda en null y
+// /recuperar-email sigue respondiendo su mensaje genérico de siempre (no le
+// revela al usuario que el envío de correo no está configurado), pero loguea
+// el error en el servidor. GMAIL_APP_PASSWORD es una "contraseña de
+// aplicación" de Gmail (https://myaccount.google.com/apppasswords), NO la
+// contraseña normal de la cuenta -- Gmail no acepta SMTP con la contraseña
+// normal si la cuenta tiene verificación en 2 pasos (que las contraseñas de
+// aplicación requieren tener activada).
+const mailTransporter =
+  process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
+    ? nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+      })
+    : null;
+
+async function enviarEmailReseteo(destinatario, link) {
+  if (!mailTransporter) {
+    console.error('GMAIL_USER/GMAIL_APP_PASSWORD no configurados -- no se pudo enviar el email de restablecimiento.');
+    return;
+  }
+  await mailTransporter.sendMail({
+    from: `Bitácora <${process.env.GMAIL_USER}>`,
+    to: destinatario,
+    subject: 'Restablecer tu contraseña -- Bitácora',
+    text: `Alguien (esperamos que hayas sido vos) pidió restablecer la contraseña de tu cuenta en Bitácora.\n\nSi fuiste vos, abrí este link (válido por 1 hora):\n${link}\n\nSi no fuiste vos, ignora este correo -- tu cuenta sigue segura, nadie puede hacer nada sin abrir ese link.`,
+  });
+}
 
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
@@ -125,7 +153,20 @@ app.use((req, res, next) => {
 // rama-terminos-privacidad: /terminos también queda público -- se enlaza
 // desde /registro, que se visita sin sesión.
 app.use((req, res, next) => {
-  if (req.path === '/login' || req.path === '/registro' || req.path === '/recuperar' || req.path === '/terminos') return next();
+  // rama-login-email: /login/email y /registro/email son las variantes
+  // email+contraseña de /login y /registro (mismo criterio, público, se
+  // navegan sin sesión). /recuperar-email y /recuperar-email/:token
+  // (pedir el link y usarlo) también, mismo criterio que /recuperar.
+  if (
+    req.path === '/login' ||
+    req.path === '/login/email' ||
+    req.path === '/registro' ||
+    req.path === '/registro/email' ||
+    req.path === '/recuperar' ||
+    req.path === '/recuperar-email' ||
+    req.path.startsWith('/recuperar-email/') ||
+    req.path === '/terminos'
+  ) return next();
   if (req.session && req.session.usuario_id) {
     req.usuarioId = req.session.usuario_id;
     return next();
@@ -390,6 +431,25 @@ async function obtenerClienteCalendarPara(usuarioId) {
 
 const NOMBRE_USUARIO_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const PIN_REGEX = /^\d{4,6}$/;
+// rama-login-email
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_MIN_LARGO = 8;
+
+// rama-login-email: token de reseteo de contraseña. A diferencia de
+// codigo_recuperacion_hash (scrypt, pensado para un secreto CORTO que un
+// humano podría intentar adivinar/fuerza-bruta), el token viaja en un link
+// de un solo uso y ya es 256 bits de aleatoriedad -- no hace falta un hash
+// lento, solo evitar que quede en texto plano en la DB. sha256 alcanza y
+// además permite buscarlo por igualdad directa en la query (con scrypt no
+// se podría: cada hash lleva su propio salt, no hay forma de buscar "cuál
+// fila tiene este token" sin ya saber a qué usuario pertenece).
+function hashTokenReseteo(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function generarTokenReseteo() {
+  return crypto.randomBytes(32).toString('base64url');
+}
 
 // rama-terminos-privacidad: página estática, pública (ver middleware de
 // sesión arriba). Sin datos dinámicos -- no hace falta pool.query acá.
@@ -405,7 +465,11 @@ app.get('/login', (req, res) => {
   if (req.session && req.session.usuario_id) {
     return res.redirect('/captura');
   }
-  res.render('login', { error: null, cuentaEliminada: req.query.cuenta_eliminada === '1' });
+  res.render('login', {
+    error: null,
+    cuentaEliminada: req.query.cuenta_eliminada === '1',
+    password_actualizada: req.query.password_actualizada === '1',
+  });
 });
 
 app.post('/login', limitarIntentos('login'), async (req, res) => {
@@ -426,6 +490,35 @@ app.post('/login', limitarIntentos('login'), async (req, res) => {
   } catch (err) {
     console.error('Error en login:', err.message);
     res.status(500).render('login', { error: 'Error del servidor, intenta de nuevo.' });
+  }
+});
+
+// rama-login-email: variante de /login por email+contraseña. Mismo mensaje
+// genérico que /login (usuario+PIN) si el email no existe, no tiene
+// contraseña vinculada, o la contraseña no coincide -- no revela cuál de
+// los tres fue, mismo criterio que el resto del archivo.
+app.post('/login/email', limitarIntentos('login-email'), async (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  const password = req.body.password || '';
+  if (!email || !password) {
+    return res.render('login', { error: 'Completa email y contraseña.', metodo: 'email', emailIngresado: email });
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, nombre_usuario, password_hash FROM usuarios WHERE email = $1',
+      [email]
+    );
+    const usuario = rows[0];
+    const coincide = usuario && usuario.password_hash && (await bcrypt.compare(password, usuario.password_hash));
+    if (!coincide) {
+      return res.render('login', { error: 'Email o contraseña incorrectos.', metodo: 'email', emailIngresado: email });
+    }
+    req.session.usuario_id = usuario.id;
+    req.session.nombre_usuario = usuario.nombre_usuario;
+    res.redirect('/');
+  } catch (err) {
+    console.error('Error en login por email:', err.message);
+    res.status(500).render('login', { error: 'Error del servidor, intenta de nuevo.', metodo: 'email', emailIngresado: email });
   }
 });
 
@@ -548,6 +641,93 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
   }
 });
 
+// rama-login-email: variante de /registro por email+contraseña, para un
+// usuario NUEVO que nunca tuvo cuenta (fila nueva en usuarios, sin riesgo de
+// duplicado -- no existía antes). Un usuario EXISTENTE que ya tiene
+// usuario+PIN NO debería pasar por acá para agregar email: eso es
+// POST /ajustes/vincular-email, que actualiza SU fila en vez de crear una
+// nueva. Sigue pidiendo nombre_usuario y especie -- son de identidad/social
+// (se muestran en amigos, chat, etc.), no de autenticación, así que se
+// piden igual que en /registro; lo único que cambia es que la credencial de
+// acceso es email+contraseña en vez de PIN.
+app.post('/registro/email', limitarIntentos('registro'), async (req, res) => {
+  const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
+  const email = (req.body.email || '').trim().toLowerCase();
+  const password = req.body.password || '';
+  const confirmarPassword = req.body.confirmar_password || '';
+  const especie = IA_ESPECIES.includes(req.body.especie) ? req.body.especie : IA_ESPECIES[0];
+  const codigoInvitacion = (req.body.invitacion || '').trim();
+  const rerender = (error) => res.render('registro', {
+    error, metodo: 'email', nombreUsuario, emailIngresado: email,
+    especies: IA_ESPECIES, codigoInvitacion, invitadoPor: null,
+  });
+
+  if (!NOMBRE_USUARIO_REGEX.test(nombreUsuario)) {
+    return rerender('El usuario debe tener entre 3 y 20 caracteres (letras, números o _).');
+  }
+  if (!EMAIL_REGEX.test(email)) {
+    return rerender('Ingresa un email válido.');
+  }
+  if (password.length < PASSWORD_MIN_LARGO) {
+    return rerender(`La contraseña debe tener al menos ${PASSWORD_MIN_LARGO} caracteres.`);
+  }
+  if (password !== confirmarPassword) {
+    return rerender('La contraseña y su confirmación no coinciden.');
+  }
+  if (limiteRegistrosAlcanzado(req.ip)) {
+    return rerender('Se alcanzó el límite de cuentas nuevas desde esta red en la última hora. Intenta de nuevo más tarde.');
+  }
+
+  try {
+    const passwordHash = await bcrypt.hash(password, 12);
+    const nombreIaPorDefecto = especie.charAt(0).toUpperCase() + especie.slice(1);
+    // rama-tutorial-interactivo: tutorial_interactivo_visto = FALSE explícito,
+    // mismo criterio que POST /registro -- una cuenta nueva por email es tan
+    // "usuario nuevo" como una por PIN, y debe ver el tour también.
+    const { rows } = await pool.query(
+      `INSERT INTO usuarios (nombre_usuario, email, password_hash, ia_especie, ia_nombre, tutorial_interactivo_visto)
+       VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
+      [nombreUsuario, email, passwordHash, especie, nombreIaPorDefecto]
+    );
+    const nuevoUsuarioId = rows[0].id;
+    registrarAltaExitosa(req.ip);
+    req.session.usuario_id = nuevoUsuarioId;
+    req.session.nombre_usuario = nombreUsuario;
+
+    // Mismo bloque que POST /registro -- ver ese comentario.
+    if (codigoInvitacion) {
+      try {
+        const invitador = await resolverInvitador(codigoInvitacion);
+        if (invitador) {
+          await pool.query(
+            `INSERT INTO amistades (usuario_a_id, usuario_b_id, estado, fecha) VALUES ($1, $2, 'pendiente', now())`,
+            [nuevoUsuarioId, invitador.id]
+          );
+        }
+      } catch (err) {
+        console.error('Error pre-cargando solicitud de amistad por invitación:', err.message);
+      }
+    }
+
+    // rama-tutorial-interactivo: sin codigo-recuperacion.ejs acá (esa
+    // pantalla es para el código de recuperación de PIN, y esta cuenta no
+    // tiene PIN) -- directo a /captura, donde el tour interactivo se
+    // dispara solo por tutorial_interactivo_visto = FALSE. El /onboarding
+    // viejo (carrusel estático) fue retirado.
+    res.redirect('/captura');
+  } catch (err) {
+    if (err.code === '23505') {
+      const mensaje = (err.detail || '').includes('email')
+        ? 'Ese email ya está en uso.'
+        : 'Ese nombre de usuario ya está en uso.';
+      return rerender(mensaje);
+    }
+    console.error('Error en registro por email:', err.message);
+    res.status(500);
+    return rerender('Error del servidor, intenta de nuevo.');
+  }
+});
+
 // rama-tutorial-interactivo: reemplaza a POST /onboarding/completar (carrusel
 // estático retirado). El tour vive en /captura -- este endpoint solo marca
 // que ya se vio, sea porque el usuario lo completó de verdad (guardó su
@@ -619,6 +799,104 @@ app.post('/recuperar', limitarIntentos('recuperar'), async (req, res) => {
   }
 });
 
+// rama-login-email: reseteo de contraseña por link enviado al email, para
+// cuentas que ya vincularon email+contraseña. Flujo separado de /recuperar
+// (que es para el PIN, con código de recuperación) porque el modelo de
+// amenaza es distinto: acá no hay "código propio" que pedir, así que el
+// factor de prueba es "tener acceso a esa bandeja de entrada".
+const MENSAJE_RECUPERAR_EMAIL_ENVIADO =
+  'Si ese email existe y tiene una contraseña vinculada, te enviamos un link para restablecerla. Revisa tu bandeja (y spam).';
+
+app.get('/recuperar-email', (req, res) => {
+  res.render('recuperar-email', { error: null, enviado: false, email: '' });
+});
+
+app.post('/recuperar-email', limitarIntentos('recuperar-email'), async (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  if (!EMAIL_REGEX.test(email)) {
+    return res.render('recuperar-email', { error: 'Ingresa un email válido.', enviado: false, email });
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT id FROM usuarios WHERE email = $1 AND password_hash IS NOT NULL',
+      [email]
+    );
+    const usuario = rows[0];
+    // Mismo mensaje de éxito exista o no la cuenta -- no revela si ese email
+    // está registrado (evita que alguien use este formulario para
+    // enumerar cuentas). Solo se envía el correo de verdad si existe.
+    if (usuario) {
+      const token = generarTokenReseteo();
+      await pool.query(
+        `INSERT INTO reseteos_password (usuario_id, token_hash, expira) VALUES ($1, $2, now() + interval '1 hour')`,
+        [usuario.id, hashTokenReseteo(token)]
+      );
+      const link = `${req.protocol}://${req.get('host')}/recuperar-email/${token}`;
+      enviarEmailReseteo(email, link).catch((err) => {
+        console.error('Error enviando email de reseteo:', err.message);
+      });
+    }
+    res.render('recuperar-email', { error: null, enviado: true, email: '' });
+  } catch (err) {
+    console.error('Error en /recuperar-email:', err.message);
+    // Mismo mensaje genérico incluso ante un error real -- no le da a un
+    // atacante información sobre el estado interno del servidor/la DB.
+    res.render('recuperar-email', { error: null, enviado: true, email: '' });
+  }
+});
+
+async function buscarReseteoVigente(token) {
+  const { rows } = await pool.query(
+    `SELECT reseteos_password.id, usuario_id FROM reseteos_password
+     WHERE token_hash = $1 AND usado = FALSE AND expira > now()`,
+    [hashTokenReseteo(token)]
+  );
+  return rows[0] || null;
+}
+
+app.get('/recuperar-email/:token', async (req, res) => {
+  const reseteo = await buscarReseteoVigente(req.params.token).catch(() => null);
+  if (!reseteo) {
+    return res.status(400).render('recuperar-email-confirmar', {
+      error: 'Este link ya no es válido -- puede haber vencido (dura 1 hora) o ya haberse usado. Pedí uno nuevo.',
+      token: null,
+    });
+  }
+  res.render('recuperar-email-confirmar', { error: null, token: req.params.token });
+});
+
+app.post('/recuperar-email/:token', limitarIntentos('recuperar-email'), async (req, res) => {
+  const password = req.body.password || '';
+  const confirmarPassword = req.body.confirmar_password || '';
+  const reseteo = await buscarReseteoVigente(req.params.token).catch(() => null);
+  if (!reseteo) {
+    return res.status(400).render('recuperar-email-confirmar', {
+      error: 'Este link ya no es válido -- puede haber vencido (dura 1 hora) o ya haberse usado. Pedí uno nuevo.',
+      token: null,
+    });
+  }
+  if (password.length < PASSWORD_MIN_LARGO) {
+    return res.render('recuperar-email-confirmar', {
+      error: `La contraseña debe tener al menos ${PASSWORD_MIN_LARGO} caracteres.`,
+      token: req.params.token,
+    });
+  }
+  if (password !== confirmarPassword) {
+    return res.render('recuperar-email-confirmar', { error: 'La contraseña y su confirmación no coinciden.', token: req.params.token });
+  }
+  try {
+    const passwordHash = await bcrypt.hash(password, 12);
+    await pool.query('UPDATE usuarios SET password_hash = $1 WHERE id = $2', [passwordHash, reseteo.usuario_id]);
+    // Cierra este token y cualquier otro pendiente del mismo usuario --
+    // si pidió el link varias veces, un solo uso invalida todos los demás.
+    await pool.query('UPDATE reseteos_password SET usado = TRUE WHERE usuario_id = $1 AND usado = FALSE', [reseteo.usuario_id]);
+    res.redirect('/login?password_actualizada=1');
+  } catch (err) {
+    console.error('Error confirmando reseteo de contraseña:', err.message);
+    res.status(500).render('recuperar-email-confirmar', { error: 'Error del servidor, intenta de nuevo.', token: req.params.token });
+  }
+});
+
 async function ensureSchema() {
   // usuarios debe existir antes que cualquier ALTER TABLE que la referencie.
   await pool.query(`
@@ -673,6 +951,33 @@ async function ensureSchema() {
   // acá en adelante vean el tour.
   await pool.query(`
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tutorial_interactivo_visto BOOLEAN NOT NULL DEFAULT TRUE
+  `);
+  // rama-login-email: login alternativo por email+contraseña, ADICIONAL al
+  // de usuario+PIN -- no lo reemplaza, ambos quedan disponibles a la vez.
+  // Ambas columnas nullable a propósito: las cuentas existentes solo tienen
+  // usuario+PIN y siguen funcionando igual; se vinculan opcionalmente desde
+  // /ajustes. UNIQUE en email para poder buscarlo en el login sin
+  // ambigüedad -- Postgres permite múltiples NULL en una columna UNIQUE, así
+  // que no bloquea a las cuentas que nunca lo vinculen.
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email TEXT UNIQUE
+  `);
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS password_hash TEXT
+  `);
+  // rama-login-email: tokens de restablecimiento de contraseña (el correo lo
+  // manda /recuperar-email vía Gmail SMTP). Un usuario puede pedir el link
+  // varias veces -- por eso es tabla aparte y no una columna en usuarios,
+  // para no pisar un token vigente con uno nuevo si el usuario reintenta.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reseteos_password (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      token_hash TEXT UNIQUE,
+      expira TIMESTAMP,
+      usado BOOLEAN NOT NULL DEFAULT FALSE,
+      creado TIMESTAMP DEFAULT now()
+    )
   `);
   await pool.query(`
     ALTER TABLE pendientes
@@ -3140,7 +3445,7 @@ app.post('/ia/usar-comodin', async (req, res) => {
 app.get('/ajustes', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT nombre_usuario, ia_especie FROM usuarios WHERE id = $1',
+      'SELECT nombre_usuario, ia_especie, email, pin_hash, password_hash FROM usuarios WHERE id = $1',
       [req.usuarioId]
     );
     const usuario = rows[0];
@@ -3154,7 +3459,11 @@ app.get('/ajustes', async (req, res) => {
       especies: IA_ESPECIES,
       notificacionesActivas: pushRows.length > 0,
       vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      emailActual: usuario ? usuario.email : null,
+      tienePin: !!(usuario && usuario.pin_hash),
+      tieneEmailPassword: !!(usuario && usuario.password_hash),
       error: null,
+      errorVincular: null,
       guardado: null,
     });
   } catch (err) {
@@ -3162,7 +3471,8 @@ app.get('/ajustes', async (req, res) => {
     res.status(500).render('ajustes', {
       nombreUsuario: '', especieActual: 'monstera', especies: IA_ESPECIES,
       notificacionesActivas: false, vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
-      error: 'No se pudo leer la base de datos.', guardado: null,
+      emailActual: null, tienePin: true, tieneEmailPassword: false,
+      error: 'No se pudo leer la base de datos.', errorVincular: null, guardado: null,
     });
   }
 });
@@ -3209,6 +3519,56 @@ app.post('/ajustes/notificaciones', async (req, res) => {
   res.redirect('/ajustes?guardado=notificaciones');
 });
 
+// rama-login-email: vincula email+contraseña a una cuenta EXISTENTE (a
+// diferencia de /registro/email, que crea una fila nueva). UPDATE sobre la
+// propia fila (req.usuarioId, de la sesión) -- nunca crea una cuenta
+// duplicada. Exige la credencial actual (PIN, o contraseña si por algún
+// motivo ya no tiene PIN) antes de agregar una credencial nueva: agregar
+// una forma de entrar a la cuenta es tan sensible como eliminarla -- mismo
+// criterio que /ajustes/eliminar-cuenta, no debería alcanzar con tener la
+// sesión abierta (por ejemplo, sesión dejada abierta en un dispositivo
+// compartido).
+app.post('/ajustes/vincular-email', limitarIntentos('vincular-email'), async (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  const password = req.body.password || '';
+  const confirmarPassword = req.body.confirmar_password || '';
+  const pin = req.body.pin || '';
+  const passwordActual = req.body.password_actual || '';
+
+  if (!EMAIL_REGEX.test(email)) {
+    return auxiliarErrorAjustes(req, res, { errorVincular: 'Ingresa un email válido.' });
+  }
+  if (password.length < PASSWORD_MIN_LARGO) {
+    return auxiliarErrorAjustes(req, res, { errorVincular: `La contraseña debe tener al menos ${PASSWORD_MIN_LARGO} caracteres.` });
+  }
+  if (password !== confirmarPassword) {
+    return auxiliarErrorAjustes(req, res, { errorVincular: 'La contraseña y su confirmación no coinciden.' });
+  }
+
+  try {
+    const { rows } = await pool.query('SELECT pin_hash, password_hash FROM usuarios WHERE id = $1', [req.usuarioId]);
+    const usuario = rows[0];
+    const credencialValida = usuario && usuario.pin_hash
+      ? verificarPin(pin, usuario.pin_hash)
+      : usuario && usuario.password_hash
+        ? await bcrypt.compare(passwordActual, usuario.password_hash)
+        : false;
+    if (!credencialValida) {
+      const mensaje = usuario && usuario.pin_hash ? 'PIN actual incorrecto.' : 'Contraseña actual incorrecta.';
+      return auxiliarErrorAjustes(req, res, { errorVincular: mensaje });
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    await pool.query('UPDATE usuarios SET email = $1, password_hash = $2 WHERE id = $3', [email, passwordHash, req.usuarioId]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return auxiliarErrorAjustes(req, res, { errorVincular: 'Ese email ya está vinculado a otra cuenta.' });
+    }
+    console.error('Error vinculando email:', err.message);
+    return auxiliarErrorAjustes(req, res, { errorVincular: 'Error del servidor, intenta de nuevo.' });
+  }
+  res.redirect('/ajustes?guardado=email');
+});
+
 // rama-terminos-privacidad (tarea E, parte 2): borrado REAL de cuenta, no
 // lógico (a diferencia de `pendientes.eliminado` en el resto de la app) —
 // es a pedido explícito del dueño de los datos. Plan completo, orden de
@@ -3217,9 +3577,13 @@ app.post('/ajustes/notificaciones', async (req, res) => {
 // (mismo criterio que /recuperar: una acción destructiva no debería
 // alcanzar con tener la sesión abierta). Todo en una transacción — si
 // cualquier paso falla, no se borra nada.
+// rama-login-email: mensajeError puede ser un string (va al slot de error
+// general, como antes) o { errorVincular } (va al slot propio de la sección
+// "vincular email" para no pisar/mezclarse con el de eliminar-cuenta).
 async function auxiliarErrorAjustes(req, res, mensajeError) {
+  const esVincular = mensajeError && typeof mensajeError === 'object';
   const { rows } = await pool.query(
-    'SELECT nombre_usuario, ia_especie FROM usuarios WHERE id = $1',
+    'SELECT nombre_usuario, ia_especie, email, pin_hash, password_hash FROM usuarios WHERE id = $1',
     [req.usuarioId]
   );
   const usuario = rows[0];
@@ -3233,13 +3597,18 @@ async function auxiliarErrorAjustes(req, res, mensajeError) {
     especies: IA_ESPECIES,
     notificacionesActivas: pushRows.length > 0,
     vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
-    error: mensajeError,
+    emailActual: usuario ? usuario.email : null,
+    tienePin: !!(usuario && usuario.pin_hash),
+    tieneEmailPassword: !!(usuario && usuario.password_hash),
+    error: esVincular ? null : mensajeError,
+    errorVincular: esVincular ? mensajeError.errorVincular : null,
     guardado: null,
   });
 }
 
 app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (req, res) => {
   const pin = req.body.pin || '';
+  const passwordActual = req.body.password_actual || '';
   const confirmacion = (req.body.confirmar || '').trim().toUpperCase();
   if (confirmacion !== 'ELIMINAR') {
     return auxiliarErrorAjustes(req, res, 'Escribe ELIMINAR (en mayúsculas) para confirmar. Tu cuenta no se eliminó.');
@@ -3248,11 +3617,22 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
   const usuarioId = req.usuarioId;
   const client = await pool.connect();
   try {
-    const { rows } = await client.query('SELECT pin_hash FROM usuarios WHERE id = $1', [usuarioId]);
+    const { rows } = await client.query('SELECT pin_hash, password_hash FROM usuarios WHERE id = $1', [usuarioId]);
     const usuario = rows[0];
-    if (!usuario || !verificarPin(pin, usuario.pin_hash)) {
+    // rama-login-email: una cuenta 100% por email (sin PIN nunca) no tiene
+    // nada que verificar en pin_hash -- verificarPin(x, null) siempre da
+    // false, así que antes esta cuenta jamás hubiera podido eliminarse.
+    // Se prueba con lo que la cuenta realmente tenga: PIN si lo tiene
+    // (criterio de siempre), o la contraseña si no.
+    const credencialValida = usuario && usuario.pin_hash
+      ? verificarPin(pin, usuario.pin_hash)
+      : usuario && usuario.password_hash
+        ? await bcrypt.compare(passwordActual, usuario.password_hash)
+        : false;
+    if (!usuario || !credencialValida) {
       client.release();
-      return auxiliarErrorAjustes(req, res, 'PIN incorrecto. Tu cuenta no se eliminó.');
+      const mensaje = usuario && usuario.pin_hash ? 'PIN incorrecto. Tu cuenta no se eliminó.' : 'Contraseña incorrecta. Tu cuenta no se eliminó.';
+      return auxiliarErrorAjustes(req, res, mensaje);
     }
 
     await client.query('BEGIN');

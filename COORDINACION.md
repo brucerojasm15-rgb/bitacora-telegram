@@ -5,15 +5,15 @@
 
 1. Al empezar, lee este archivo completo antes de tocar código.
 2. Trabaja SOLO en tu rama asignada, y hazlo en tu propio **worktree** (carpeta
-   aparte), NUNCA con `git checkout` directo en `C:\Users\lenovo\Desktop\a`
+   aparte), NUNCA con `git checkout` directo en `C:\Users\lenovo\Desktop\bitacora\bitacora-telegram`
    — esa carpeta la comparten todas las sesiones a la vez, y cambiarle la
    rama ahí se la cambia a todas las demás sin avisar (nos pasó varias veces
-   en esta misma sesión). Desde `C:\Users\lenovo\Desktop\a`, crea tu worktree
+   en esta misma sesión). Desde `C:\Users\lenovo\Desktop\bitacora\bitacora-telegram`, crea tu worktree
    con:
    ```
-   git worktree add "C:\Users\lenovo\Desktop\a-worktrees\rama-<feature>" -b rama-<feature> origin/main
+   git worktree add "C:\Users\lenovo\Desktop\bitacora\worktrees\rama-<feature>" -b rama-<feature> origin/main
    ```
-   Eso te deja una carpeta propia (`C:\Users\lenovo\Desktop\a-worktrees\rama-<feature>`)
+   Eso te deja una carpeta propia (`C:\Users\lenovo\Desktop\bitacora\worktrees\rama-<feature>`)
    ya parada en tu rama, sin tocar el checkout de nadie más. Trabaja siempre
    desde ahí (`cd` a esa carpeta antes de cualquier otro comando).
 3. Antes de modificar `server.js`, revisa la sección "Estado de ramas" abajo — si otra rama
@@ -271,7 +271,7 @@
 ### rama-recuperacion-pin
 - Estado: worktree creado, sin código todavía — lista para que alguien la tome.
 - Tarea: código de recuperación de PIN (ver Backlog de tareas).
-- Ya tiene worktree propio en `C:\Users\lenovo\Desktop\a-worktrees\rama-recuperacion-pin`,
+- Ya tiene worktree propio en `C:\Users\lenovo\Desktop\bitacora\worktrees\rama-recuperacion-pin`,
   con `npm install` ya corrido en `pendientes-web/`. Falta copiar `.env` a mano
   (bloqueado por permisos para la sesión que la creó) antes de poder correr el
   server localmente ahí.
@@ -1977,7 +1977,7 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   (Pendiente/Idea/Recordatorio) en una sola fila de 3 columnas iguales.
 - **Por qué existe esta rama con otro nombre:** el trabajo original se hizo
   en `rama-nav-mobile` (commits f2a6331/f6d6069/89ba69d, worktree en
-  `C:\Users\lenovo\Desktop\a-worktrees\rama-nav-mobile`, sin push — ver
+  `C:\Users\lenovo\Desktop\bitacora\worktrees\rama-nav-mobile`, sin push — ver
   regla 8 y el aviso de arriba sobre ramas locales no pusheadas) partiendo
   de un `origin/main` que quedó viejo: mientras tanto se mergeó
   `rama-asignacion-texto` (PR #51), que también toca `views/captura.ejs` y
@@ -2336,6 +2336,40 @@ completo, **NO PUSHEADO, esperando "aprobado"**. La columna `usuario_id` no
 existe en el bot (nunca la tuvo, no hay nada de esquema que preservar para un
 paso posterior — ese punto de la tarea original queda sin objeto).
 
+## `laptop_watcher.py` — script personal, corre en la laptop del usuario (2026-08-20)
+
+Vive en la raíz de este repo (junto a `pendientes-web/`) pero **no se
+despliega en Railway** — no hay ningún proceso en `Procfile`/servicio que lo
+corra. El usuario lo ejecuta manualmente en su propia laptop (`python
+laptop_watcher.py`), con sus dependencias en `requirements_watcher.txt`
+(`psycopg2-binary`, `requests`) — deliberadamente separado de las
+dependencias de Node del resto del repo.
+
+Qué hace: cada 15s, (1) escribe un heartbeat en Postgres avisando que la
+laptop está conectada, y (2) si hay una exportación pendiente pedida desde
+`pendientes-web`, la descarga y la guarda como `Bitacora_de_Vida.xlsx` en su
+propia carpeta (sobrescribiendo siempre, sin duplicar archivos).
+
+Comparte la misma Postgres de producción que `pendientes-web` vía
+`DATABASE_URL` (la misma variable, mismo valor). Crea y usa dos tablas
+propias con su propio `CREATE TABLE IF NOT EXISTS` — **no están declaradas
+en `ensureSchema()` de `server.js`**, mismo patrón que `pendientes`/`ideas`/
+`recordatorios`/`hechos` (ver sección de eliminación del bot arriba):
+
+- `laptop_heartbeat` (usuario_id, last_seen)
+- `export_status` (usuario_id, pending, completado, excel_data, cantidad,
+  solicitado_en, completado_en)
+
+**Es independiente del bot de Telegram que se está eliminando** (sección de
+arriba) — no comparte código con él, no depende de que esté corriendo, y no
+se ve afectado por su borrado. Su único acoplamiento real es con
+`pendientes-web`, de quien recibe las solicitudes de exportación pendientes.
+
+Antes vivía sin trackear dentro del repo `BITACORA-INTELIGENTE` (el mismo
+que aloja el bot de Telegram); se movió aquí el 2026-08-20 porque
+conceptualmente sirve a `pendientes-web`, no al bot, y así sobrevive a la
+eliminación de ese repo/bot sin quedar huérfano.
+
 ## Historial de merges a main
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
@@ -2549,11 +2583,11 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 3. Busca tu tarea en la sección "Backlog de tareas" de abajo. Si el usuario ya te dio
    una tarea directamente en el chat, usa esa en vez del backlog.
 4. Crea tu worktree desde `main` actualizado (NUNCA `git checkout` directo en
-   `C:\Users\lenovo\Desktop\a` — ver regla 2 de arriba):
+   `C:\Users\lenovo\Desktop\bitacora\bitacora-telegram` — ver regla 2 de arriba):
    ```
-   cd "C:\Users\lenovo\Desktop\a"
+   cd "C:\Users\lenovo\Desktop\bitacora\bitacora-telegram"
    git fetch origin
-   git worktree add "C:\Users\lenovo\Desktop\a-worktrees\rama-<nombre-corto>" -b rama-<nombre-corto> origin/main
+   git worktree add "C:\Users\lenovo\Desktop\bitacora\worktrees\rama-<nombre-corto>" -b rama-<nombre-corto> origin/main
    ```
    Luego `cd` a esa carpeta nueva y trabaja siempre desde ahí. Copia
    `pendientes-web\.env` a tu worktree a mano si necesitas correr el server

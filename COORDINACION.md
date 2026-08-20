@@ -2794,8 +2794,9 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   client.release() en /ia/comprar y /ia/usar-comodin").
 
 ### rama-login-email
-- Estado: implementada localmente, commit hecho, **NO pusheada — esperando
-  "aprobado" del usuario, regla 8**.
+- Estado: implementada, commiteada (ce8ed4f) y **pusheada a
+  `origin/rama-login-email`** (aprobado por el usuario, regla 8) — NO
+  mergeada a main todavía, eso queda para rama-integracion.
 - Tarea: login por email+contraseña como opción ADICIONAL al de usuario+PIN
   (no lo reemplaza). Diseño (ajustado a mitad de la tarea, ver más abajo):
   evitar cuentas duplicadas para alguien que ya tiene usuario+PIN.

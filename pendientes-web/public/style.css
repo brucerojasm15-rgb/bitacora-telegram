@@ -1847,6 +1847,52 @@ tr.fila-saliendo {
   color: var(--accent);
 }
 
+/* rama-metas-compartidas */
+.meta-seccion-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.meta-amigos-picker {
+  border: 1px solid var(--glass-border, var(--border));
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  margin: 0.3rem 0;
+  width: 100%;
+}
+
+.meta-amigos-picker legend {
+  padding: 0 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.meta-amigo-opcion {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.meta-participantes {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.meta-participantes strong {
+  color: var(--color-semillas, var(--text));
+}
+
 .ajustes-grupo h2 {
   margin-top: 0;
   font-size: 1.05rem;

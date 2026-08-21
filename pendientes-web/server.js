@@ -751,6 +751,40 @@ async function ensureSchema() {
       creado TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-metas-compartidas (fast-follow de v0.2, Backlog): igual que `metas`
+  // pero con varios participantes en vez de un solo usuario_id. Tabla
+  // aparte (no una columna "compartida" en `metas`) porque el modelo es
+  // distinto: necesita saber QUIÉNES participan y CUÁNTO aportó cada uno,
+  // cosa que una fila de `metas` no tiene dónde guardar. `creado_por` es
+  // solo informativo (quién la armó) -- no da más permisos que cualquier
+  // otro participante, ver POST /metas/compartida/:id/estado.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS metas_compartidas (
+      id SERIAL PRIMARY KEY,
+      creado_por INT REFERENCES usuarios(id),
+      titulo TEXT NOT NULL,
+      etiqueta TEXT,
+      tipo_metrica TEXT,
+      valor_objetivo INT NOT NULL DEFAULT 1,
+      valor_actual INT NOT NULL DEFAULT 0,
+      fecha_objetivo DATE,
+      estado TEXT NOT NULL DEFAULT 'activa',
+      creado TIMESTAMP DEFAULT now()
+    )
+  `);
+  // `aportado`: cuánto sumó ESTE participante específicamente -- separado
+  // del total en metas_compartidas.valor_actual, para poder mostrar el
+  // desglose por persona (parte del "vibras" de colaboración/comparación
+  // que ya tiene la racha entre amigos). Clave primaria compuesta: un
+  // usuario participa una sola vez por meta compartida.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS metas_compartidas_participantes (
+      meta_compartida_id INT REFERENCES metas_compartidas(id),
+      usuario_id INT REFERENCES usuarios(id),
+      aportado INT NOT NULL DEFAULT 0,
+      PRIMARY KEY (meta_compartida_id, usuario_id)
+    )
+  `);
   // rama-google-calendar: 1 fila por usuario (no por dispositivo, a
   // diferencia de push_subscriptions) — el refresh_token de Google es por
   // cuenta de Google, no por navegador. iv/auth_tag/datos_cifrados en vez
@@ -1638,14 +1672,21 @@ function localsCaptura(extra) {
   );
 }
 
-// rama-metas: inverso de la codificación "id:titulo:cantidad|..." armada en
-// POST /captura -- decodeURIComponent por campo porque el título puede
-// traer ":" o "|" (se codificó con encodeURIComponent, no el string entero).
+// rama-metas: inverso de la codificación "id:titulo:cantidad:tipo|..."
+// armada en POST /captura -- decodeURIComponent por campo porque el título
+// puede traer ":" o "|" (se codificó con encodeURIComponent, no el string
+// entero). `tipo` ('propia'|'compartida', rama-metas-compartidas) decide a
+// qué ruta de deshacer apunta el botón del toast.
 function parsearMetasTocadas(param) {
   if (!param) return [];
   return param.split('|').map((parte) => {
-    const [id, tituloCod, cantidad] = parte.split(':');
-    return { id: Number(id), titulo: decodeURIComponent(tituloCod || ''), cantidad: Number(cantidad) || 1 };
+    const [id, tituloCod, cantidad, tipo] = parte.split(':');
+    return {
+      id: Number(id),
+      titulo: decodeURIComponent(tituloCod || ''),
+      cantidad: Number(cantidad) || 1,
+      tipo: tipo === 'compartida' ? 'compartida' : 'propia',
+    };
   });
 }
 
@@ -1860,7 +1901,36 @@ app.post('/captura', async (req, res) => {
              RETURNING metas.id, metas.titulo, sub.cantidad`,
             [etiquetasCapturadas, req.usuarioId]
           );
-          metasTocadas.push(...metasActualizadas);
+          metasTocadas.push(...metasActualizadas.map((m) => ({ ...m, tipo: 'propia' })));
+
+          // rama-metas-compartidas: mismo mecanismo, pero solo sobre las
+          // metas compartidas donde el usuario ES participante (join con
+          // metas_compartidas_participantes) -- y además suma el aporte
+          // individual en esa misma fila de participante, no solo el total.
+          const { rows: compartidasActualizadas } = await client.query(
+            `UPDATE metas_compartidas SET valor_actual = valor_actual + sub.cantidad
+             FROM (
+               SELECT mc.id, COUNT(*)::int AS cantidad
+               FROM metas_compartidas mc
+               JOIN metas_compartidas_participantes mp ON mp.meta_compartida_id = mc.id AND mp.usuario_id = $2
+               CROSS JOIN unnest($1::text[]) AS etq(etiqueta)
+               WHERE mc.estado = 'activa' AND mc.etiqueta = etq.etiqueta
+               GROUP BY mc.id
+             ) AS sub
+             WHERE metas_compartidas.id = sub.id
+             RETURNING metas_compartidas.id, metas_compartidas.titulo, sub.cantidad`,
+            [etiquetasCapturadas, req.usuarioId]
+          );
+          if (compartidasActualizadas.length) {
+            await client.query(
+              `UPDATE metas_compartidas_participantes AS p
+               SET aportado = p.aportado + sub.cantidad
+               FROM (SELECT * FROM json_to_recordset($1) AS x(id int, cantidad int)) AS sub
+               WHERE p.meta_compartida_id = sub.id AND p.usuario_id = $2`,
+              [JSON.stringify(compartidasActualizadas.map((m) => ({ id: m.id, cantidad: m.cantidad }))), req.usuarioId]
+            );
+            metasTocadas.push(...compartidasActualizadas.map((m) => ({ ...m, tipo: 'compartida' })));
+          }
         }
         await client.query('COMMIT');
       } catch (err) {
@@ -1891,7 +1961,7 @@ app.post('/captura', async (req, res) => {
     params.set(
       'metas',
       metasTocadas
-        .map((m) => `${m.id}:${encodeURIComponent(m.titulo)}:${m.cantidad}`)
+        .map((m) => `${m.id}:${encodeURIComponent(m.titulo)}:${m.cantidad}:${m.tipo}`)
         .join('|')
     );
   }
@@ -1917,16 +1987,52 @@ app.get('/ideas', async (req, res) => {
 // rama-metas (Fase 2 de v0.2)
 const ESTADOS_META_VALIDOS = ['activa', 'completada', 'archivada'];
 
+// rama-metas-compartidas: trae las metas compartidas donde el usuario
+// participa, con el desglose de aporte por participante embebido como
+// array (una sola query con json_agg, no N+1 por meta).
+async function metasCompartidasDeUsuario(usuarioId) {
+  const { rows } = await pool.query(
+    `SELECT mc.*, part.participantes
+     FROM metas_compartidas mc
+     JOIN metas_compartidas_participantes mp ON mp.meta_compartida_id = mc.id AND mp.usuario_id = $1
+     JOIN LATERAL (
+       SELECT json_agg(json_build_object('usuario_id', p.usuario_id, 'nombre_usuario', u.nombre_usuario, 'aportado', p.aportado) ORDER BY p.aportado DESC) AS participantes
+       FROM metas_compartidas_participantes p
+       JOIN usuarios u ON u.id = p.usuario_id
+       WHERE p.meta_compartida_id = mc.id
+     ) part ON TRUE
+     ORDER BY (mc.estado = 'activa') DESC, mc.creado DESC`,
+    [usuarioId]
+  );
+  return rows;
+}
+
+async function amigosAceptadosDe(usuarioId) {
+  const { rows } = await pool.query(
+    `SELECT u.id, u.nombre_usuario
+     FROM amistades a
+     JOIN usuarios u ON u.id = CASE WHEN a.usuario_a_id = $1 THEN a.usuario_b_id ELSE a.usuario_a_id END
+     WHERE a.estado = 'aceptada' AND (a.usuario_a_id = $1 OR a.usuario_b_id = $1)
+     ORDER BY u.nombre_usuario ASC`,
+    [usuarioId]
+  );
+  return rows;
+}
+
 app.get('/metas', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT * FROM metas WHERE usuario_id = $1 ORDER BY (estado = $2) DESC, creado DESC',
-      [req.usuarioId, 'activa']
-    );
-    res.render('metas', { metas: rows, error: null });
+    const [{ rows: metas }, metasCompartidas, amigos] = await Promise.all([
+      pool.query('SELECT * FROM metas WHERE usuario_id = $1 ORDER BY (estado = $2) DESC, creado DESC', [
+        req.usuarioId,
+        'activa',
+      ]),
+      metasCompartidasDeUsuario(req.usuarioId),
+      amigosAceptadosDe(req.usuarioId),
+    ]);
+    res.render('metas', { metas, metasCompartidas, amigos, error: null });
   } catch (err) {
     console.error('Error consultando metas:', err.message);
-    res.status(500).render('metas', { metas: [], error: 'No se pudo leer la base de datos.' });
+    res.status(500).render('metas', { metas: [], metasCompartidas: [], amigos: [], error: 'No se pudo leer la base de datos.' });
   }
 });
 
@@ -1999,6 +2105,148 @@ app.post('/metas/:id/deshacer', async (req, res) => {
     );
   } catch (err) {
     console.error('Error deshaciendo incremento de meta:', err.message);
+  }
+  res.redirect(req.get('referer') || '/metas');
+});
+
+// rama-metas-compartidas
+app.post('/metas/compartida', async (req, res) => {
+  const titulo = (req.body.titulo || '').trim();
+  const etiqueta = (req.body.etiqueta || '').trim().toLowerCase() || null;
+  const tipoMetrica = (req.body.tipo_metrica || '').trim() || null;
+  const valorObjetivo = Number(req.body.valor_objetivo);
+  const fechaObjetivo = req.body.fecha_objetivo || null;
+  // Puede llegar como string suelto (1 amigo) o array (2+) según el
+  // navegador -- se normaliza siempre a array antes de seguir.
+  const idsElegidos = [].concat(req.body.participantes || []).map(Number).filter(Number.isInteger);
+
+  const rerenderConError = async (mensajeError) => {
+    const [{ rows: metas }, metasCompartidas, amigos] = await Promise.all([
+      pool.query('SELECT * FROM metas WHERE usuario_id = $1 ORDER BY creado DESC', [req.usuarioId]),
+      metasCompartidasDeUsuario(req.usuarioId),
+      amigosAceptadosDe(req.usuarioId),
+    ]);
+    res.status(400).render('metas', { metas, metasCompartidas, amigos, error: mensajeError });
+  };
+
+  if (!titulo) return rerenderConError('Ponle un título a tu meta compartida.');
+  if (!Number.isInteger(valorObjetivo) || valorObjetivo < 1) {
+    return rerenderConError('El objetivo debe ser un número entero mayor a 0.');
+  }
+  if (!idsElegidos.length) {
+    return rerenderConError('Elegí al menos un amigo para compartir la meta.');
+  }
+
+  const client = await pool.connect();
+  try {
+    // Nunca confiar en los ids que manda el cliente sin revalidar contra la
+    // DB -- mismo criterio que POST /captura con la asignación de
+    // pendientes. Si alguno de los elegidos ya no es amigo (se deshizo la
+    // amistad justo entre medio, o el id era inventado), se descarta en
+    // silencio en vez de fallar todo el guardado.
+    const amigosReales = await amigosAceptadosDe(req.usuarioId);
+    const idsAmigosReales = new Set(amigosReales.map((a) => a.id));
+    const participantesValidos = idsElegidos.filter((id) => idsAmigosReales.has(id));
+    if (!participantesValidos.length) {
+      return rerenderConError('Ninguno de los amigos elegidos es válido -- no se creó la meta.');
+    }
+
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO metas_compartidas (creado_por, titulo, etiqueta, tipo_metrica, valor_objetivo, fecha_objetivo)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [req.usuarioId, titulo, etiqueta, tipoMetrica, valorObjetivo, fechaObjetivo]
+    );
+    const metaId = rows[0].id;
+    // El creador también participa (si no, sería una meta que él mismo
+    // armó pero de la que no forma parte, no tiene sentido).
+    const todosLosParticipantes = [req.usuarioId, ...participantesValidos];
+    for (const usuarioId of todosLosParticipantes) {
+      await client.query(
+        'INSERT INTO metas_compartidas_participantes (meta_compartida_id, usuario_id) VALUES ($1, $2)',
+        [metaId, usuarioId]
+      );
+    }
+    await client.query('COMMIT');
+    res.redirect('/metas?guardado=1');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error creando meta compartida:', err.message);
+    await rerenderConError('No se pudo guardar la meta compartida.');
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/metas/compartida/:id/estado', async (req, res) => {
+  const estado = req.body.estado;
+  if (!ESTADOS_META_VALIDOS.includes(estado)) {
+    return res.status(400).send('Estado inválido.');
+  }
+  try {
+    // Cualquier PARTICIPANTE puede archivar/completar/reactivar, no solo
+    // quien la creó -- es compartida de verdad, no del dueño original con
+    // invitados de segunda clase (mismo espíritu que el resto de la app
+    // con amigos, ver COORDINACION.md sobre tareas asignadas).
+    await pool.query(
+      `UPDATE metas_compartidas SET estado = $1
+       WHERE id = $2 AND EXISTS (
+         SELECT 1 FROM metas_compartidas_participantes WHERE meta_compartida_id = $2 AND usuario_id = $3
+       )`,
+      [estado, req.params.id, req.usuarioId]
+    );
+  } catch (err) {
+    console.error('Error cambiando estado de meta compartida:', err.message);
+    return res.status(500).send('No se pudo actualizar.');
+  }
+  res.redirect('/metas');
+});
+
+// Deshace SOLO el aporte propio del usuario que pide deshacer -- nunca el
+// de otro participante. Resta lo mismo del total compartido y de la fila
+// de aportado propia, ambos clampeados a 0.
+app.post('/metas/compartida/:id/deshacer', async (req, res) => {
+  const cantidad = Math.max(1, Number(req.body.cantidad) || 1);
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // OJO: no restar `cantidad` a ciegas del total compartido -- si el
+      // aportado propio ya estaba en 0 (nunca contribuyó, o ya deshizo
+      // antes), GREATEST lo clampea sin cambiar nada ahí, pero el total
+      // compartido SÍ se restaría igual si no se calcula el delta real.
+      // Se lee `aportado` con FOR UPDATE (bloquea la fila contra otro
+      // deshacer simultáneo del mismo participante) para saber cuánto HAY
+      // de verdad antes de restar, y solo esa cantidad -- nunca más -- se
+      // aplica al total compartido. Así nadie puede "deshacer" una
+      // contribución que no hizo y afectar el progreso de los demás.
+      const { rows: actual } = await client.query(
+        `SELECT aportado FROM metas_compartidas_participantes
+         WHERE meta_compartida_id = $1 AND usuario_id = $2 FOR UPDATE`,
+        [req.params.id, req.usuarioId]
+      );
+      if (actual.length) {
+        const deltaReal = Math.min(cantidad, actual[0].aportado);
+        if (deltaReal > 0) {
+          await client.query(
+            'UPDATE metas_compartidas_participantes SET aportado = aportado - $1 WHERE meta_compartida_id = $2 AND usuario_id = $3',
+            [deltaReal, req.params.id, req.usuarioId]
+          );
+          await client.query(
+            'UPDATE metas_compartidas SET valor_actual = GREATEST(0, valor_actual - $1) WHERE id = $2',
+            [deltaReal, req.params.id]
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('Error deshaciendo aporte a meta compartida:', err.message);
   }
   res.redirect(req.get('referer') || '/metas');
 });

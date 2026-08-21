@@ -1473,6 +1473,33 @@ function calcularRacha(diasSet) {
   return racha;
 }
 
+// rama-racha (Fase 3 de v0.2): racha diaria visible entre amigos. Reusa
+// exactamente el mismo criterio de "día con actividad" que ya usan
+// /estadisticas y /ia (pendientes.hecho=TRUE, `creado` como aproximación de
+// cuándo se completó, mismo `calcularRacha`) -- no se inventó un cuarto
+// criterio de actividad. Es un dato DISTINTO del contador semanal de
+// /estadisticas (`porSemana`, cuántos completó por semana) -- esa ruta y esa
+// columna no se tocan, esto solo reusa el helper para calcular lo mismo
+// pero de varios usuarios a la vez, en una sola consulta (no N+1) para no
+// pegarle a la DB una vez por amigo.
+async function rachasDeUsuarios(idsUsuarios) {
+  if (!idsUsuarios.length) return new Map();
+  const { rows } = await pool.query(
+    `SELECT usuario_id, creado FROM pendientes
+     WHERE hecho = TRUE AND eliminado = FALSE AND usuario_id = ANY($1::int[])`,
+    [idsUsuarios]
+  );
+  const diasPorUsuario = new Map(idsUsuarios.map((id) => [id, new Set()]));
+  for (const fila of rows) {
+    diasPorUsuario.get(fila.usuario_id).add(formatearDiaLima(fila.creado));
+  }
+  const rachas = new Map();
+  for (const [id, dias] of diasPorUsuario) {
+    rachas.set(id, calcularRacha(dias));
+  }
+  return rachas;
+}
+
 app.get('/estadisticas', async (req, res) => {
   try {
     const [porSemana, vencidos, completados] = await Promise.all([
@@ -2115,8 +2142,15 @@ app.get('/amigos', async (req, res) => {
       ),
       obtenerOCrearCodigoInvitacion(req.usuarioId),
     ]);
+    // rama-racha: una sola consulta para la racha propia + la de todos los
+    // amigos (ver rachasDeUsuarios) en vez de una por fila.
+    const idsParaRacha = [req.usuarioId, ...amigos.rows.map((a) => a.usuario_id)];
+    const rachas = await rachasDeUsuarios(idsParaRacha);
+    const amigosConRacha = amigos.rows.map((a) => ({ ...a, racha: rachas.get(a.usuario_id) || 0 }));
+
     res.render('amigos', {
-      amigos: amigos.rows,
+      amigos: amigosConRacha,
+      miRacha: rachas.get(req.usuarioId) || 0,
       recibidas: recibidas.rows,
       enviadas: enviadas.rows,
       codigoInvitacion,
@@ -2126,6 +2160,7 @@ app.get('/amigos', async (req, res) => {
     console.error('Error consultando amigos:', err.message);
     res.status(500).render('amigos', {
       amigos: [],
+      miRacha: 0,
       recibidas: [],
       enviadas: [],
       codigoInvitacion: null,

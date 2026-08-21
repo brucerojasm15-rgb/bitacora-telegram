@@ -2449,9 +2449,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   rapida como home, glassmorphism en toda la app").
 
 ### rama-metas-compartidas
-- Estado: implementada, testeada contra la DB real, **NO pusheada — esperando
-  "aprobado" del usuario, regla 8**. Worktree sobre `origin/main` actualizado
-  (ya incluye v0.3/rama-interfaz-v2).
+- Estado: **mergeada a main vía PR #61 (2026-08-21), desplegada en Railway,
+  verificada SUCCESS**. Ver "Historial de merges a main" para el detalle.
 - Tarea: v0.3, segundo pedido del usuario ("prioriza el fast-follow de metas
   compartidas") — metas entre varios amigos, donde el progreso de cada
   captura de Idea con la etiqueta coincidente suma al total del grupo, no
@@ -2751,6 +2750,13 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-21 — merge de rama-metas-compartidas (5ac19d6) → main vía PR #61:
+  sin conflictos. CI verde. Commit de merge `d441a8b`. Desplegado en Railway
+  y verificado SUCCESS. Segundo entregable de v0.3 -- metas entre varios
+  amigos con auto-incremento por captura de Idea etiquetada, ver la sección
+  de la rama para el detalle de los dos bugs encontrados y corregidos en
+  testing (integridad de "deshacer" y un crash por doble
+  `client.release()`).
 - 2026-08-21 — merge de rama-interfaz-v2 (f98d2fb) → main vía PR #60: sin
   conflictos. CI verde. Commit de merge `19cb5ed`. Primer entregable de
   v0.3 -- landing en Captura rápida + glassmorphism en toda la app,

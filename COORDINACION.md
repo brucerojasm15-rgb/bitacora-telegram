@@ -2634,6 +2634,52 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "fix: oculta el id de
   amistad_id en la barra de búsqueda del chat").
 
+### rama-metas-progreso-manual
+- Estado: implementada, testeada contra la DB real, **NO pusheada —
+  esperando "aprobado" del usuario, regla 8**. Worktree sobre `origin/main`
+  actualizado (ya incluye rama-fix-recuperacion-pin y rama-fix-chat-ui).
+- Tarea: bug/carencia reportada por el usuario y Lolo -- "no hay una
+  manera de registrar progreso, ni se ve fácil para que ambas personas o
+  grupo que comparten metas puedan ver la meta subiendo". Causa: la ÚNICA
+  forma de sumar progreso (meta personal o compartida) era indirecta --
+  capturar una Idea con la etiqueta exacta de la meta. Sin un botón
+  directo, nadie veía subir la meta en la práctica, y mucho menos dos
+  personas coordinando sobre una meta compartida.
+- **Fix**: botón "Sumar progreso" nuevo en cada tarjeta de meta ACTIVA
+  (personal y compartida), con un input numérico (1-1000, clampeado
+  server-side) al lado. `POST /metas/:id/sumar` (una sola tabla) y
+  `POST /metas/compartida/:id/sumar` (transacción: suma al `aportado`
+  individual Y al `valor_actual` del grupo en el mismo UPDATE
+  condicionado a `estado = 'activa'` -- a propósito NO como un `if`
+  separado después, para que no pueda desincronizarse el aporte
+  individual del total si la meta se archiva justo entre medio). La vía
+  automática por etiqueta de Idea se mantiene igual, esta es una
+  alternativa directa, no un reemplazo.
+- No se tocó el mecanismo de "deshacer" existente (piensa en cantidades
+  ya conocidas del toast de captura) -- el botón nuevo de sumar no tiene
+  su propio deshacer, mismo criterio que "posponer" en Pendientes.
+- Icono nuevo en `partials/icono.ejs`: `sumar` (signo "+" simple, lucide
+  outline) -- no existía ninguno de "agregar" todavía (`mas` es el de
+  "más opciones", 3 puntos).
+- Qué se verificó, contra la DB real con dos amigos descartables
+  (`test_mp_a_tmp`/`test_mp_b_tmp`) + un tercero sin amistad
+  (`test_mp_c_tmp`), una meta personal y una compartida de prueba: sumar
+  en meta personal (+3, correcto); sumar en compartida desde ambos
+  amigos (+5 y +2, total=7, aportado individual correcto para cada uno);
+  un NO participante no puede sumar a la compartida (no-op, sin cambios);
+  archivar la meta compartida y luego intentar sumar es un no-op completo
+  en AMBAS tablas (sin desincronizar aportado vs. total); cantidades
+  fuera de rango se clampean (negativo -> 1, 99999 -> 1000). `npm run ci`
+  en verde. Todo borrado al terminar.
+- Pendiente sin resolver esta vez: no se pudo tomar captura de pantalla
+  para el sign-off visual de siempre (la extensión de Claude en Chrome no
+  conectó tras 3 intentos) -- el usuario decidió seguir sin ella dado que
+  es un cambio chico de bajo riesgo visual (mismo estilo que botones ya
+  aprobados). Documentado acá por transparencia, no porque haya quedado
+  sin verificar funcionalmente.
+- Commit: ver `git log` de esta rama (mensaje: "feat: sumar progreso a
+  mano en metas personales y compartidas").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -7,7 +7,7 @@
   <main>
 <%- include('partials/nav') %>
     <h1><%- include('partials/icono', { nombre: 'meta' }) %> Metas</h1>
-    <p class="count">Capturá una Idea con la misma etiqueta de una meta activa y suma sola — sin pedirte confirmación, con opción de deshacer.</p>
+    <p class="count">Sumá progreso a mano con el botón "Sumar progreso" de cada meta, o capturá una Idea con la misma etiqueta y suma sola — sin pedirte confirmación, con opción de deshacer.</p>
 
     <% if (error) { %>
       <p class="error"><%= error %></p>
@@ -100,6 +100,10 @@
           </ul>
 
           <% if (m.estado === 'activa') { %>
+            <form method="POST" action="/metas/compartida/<%= m.id %>/sumar" class="meta-sumar-form">
+              <input type="number" name="cantidad" value="1" min="1" max="1000" aria-label="Cantidad a sumar">
+              <button type="submit"><%- include('partials/icono', { nombre: 'sumar' }) %> Sumar progreso</button>
+            </form>
             <form method="POST" action="/metas/compartida/<%= m.id %>/estado" class="meta-card-acciones">
               <input type="hidden" name="estado" value="completada">
               <button type="submit">Marcar completada</button>
@@ -140,6 +144,10 @@
           <div class="meta-progreso-barra"><div class="meta-progreso-relleno" style="width: <%= porcentaje %>%"></div></div>
 
           <% if (m.estado === 'activa') { %>
+            <form method="POST" action="/metas/<%= m.id %>/sumar" class="meta-sumar-form">
+              <input type="number" name="cantidad" value="1" min="1" max="1000" aria-label="Cantidad a sumar">
+              <button type="submit"><%- include('partials/icono', { nombre: 'sumar' }) %> Sumar progreso</button>
+            </form>
             <form method="POST" action="/metas/<%= m.id %>/estado" class="meta-card-acciones">
               <input type="hidden" name="estado" value="completada">
               <button type="submit">Marcar completada</button>

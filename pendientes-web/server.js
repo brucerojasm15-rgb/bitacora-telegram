@@ -575,12 +575,11 @@ app.get('/recuperar', (req, res) => {
 app.post('/recuperar', limitarIntentos('recuperar'), async (req, res) => {
   const nombreUsuario = (req.body.nombre_usuario || '').trim().toLowerCase();
   const codigo = (req.body.codigo || '').trim().toUpperCase();
-  const pinActual = req.body.pin_actual || '';
   const pin = req.body.pin || '';
   const confirmarPin = req.body.confirmar_pin || '';
 
-  if (!nombreUsuario || !codigo || !pinActual) {
-    return res.render('recuperar', { error: 'Completa usuario, PIN actual y código de recuperación.', nombreUsuario });
+  if (!nombreUsuario || !codigo) {
+    return res.render('recuperar', { error: 'Completa usuario y código de recuperación.', nombreUsuario });
   }
   if (!PIN_REGEX.test(pin)) {
     return res.render('recuperar', { error: 'El PIN nuevo debe ser numérico, de 4 a 6 dígitos.', nombreUsuario });
@@ -591,21 +590,21 @@ app.post('/recuperar', limitarIntentos('recuperar'), async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      'SELECT id, pin_hash, codigo_recuperacion_hash FROM usuarios WHERE nombre_usuario = $1',
+      'SELECT id, codigo_recuperacion_hash FROM usuarios WHERE nombre_usuario = $1',
       [nombreUsuario]
     );
     const usuario = rows[0];
-    // Ahora se exigen AMBOS factores (PIN actual + código de recuperación).
-    // Antes solo pedía el código, lo que permitía resetear el PIN de otra
-    // cuenta sabiendo únicamente su código (hueco documentado en la sección
-    // de rama-recuperacion-pin). Mismo mensaje genérico si cualquiera de
-    // los dos falla, para no revelar cuál de los dos fue.
-    if (
-      !usuario ||
-      !usuario.codigo_recuperacion_hash ||
-      !verificarPin(codigo, usuario.codigo_recuperacion_hash) ||
-      !verificarPin(pinActual, usuario.pin_hash)
-    ) {
+    // rama-fix-recuperacion-pin: revertido el pedido del PIN actual además
+    // del código (agregado en rama-fix-recuperar-pin, PR #32) -- exigirlo
+    // dejaba la recuperación inutilizable para su único caso de uso real
+    // (olvidaste el PIN), porque pedía ese mismo PIN olvidado para
+    // recuperarlo. El código ya es un segundo factor suficiente por sí
+    // solo: alta entropía (10 caracteres de un alfabeto de 32, ver
+    // generarCodigoRecuperacion), de un solo uso (se regenera después de
+    // cada recuperación, ver abajo), y las peticiones están limitadas por
+    // `limitarIntentos` (8 cada 15 min por IP) -- mismo modelo que un
+    // código de respaldo de 2FA, donde conocer el código alcanza.
+    if (!usuario || !usuario.codigo_recuperacion_hash || !verificarPin(codigo, usuario.codigo_recuperacion_hash)) {
       return res.render('recuperar', { error: 'Usuario o código incorrecto.', nombreUsuario });
     }
     const nuevoPinHash = crearPinHash(pin);

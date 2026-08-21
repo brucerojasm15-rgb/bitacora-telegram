@@ -184,6 +184,11 @@
             return;
           }
           reproducirSonido('completar');
+          // rama-interfaz: este form intercepta el submit con fetch() y
+          // nunca navega -- el ?logro=1 del redirect del servidor no llega
+          // a aplicarse acá, así que se anima la barra superior a mano.
+          // Ver el comentario largo en partials/scripts.ejs.
+          if (window.animarLogroBarraSuperior) window.animarLogroBarraSuperior();
           if (!fila) return;
           const celdaAcciones = fila.querySelector('td:last-child');
           if (celdaAcciones) celdaAcciones.innerHTML = '<span class="check-confirm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"></path></svg></span>';

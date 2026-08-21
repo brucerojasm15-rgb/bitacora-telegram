@@ -2570,6 +2570,41 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "v0.3: sugerencia de IA para
   pendientes estancados -- fast-follow de v0.2").
 
+### rama-fix-recuperacion-pin
+- Estado: implementada, testeada contra la DB real, **NO pusheada —
+  esperando "aprobado" del usuario, regla 8**. Worktree sobre `origin/main`
+  actualizado (ya incluye rama-sugerencia-estancados).
+- Tarea: bug reportado por el usuario y un amigo (Lolo) probando la app en
+  producción -- "el código único de recuperación no funciona". Causa real:
+  `POST /recuperar` exigía el PIN actual ADEMÁS del código (cambio de
+  `rama-fix-recuperar-pin`, PR #32, documentado como fix de seguridad
+  "[SEGURIDAD, bloqueante]" en su momento) -- pero el PIN actual es
+  exactamente lo que el usuario NO tiene cuando de verdad necesita
+  recuperar el PIN. La feature quedaba auto-bloqueada para su único caso de
+  uso real.
+- **Decisión** (revierte parcialmente esa decisión de seguridad anterior,
+  documentado acá para que quede el razonamiento): se quita el
+  requisito del PIN actual. El código de recuperación por sí solo ya es un
+  segundo factor suficiente: alta entropía (10 caracteres de un alfabeto de
+  32 sin ambigüedades, ver `generarCodigoRecuperacion`), de un solo uso (se
+  regenera después de cada recuperación exitosa), y las peticiones a
+  `/recuperar` están limitadas por `limitarIntentos` (8 cada 15 min por IP)
+  -- mismo modelo que un código de respaldo de 2FA en cualquier app seria,
+  donde conocer el código alcanza para probar identidad. Se quitó también
+  el campo correspondiente del formulario (`pin_actual` en
+  `views/recuperar.ejs`).
+- Qué se verificó, contra la DB real de producción con una cuenta
+  descartable (`test_rec_tmp`, borrada al terminar junto con sus
+  sesiones): registro real → código de recuperación real capturado →
+  recuperación SOLO con ese código (sin PIN actual) → funciona, PIN
+  actualizado. Login con el PIN nuevo funciona; login con el PIN viejo
+  falla. El código usado queda invalidado (single-use) -- reintentarlo
+  falla. Un código inventado falla. Un segundo ciclo de rotación (con el
+  código nuevo que devolvió la primera recuperación) también funciona.
+  `npm run ci` en verde.
+- Commit: ver `git log` de esta rama (mensaje: "fix: la recuperación de PIN
+  ya no exige el PIN que se quiere recuperar").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

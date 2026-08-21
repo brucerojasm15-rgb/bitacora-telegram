@@ -2686,6 +2686,79 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "feat: sumar progreso a
   mano en metas personales y compartidas").
 
+### rama-tutorial-interactivo
+- Estado: implementada, testeada contra la DB real y en navegador real, **NO
+  pusheada — esperando "aprobado" del usuario, regla 8**. Worktree sobre
+  `origin/main` actualizado.
+- Tarea: último de los 4 puntos de feedback de Lolo -- "en lugar de dar un
+  tutorial sería un tutorial interactivo donde te muestra como usar la
+  app". El usuario eligió la opción más ambiciosa de las ofrecidas:
+  "guiado con tareas reales" -- el tour hace que el usuario CREE un
+  pendiente/idea/recordatorio real durante el recorrido, no solo mira
+  diapositivas.
+- **Retira por completo** el carrusel estático de `rama-onboarding`
+  (4 diapositivas en `/onboarding`, separado de la app real) -- se borró
+  `views/onboarding.ejs`, las rutas `GET /onboarding` y
+  `POST /onboarding/completar`, y su CSS. La columna `onboarding_visto`
+  se deja intacta en el esquema (no vale la pena una migración para
+  borrar un booleano que ya nadie escribe).
+- **Columna nueva y separada**: `tutorial_interactivo_visto` (default
+  `TRUE`, a diferencia de `onboarding_visto` que era `FALSE`) -- decisión
+  crítica confirmada contra la DB real ANTES de escribir código: `bruce`,
+  `hazel` y `lolo` (las 3 cuentas reales) tenían `onboarding_visto = FALSE`
+  (nunca se les forzó ese onboarding viejo). Si el tour nuevo reusara esa
+  misma columna, se les hubiera disparado a los 3 la próxima vez que
+  abrieran `/captura` -- página que cualquier usuario logueado visita
+  todo el tiempo. `POST /registro` inserta la fila nueva con
+  `tutorial_interactivo_visto = FALSE` explícito; todo lo demás (cuentas
+  ya existentes, vía el `DEFAULT TRUE` del `ALTER TABLE`) queda protegido
+  automáticamente.
+- **Diseño del tour** (en `views/captura.ejs`, sobre los controles REALES
+  de esa pantalla, sin diapositivas aparte): modal de bienvenida → paso 1
+  resalta el textarea y pide escribir algo real (el botón "Siguiente"
+  queda deshabilitado hasta que hay texto) → paso 2 resalta los 3 botones
+  de tipo, SIN botón "Siguiente" propio -- avanzar significa tocar un tipo
+  de verdad, que dispara el `POST /captura` real → tras la recarga
+  (`?guardado=1`), un modal de cierre confirma y marca
+  `tutorial_interactivo_visto = TRUE` vía `POST /tutorial/completar`
+  (`fetch`, sin recargar la página). "Saltar" está disponible en todo
+  momento y hace lo mismo sin forzar ninguna captura real. El estado del
+  paso vive en `localStorage` (`zentia_tutorial_paso`) porque el paso 2
+  termina en un submit real de formulario (recarga completa, no SPA) --
+  hace falta persistir en qué iba el tour para retomarlo después.
+- **2 bugs de CSS encontrados y corregidos durante el testing en
+  navegador real** (ninguno se ve en el código EJS/JS en sí, solo al
+  correr de verdad):
+  1. `.tutorial-modal-overlay` fijaba `display: flex`, con la MISMA
+     especificidad que el `[hidden] { display: none }` del user-agent
+     stylesheet -- ganaba la del autor (siempre gana sobre la del UA a
+     igual especificidad), así que el atributo `hidden` quedaba
+     completamente anulado: los dos modales (bienvenida y cierre) se
+     veían SIEMPRE superpuestos, sin importar lo que hiciera el JS con
+     `.hidden`. Se encontró en la primera prueba visual (apareció el
+     modal de cierre en vez del de bienvenida en la carga inicial).
+     Arreglado con `.tutorial-modal-overlay[hidden] { display: none; }`
+     (selector con atributo, más específico, gana pase lo que pase).
+  2. El resaltado (`.tutorial-resaltado`, z-index 201) tapaba el texto de
+     la barra de instrucción (`.tutorial-coach`, z-index 200 original)
+     cuando ambos se superponían en una pantalla corta como Captura
+     rápida -- se encontró en la prueba visual del paso 2 (el texto de la
+     barra quedaba parcialmente oculto detrás de los botones de tipo
+     resaltados). Arreglado subiendo `.tutorial-coach` a z-index 202.
+- Qué se verificó, contra la DB real y en Chrome real con dos cuentas
+  descartables (`test_tut_tmp`, `test_tut2_tmp`, borradas al terminar
+  junto con sus pendientes y sesiones): flujo completo con tarea real
+  (bienvenida → paso 1 con texto real → paso 2 → clic real en
+  "Pendiente" → pendiente de verdad guardado en la tabla `pendientes` →
+  modal de cierre → `tutorial_interactivo_visto` pasa a `TRUE`); flujo de
+  "Saltar" desde la bienvenida (marca visto, sin crear ningún pendiente);
+  recarga posterior confirma que el tour no vuelve a aparecer para esa
+  cuenta; confirmado que `bruce`/`hazel`/`lolo` (cuentas reales) quedaron
+  en `TRUE` tras la migración, sin verse afectadas. `npm run ci` en
+  verde.
+- Commit: ver `git log` de esta rama (mensaje: "feat: tutorial interactivo
+  con tareas reales, reemplaza el onboarding estático").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

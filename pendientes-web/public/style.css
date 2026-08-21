@@ -787,6 +787,34 @@ svg[viewBox="0 0 24 24"] {
   margin-bottom: 1rem;
 }
 
+/* rama-metas: toast de auto-incremento en /captura, mismo look que
+   .notificacion pero con el boton "Deshacer" al lado en vez de debajo. */
+.toast-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.toast-meta-deshacer {
+  flex-shrink: 0;
+}
+
+.toast-meta-deshacer button {
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.toast-meta-deshacer button:hover {
+  background: var(--accent);
+  color: white;
+}
+
 /* rama-asignacion-texto: banner de asignación por texto en /captura —
    tanto el paso de confirmación ("Se asignará a @fulano") como el aviso de
    "no se pudo asignar" tras guardar. Mismo patrón visual que .error (fondo
@@ -1486,6 +1514,90 @@ tr.fila-saliendo {
   margin-bottom: 1rem;
 }
 
+/* rama-metas: misma tarjeta que .ajustes-grupo (mismo look de la app), solo
+   con nombre propio porque tiene sus propios elementos (badge de estado,
+   barra de progreso) que no aplican a las secciones de Ajustes. */
+.meta-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.meta-card.meta-inactiva {
+  opacity: 0.6;
+}
+
+.meta-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.meta-card-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.meta-estado-badge {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.5rem;
+}
+
+.meta-progreso-texto {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0.4rem 0;
+}
+
+.meta-progreso-texto code {
+  background: var(--bg-elevated-2);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.35rem;
+}
+
+.meta-progreso-barra {
+  background: var(--bg-elevated-2);
+  border-radius: var(--radius-sm);
+  height: 0.6rem;
+  overflow: hidden;
+  margin-bottom: 0.8rem;
+}
+
+.meta-progreso-relleno {
+  background: var(--accent);
+  height: 100%;
+  transition: width var(--transition-fast);
+}
+
+.meta-card-acciones {
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+.meta-card-acciones button {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.meta-card-acciones button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .ajustes-grupo h2 {
   margin-top: 0;
   font-size: 1.05rem;
@@ -1499,6 +1611,8 @@ tr.fila-saliendo {
 }
 
 .ajustes-form input[type="text"],
+.ajustes-form input[type="number"],
+.ajustes-form input[type="date"],
 .ajustes-form select {
   flex: 1;
   min-width: 160px;

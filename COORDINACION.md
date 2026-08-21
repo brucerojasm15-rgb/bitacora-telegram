@@ -2629,6 +2629,10 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-21 — merge de rama-interfaz (f7e983a) → main vía PR #59: sin
+  conflictos. CI verde. Commit de merge `2e24f87`. **Con este merge, v0.2
+  queda completo en `main`** (Fases 1-4: segmentación de ideas, metas,
+  racha entre amigos, interfaz nueva).
 - 2026-08-20 — merge de rama-segmentacion-ideas (0dc2699) → main vía PR #56:
   sin conflictos (main no había avanzado desde que se creó la rama). CI
   verde. Migración retroactiva de las 295 ideas reales ya había corrido

@@ -686,6 +686,28 @@ async function ensureSchema() {
   await pool.query(`
     ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS usuario_id INT REFERENCES usuarios(id)
   `);
+  // rama-metas (Fase 2 de v0.2): metas personales con progreso numérico.
+  // `etiqueta` (no UNIQUE, un usuario puede tener varias metas con la misma
+  // si quiere) es la que se compara contra `ideas.etiqueta` (Fase 1) al
+  // capturar, para el auto-incremento — ver POST /captura. `valor_actual`
+  // arranca en 0 y nunca se decrementa salvo por /metas/:id/deshacer
+  // (el "deshacer" del toast de auto-incremento). `estado`: 'activa' es la
+  // única que participa en el auto-incremento; 'completada'/'archivada' se
+  // muestran pero no siguen sumando.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS metas (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      titulo TEXT NOT NULL,
+      etiqueta TEXT,
+      tipo_metrica TEXT,
+      valor_objetivo INT NOT NULL DEFAULT 1,
+      valor_actual INT NOT NULL DEFAULT 0,
+      fecha_objetivo DATE,
+      estado TEXT NOT NULL DEFAULT 'activa',
+      creado TIMESTAMP DEFAULT now()
+    )
+  `);
   // rama-google-calendar: 1 fila por usuario (no por dispositivo, a
   // diferencia de push_subscriptions) — el refresh_token de Google es por
   // cuenta de Google, no por navegador. iv/auth_tag/datos_cifrados en vez
@@ -1340,13 +1362,16 @@ function payloadRecordatorioDiario() {
     body: 'No has registrado nada hecho hoy — ¿qué avanzaste?',
     actions: [
       { action: 'abrir', title: 'Abrir' },
-      { action: 'agregar', title: 'Agregar pendiente' },
+      // rama-metas: antes iba a '/#nuevo-pendiente' (solo servía para
+      // pendientes). Apunta a /captura -- el textarea ya tiene autofocus,
+      // y de ahí se puede elegir cualquiera de los 3 tipos, no solo pendiente.
+      { action: 'agregar', title: 'Captura rápida' },
     ],
     data: {
       defaultUrl: '/',
       urls: {
         abrir: '/',
-        agregar: '/#nuevo-pendiente',
+        agregar: '/captura',
       },
     },
   };
@@ -1536,9 +1561,20 @@ const TIPOS_CAPTURA_VALIDOS = ['pendiente', 'idea', 'recordatorio'];
 // qué rama del código se llegó a cada render.
 function localsCaptura(extra) {
   return Object.assign(
-    { error: null, guardado: false, confirmarAsignacion: null, avisoAsignacion: null, textoPrefill: '' },
+    { error: null, guardado: false, confirmarAsignacion: null, avisoAsignacion: null, textoPrefill: '', metasTocadas: [] },
     extra
   );
+}
+
+// rama-metas: inverso de la codificación "id:titulo:cantidad|..." armada en
+// POST /captura -- decodeURIComponent por campo porque el título puede
+// traer ":" o "|" (se codificó con encodeURIComponent, no el string entero).
+function parsearMetasTocadas(param) {
+  if (!param) return [];
+  return param.split('|').map((parte) => {
+    const [id, tituloCod, cantidad] = parte.split(':');
+    return { id: Number(id), titulo: decodeURIComponent(tituloCod || ''), cantidad: Number(cantidad) || 1 };
+  });
 }
 
 // rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): reintento
@@ -1642,6 +1678,7 @@ app.get('/captura', (req, res) => {
     guardado: req.query.guardado === '1',
     avisoAsignacion: req.query.aviso || null,
     textoPrefill: req.query.texto || '',
+    metasTocadas: parsearMetasTocadas(req.query.metas),
   }));
 });
 
@@ -1662,6 +1699,7 @@ app.post('/captura', async (req, res) => {
   // de que esto viva acá y no en JS del navegador.
   let asignarA = null; // id de usuario destino del pendiente, si corresponde
   let avisoAsignacion = null;
+  const metasTocadas = []; // rama-metas: { id, titulo, cantidad } por cada meta auto-incrementada en esta captura
   if (tipo === 'pendiente') {
     const confirmarId = Number(req.body.confirmar_asignacion_id);
     if (req.body.confirmar_asignacion === '1' && Number.isInteger(confirmarId)) {
@@ -1729,6 +1767,29 @@ app.post('/captura', async (req, res) => {
             [fecha, p.texto, req.usuarioId, p.etiqueta]
           );
         }
+        // rama-metas: auto-incremento por coincidencia de etiqueta -- cuenta
+        // cuántos pensamientos de ESTA captura comparten etiqueta con cada
+        // meta activa del usuario (puede ser más de 1 si, ej., dos
+        // pensamientos salieron etiquetados "ejercicio") y suma todo junto
+        // en un solo UPDATE. Sin confirmación previa, tal como pide la
+        // tarea -- el toast + deshacer es la confirmación, después del
+        // hecho en vez de antes.
+        const etiquetasCapturadas = pensamientos.map((p) => p.etiqueta).filter(Boolean);
+        if (etiquetasCapturadas.length) {
+          const { rows: metasActualizadas } = await client.query(
+            `UPDATE metas SET valor_actual = valor_actual + sub.cantidad
+             FROM (
+               SELECT id, COUNT(*)::int AS cantidad
+               FROM metas, unnest($1::text[]) AS etq(etiqueta)
+               WHERE metas.usuario_id = $2 AND metas.estado = 'activa' AND metas.etiqueta = etq.etiqueta
+               GROUP BY id
+             ) AS sub
+             WHERE metas.id = sub.id
+             RETURNING metas.id, metas.titulo, sub.cantidad`,
+            [etiquetasCapturadas, req.usuarioId]
+          );
+          metasTocadas.push(...metasActualizadas);
+        }
         await client.query('COMMIT');
       } catch (err) {
         await client.query('ROLLBACK');
@@ -1748,6 +1809,18 @@ app.post('/captura', async (req, res) => {
   }
   const params = new URLSearchParams({ guardado: '1' });
   if (avisoAsignacion) params.set('aviso', avisoAsignacion);
+  if (metasTocadas.length) {
+    // Codificado como "id:titulo:cantidad" separados por "|" -- evita
+    // depender de parseo de arrays anidados en query string (el server usa
+    // express.urlencoded({ extended: false }), que no los soporta). El
+    // título va con encodeURIComponent propio porque puede traer ":" o "|".
+    params.set(
+      'metas',
+      metasTocadas
+        .map((m) => `${m.id}:${encodeURIComponent(m.titulo)}:${m.cantidad}`)
+        .join('|')
+    );
+  }
   res.redirect('/captura?' + params.toString());
 });
 
@@ -1765,6 +1838,95 @@ app.get('/ideas', async (req, res) => {
     console.error('Error consultando ideas:', err.message);
     res.status(500).render('ideas', { ideas: [], error: 'No se pudo leer la base de datos.', rango, q });
   }
+});
+
+// rama-metas (Fase 2 de v0.2)
+const ESTADOS_META_VALIDOS = ['activa', 'completada', 'archivada'];
+
+app.get('/metas', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM metas WHERE usuario_id = $1 ORDER BY (estado = $2) DESC, creado DESC',
+      [req.usuarioId, 'activa']
+    );
+    res.render('metas', { metas: rows, error: null });
+  } catch (err) {
+    console.error('Error consultando metas:', err.message);
+    res.status(500).render('metas', { metas: [], error: 'No se pudo leer la base de datos.' });
+  }
+});
+
+app.post('/metas', async (req, res) => {
+  const titulo = (req.body.titulo || '').trim();
+  const etiqueta = (req.body.etiqueta || '').trim().toLowerCase() || null;
+  const tipoMetrica = (req.body.tipo_metrica || '').trim() || null;
+  const valorObjetivo = Number(req.body.valor_objetivo);
+  const fechaObjetivo = req.body.fecha_objetivo || null;
+
+  if (!titulo) {
+    return res.status(400).render('metas', {
+      metas: (await pool.query('SELECT * FROM metas WHERE usuario_id = $1 ORDER BY creado DESC', [req.usuarioId])).rows,
+      error: 'Ponle un título a tu meta.',
+    });
+  }
+  if (!Number.isInteger(valorObjetivo) || valorObjetivo < 1) {
+    return res.status(400).render('metas', {
+      metas: (await pool.query('SELECT * FROM metas WHERE usuario_id = $1 ORDER BY creado DESC', [req.usuarioId])).rows,
+      error: 'El objetivo debe ser un número entero mayor a 0.',
+    });
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO metas (usuario_id, titulo, etiqueta, tipo_metrica, valor_objetivo, fecha_objetivo)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.usuarioId, titulo, etiqueta, tipoMetrica, valorObjetivo, fechaObjetivo]
+    );
+    res.redirect('/metas?guardado=1');
+  } catch (err) {
+    console.error('Error creando meta:', err.message);
+    res.status(500).render('metas', {
+      metas: (await pool.query('SELECT * FROM metas WHERE usuario_id = $1 ORDER BY creado DESC', [req.usuarioId])).rows,
+      error: 'No se pudo guardar la meta.',
+    });
+  }
+});
+
+app.post('/metas/:id/estado', async (req, res) => {
+  const estado = req.body.estado;
+  if (!ESTADOS_META_VALIDOS.includes(estado)) {
+    return res.status(400).send('Estado inválido.');
+  }
+  try {
+    await pool.query('UPDATE metas SET estado = $1 WHERE id = $2 AND usuario_id = $3', [
+      estado,
+      req.params.id,
+      req.usuarioId,
+    ]);
+  } catch (err) {
+    console.error('Error cambiando estado de meta:', err.message);
+    return res.status(500).send('No se pudo actualizar.');
+  }
+  res.redirect('/metas');
+});
+
+// Deshace el auto-incremento aplicado por el toast de POST /captura --
+// `cantidad` es exactamente lo que esa captura le sumó a esta meta (puede
+// ser más de 1 si varios pensamientos de la misma Idea compartían
+// etiqueta), nunca un valor arbitrario del cliente sin acotar: se clampea
+// para que valor_actual nunca quede negativo aunque el usuario reintente
+// el "deshacer" más de una vez o llegue tarde.
+app.post('/metas/:id/deshacer', async (req, res) => {
+  const cantidad = Math.max(1, Number(req.body.cantidad) || 1);
+  try {
+    await pool.query(
+      'UPDATE metas SET valor_actual = GREATEST(0, valor_actual - $1) WHERE id = $2 AND usuario_id = $3',
+      [cantidad, req.params.id, req.usuarioId]
+    );
+  } catch (err) {
+    console.error('Error deshaciendo incremento de meta:', err.message);
+  }
+  res.redirect(req.get('referer') || '/metas');
 });
 
 app.get('/recordatorios', async (req, res) => {

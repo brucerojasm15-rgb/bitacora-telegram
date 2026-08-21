@@ -2202,6 +2202,84 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   antes de decidir si aprueba `--ejecutar`.
 - Commit: `1af4658` ("Fase 1 de v0.2: segmentacion y etiquetado de ideas con
   Groq").
+- Nota agregada 2026-08-20: esta rama YA quedó aprobada, arreglada
+  (max_tokens, `_revision_manual`, respaldo completo) y la migración real
+  corrió contra producción (295 ideas -> 1153 pensamientos, 1 sola en
+  revisión manual). Ver commits `0dc2699`/`73e601b` y la sección de arriba
+  quedó desactualizada en el punto de la `GROQ_API_KEY` (ya se consiguió y
+  se usó) — no se corrigió el texto viejo para no reescribir historia, solo
+  se deja esta nota.
+
+### rama-metas
+- Estado: implementada, commit local hecho, **NO pusheada — esperando
+  "aprobado" del usuario, regla 8**. Worktree creado sobre
+  `origin/rama-segmentacion-ideas` (no sobre `main`) porque depende de la
+  columna `ideas.etiqueta` de Fase 1, que todavía no está en `main`.
+- Tarea: Fase 2 de v0.2 — metas personales con auto-incremento por
+  coincidencia de etiqueta al capturar una Idea (sin confirmación previa,
+  con toast + deshacer), más accesibilidad (atajo de ícono, notificación
+  con acceso directo a Captura rápida).
+- Decisiones tomadas junto con el usuario (ver AskUserQuestion en el hilo):
+  - El "FIX GRATIS" pedido (parser de comandos detectando keywords solo al
+    inicio) **no aplicaba** — revisado `extraerNombreCandidatoAsignacion` y
+    todo `server.js`: ya usa `\b` (límite de palabra), no `^`/`startsWith`.
+    No se tocó nada ahí.
+  - "Notificación persistente con campo de texto rápido" **no es posible**
+    con la Web Notifications API (ningún navegador soporta un input de
+    texto dentro de una notificación — eso es `RemoteInput`, exclusivo de
+    Android nativo). Alternativa acordada con el usuario: el botón
+    "agregar" de la notificación diaria (`payloadRecordatorioDiario`) ahora
+    abre `/captura` (con el textarea en `autofocus`) en vez de
+    `/#nuevo-pendiente` (que solo servía para pendientes). Capacitor +
+    plugin nativo con `RemoteInput` real queda como iniciativa aparte,
+    explícitamente pospuesta por el usuario, no descartada.
+  - El atajo de ícono (mantener presionado → Captura rápida) sí se hizo
+    completo: `shortcuts` en `manifest.json`, estándar de PWA.
+- Esquema: tabla `metas` (usuario_id, titulo, etiqueta, tipo_metrica,
+  valor_objetivo, valor_actual default 0, fecha_objetivo, estado default
+  'activa'). `etiqueta` no es UNIQUE (un usuario puede tener varias metas
+  con la misma etiqueta).
+- Rutas nuevas: `GET/POST /metas` (listar/crear), `POST /metas/:id/estado`
+  (activa/completada/archivada), `POST /metas/:id/deshacer` (resta
+  `cantidad`, clampeado con `GREATEST(0, ...)` para nunca quedar negativo
+  aunque se reintente).
+- `POST /captura` (rama idea): dentro de la misma transacción que inserta
+  los pensamientos, un solo `UPDATE ... FROM (SELECT ... unnest($1::text[])
+  ...)` suma en un solo viaje a la DB el incremento de TODAS las metas
+  activas del usuario cuya `etiqueta` coincide con algún pensamiento de
+  esta captura (puede ser más de 1 si dos pensamientos comparten
+  etiqueta). El resultado se codifica en la URL de redirect como
+  `metas=id:titulo:cantidad|...` (título con `encodeURIComponent` propio,
+  no `express.urlencoded({extended:false})` no soporta arrays anidados) y
+  `views/captura.ejs` lo decodifica para mostrar un toast por meta tocada.
+- Nav: "Metas" agregado a `nav-desktop` y al menú "Más" de mobile — NO a
+  los 5 fijos de `nav-bottom` (esos 5 tienen un criterio documentado en el
+  propio `nav.ejs`/COORDINACION.md de "uso esperado diario", y Metas es más
+  "revisar progreso ocasional" que "capturar algo nuevo").
+- Ícono nuevo: `meta` (círculos concéntricos, estilo target) en
+  `partials/icono.ejs` — no había ninguno de "objetivo" todavía.
+- Qué se verificó, contra la DB real de Railway, con un usuario descartable
+  (`test_metas_qa_tmp`, creado vía `POST /registro` real, borrado al
+  terminar junto con sus metas/ideas): servidor local levantado (puerto
+  3812, el 3457 estaba ocupado por otro proceso ajeno a este proyecto en
+  esta máquina), meta creada (0/5 mostrado bien), captura de una Idea con
+  etiqueta real de Groq (`ejercicio`) coincidiendo con una meta activa →
+  `valor_actual` subió a 1, toast con "Deshacer" renderizado correcto,
+  deshacer confirmado que vuelve a 0, y una meta marcada `completada`
+  confirmada que YA NO recibe auto-incremento. `npm run ci` (32 archivos)
+  en verde.
+- **Incidente durante la limpieza del usuario de prueba**: al borrar sus
+  datos corrí `DELETE FROM session` sin filtrar por error — eso vació la
+  tabla de sesiones de connect-pg-simple COMPLETA, no solo la de prueba.
+  No se perdió ningún dato de usuario real (solo `usuario_id`/vencimiento
+  de la cookie de sesión), pero cualquiera con sesión activa en producción
+  en ese momento (incluido el dueño de la cuenta) quedó desconectado y
+  tuvo que volver a loguearse. Avisado al usuario en el momento. Para una
+  próxima vez: filtrar por `sess::json->>'usuario_id'` o buscar el token
+  exacto de la sesión de prueba, nunca un `DELETE` sin `WHERE` en una tabla
+  compartida con producción real.
+- Commit: ver `git log` de esta rama (mensaje: "Fase 2 v0.2: metas
+  personales con auto-incremento por etiqueta").
 
 ### rama-integracion
 - Estado: —

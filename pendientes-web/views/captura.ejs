@@ -18,6 +18,19 @@
     <% if (typeof avisoAsignacion !== 'undefined' && avisoAsignacion) { %>
       <p class="aviso-asignacion"><%= avisoAsignacion %></p>
     <% } %>
+    <% if (typeof metasTocadas !== 'undefined' && metasTocadas.length) { %>
+      <!-- rama-metas: auto-incremento sin confirmación previa -- este toast
+           ES la confirmación, después del hecho, con forma de deshacerlo. -->
+      <% metasTocadas.forEach((m) => { %>
+        <div class="notificacion toast-meta">
+          <span>+<%= m.cantidad %> hacia tu meta <strong><%= m.titulo %></strong></span>
+          <form method="POST" action="/metas/<%= m.id %>/deshacer" class="toast-meta-deshacer">
+            <input type="hidden" name="cantidad" value="<%= m.cantidad %>">
+            <button type="submit">Deshacer</button>
+          </form>
+        </div>
+      <% }) %>
+    <% } %>
 
     <% if (typeof confirmarAsignacion !== 'undefined' && confirmarAsignacion) { %>
       <!-- rama-asignacion-texto: paso de confirmación — se detectó un
@@ -45,7 +58,7 @@
       <p><a href="/captura?texto=<%= encodeURIComponent(confirmarAsignacion.texto) %>">&larr; Corregir el texto</a></p>
     <% } else { %>
     <form method="POST" action="/captura" id="form-captura" class="captura-form">
-      <textarea name="texto" id="captura-texto" rows="1" placeholder="Escribe aquí..." required><%= typeof textoPrefill !== 'undefined' ? textoPrefill : '' %></textarea>
+      <textarea name="texto" id="captura-texto" rows="1" placeholder="Escribe aquí..." required autofocus><%= typeof textoPrefill !== 'undefined' ? textoPrefill : '' %></textarea>
 
       <input type="hidden" name="tipo" id="captura-tipo-oculto">
       <div class="captura-tipos" role="group" aria-label="Tipo">

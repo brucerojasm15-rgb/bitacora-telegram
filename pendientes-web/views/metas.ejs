@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Metas' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'meta' }) %> Metas</h1>
+    <p class="count">Capturá una Idea con la misma etiqueta de una meta activa y suma sola — sin pedirte confirmación, con opción de deshacer.</p>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } %>
+    <% if (typeof guardado !== 'undefined' && guardado) { %>
+      <p class="notificacion">Meta creada.</p>
+    <% } %>
+
+    <section class="ajustes-grupo">
+      <h2>Nueva meta</h2>
+      <form method="POST" action="/metas" class="ajustes-form">
+        <label for="meta-titulo">Título</label>
+        <input type="text" name="titulo" id="meta-titulo" placeholder="Ej: Hacer ejercicio" required>
+
+        <label for="meta-etiqueta">Etiqueta que la vincula (opcional)</label>
+        <input type="text" name="etiqueta" id="meta-etiqueta" placeholder="Ej: ejercicio (igual a la etiqueta que le pone la IA a tus Ideas)">
+        <p class="ajustes-nota">Si una Idea que capturás sale etiquetada igual, esta meta sube sola.</p>
+
+        <label for="meta-tipo-metrica">Qué estás contando (opcional)</label>
+        <input type="text" name="tipo_metrica" id="meta-tipo-metrica" placeholder="Ej: veces, kg, sesiones">
+
+        <label for="meta-valor-objetivo">Objetivo</label>
+        <input type="number" name="valor_objetivo" id="meta-valor-objetivo" min="1" value="10" required>
+
+        <label for="meta-fecha-objetivo">Fecha límite (opcional)</label>
+        <input type="date" name="fecha_objetivo" id="meta-fecha-objetivo">
+
+        <button type="submit">Crear meta</button>
+      </form>
+    </section>
+
+    <% if (metas.length === 0) { %>
+      <p class="empty">Todavía no tienes ninguna meta.</p>
+    <% } else { %>
+      <% metas.forEach((m) => { %>
+        <% const porcentaje = m.valor_objetivo > 0 ? Math.min(100, Math.round((m.valor_actual / m.valor_objetivo) * 100)) : 0; %>
+        <section class="meta-card <%= m.estado !== 'activa' ? 'meta-inactiva' : '' %>">
+          <div class="meta-card-header">
+            <h2><%= m.titulo %></h2>
+            <span class="meta-estado-badge"><%= m.estado %></span>
+          </div>
+          <p class="meta-progreso-texto">
+            <%= m.valor_actual %> / <%= m.valor_objetivo %><%= m.tipo_metrica ? ' ' + m.tipo_metrica : '' %>
+            (<%= porcentaje %>%)
+            <% if (m.etiqueta) { %> — etiqueta: <code><%= m.etiqueta %></code><% } %>
+            <% if (m.fecha_objetivo) { %> — límite: <%= new Date(m.fecha_objetivo).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) %><% } %>
+          </p>
+          <div class="meta-progreso-barra"><div class="meta-progreso-relleno" style="width: <%= porcentaje %>%"></div></div>
+
+          <% if (m.estado === 'activa') { %>
+            <form method="POST" action="/metas/<%= m.id %>/estado" class="meta-card-acciones">
+              <input type="hidden" name="estado" value="completada">
+              <button type="submit">Marcar completada</button>
+            </form>
+            <form method="POST" action="/metas/<%= m.id %>/estado" class="meta-card-acciones">
+              <input type="hidden" name="estado" value="archivada">
+              <button type="submit">Archivar</button>
+            </form>
+          <% } else { %>
+            <form method="POST" action="/metas/<%= m.id %>/estado" class="meta-card-acciones">
+              <input type="hidden" name="estado" value="activa">
+              <button type="submit">Reactivar</button>
+            </form>
+          <% } %>
+        </section>
+      <% }) %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

@@ -1691,62 +1691,113 @@ tr.fila-saliendo {
   margin: 0 0 0.5rem;
 }
 
-/* rama-onboarding: recorrido corto de 3-4 pasos tras el registro. */
-.onboarding-main {
-  max-width: 380px;
-}
-
-.onboarding-paso {
-  animation: onboarding-entrar 0.25s ease-out;
-}
-
-@keyframes onboarding-entrar {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .onboarding-paso {
-    animation: none !important;
-  }
-}
-
-.onboarding-nav {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.9rem;
-  margin-top: 1.5rem;
-}
-
-.onboarding-puntos {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.onboarding-puntos i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--border);
-  transition: background var(--transition-fast);
-}
-
-.onboarding-puntos i.activo {
-  background: var(--accent);
-}
-
-.onboarding-botones {
+/* rama-tutorial-interactivo: reemplaza el carrusel estático de
+   rama-onboarding (retirado, ver server.js) por un tour dentro de la
+   propia Captura rápida -- el usuario resalta/interactúa con los
+   controles REALES en vez de mirar diapositivas.
+   `.tutorial-modal-overlay`/`.tutorial-modal`: pantallas de bienvenida y
+   de cierre (no apuntan a nada, centradas). `.tutorial-coach`: barra fija
+   abajo con la instrucción del paso, para cuando SÍ hay que señalar un
+   control real (`.tutorial-resaltado`, aplicado por JS al elemento de
+   turno con un glow -- mismo tratamiento glass/accent que el resto de la
+   interfaz, ver rama-interfaz-v2). */
+.tutorial-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 1rem;
+}
+
+/* El `display: flex` de arriba tiene la misma especificidad que el
+   `[hidden] { display: none }` del user-agent stylesheet -- sin esta
+   regla (más específica por el atributo), el atributo `hidden` queda
+   completamente anulado y el modal se ve siempre, sin importar lo que
+   haga el JS con `.hidden`. */
+.tutorial-modal-overlay[hidden] {
+  display: none;
+}
+
+.tutorial-modal {
+  background: var(--glass-bg-fuerte, var(--glass-bg));
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  padding: 1.5rem;
+  max-width: 360px;
+  text-align: center;
+}
+
+.tutorial-modal h2 {
+  margin-top: 0;
+}
+
+.tutorial-modal-botones {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.tutorial-coach {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  /* Más alto que `.tutorial-resaltado` (201) a propósito: en una pantalla
+     corta como Captura rápida, el elemento resaltado y esta barra fija
+     pueden superponerse -- si el resaltado ganara, su glow taparía el
+     texto de la instrucción justo cuando más hace falta leerlo. */
+  z-index: 202;
+  background: var(--glass-bg-fuerte, var(--glass-bg));
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  padding: 1rem 1.2rem;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.tutorial-coach p {
+  margin: 0 0 0.6rem;
+}
+
+.tutorial-coach-botones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 1rem;
 }
 
-.onboarding-botones button[type="submit"].btn-link {
-  background: none;
-  border: none;
-  box-shadow: none;
-  padding: 0;
+.tutorial-coach-botones button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tutorial-resaltado {
+  position: relative;
+  z-index: 201;
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 3px var(--accent), 0 0 24px 4px var(--accent);
+  animation: tutorial-pulso 1.6s ease-in-out infinite;
+}
+
+@keyframes tutorial-pulso {
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent), 0 0 16px 2px var(--accent); }
+  50% { box-shadow: 0 0 0 3px var(--accent), 0 0 28px 6px var(--accent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-resaltado {
+    animation: none !important;
+  }
 }
 
 /* rama-ajustes: página de perfil/ajustes */

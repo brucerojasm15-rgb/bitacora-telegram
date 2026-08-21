@@ -144,22 +144,29 @@ app.use(async (req, res, next) => {
   if (!req.usuarioId) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
+    res.locals.mostrarTutorial = false;
     return next();
   }
   try {
     // rama-interfaz: se suma ia_especie/saldo_moneda a esta MISMA consulta
     // (no una nueva) porque ya se estaba pidiendo `tema` acá para cada
     // request logueada -- aprovecharla evita un roundtrip extra.
+    // rama-tutorial-interactivo: mismo criterio, se suma
+    // tutorial_interactivo_visto -- se calcula acá para TODAS las vistas
+    // (como `tema`/`barraSuperior`) aunque solo `captura.ejs` lo use hoy,
+    // por si a futuro el tour necesita señalar algo fuera de Captura.
     const { rows } = await pool.query(
-      'SELECT tema, ia_especie, saldo_moneda FROM usuarios WHERE id = $1',
+      'SELECT tema, ia_especie, saldo_moneda, tutorial_interactivo_visto FROM usuarios WHERE id = $1',
       [req.usuarioId]
     );
     const usuario = rows[0];
     res.locals.tema = usuario ? usuario.tema : null;
     res.locals.barraSuperior = await barraSuperiorDeUsuario(req.usuarioId, usuario);
+    res.locals.mostrarTutorial = usuario ? !usuario.tutorial_interactivo_visto : false;
   } catch (err) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
+    res.locals.mostrarTutorial = false;
   }
   next();
 });
@@ -494,7 +501,8 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     const codigoRecuperacionHash = crearPinHash(codigoRecuperacion);
     const nombreIaPorDefecto = especie.charAt(0).toUpperCase() + especie.slice(1);
     const { rows } = await pool.query(
-      'INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash, ia_especie, ia_nombre) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      `INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash, ia_especie, ia_nombre, tutorial_interactivo_visto)
+       VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
       [nombreUsuario, pinHash, codigoRecuperacionHash, especie, nombreIaPorDefecto]
     );
     const nuevoUsuarioId = rows[0].id;
@@ -521,10 +529,15 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
       }
     }
 
+    // rama-tutorial-interactivo: reemplaza el link "continuar" a /onboarding
+    // (carrusel estático, retirado) -- ahora va directo a /captura, donde
+    // el tour interactivo nuevo se dispara solo si corresponde
+    // (tutorial_interactivo_visto = FALSE, ver el middleware que calcula
+    // `mostrarTutorial`).
     res.render('codigo-recuperacion', {
       codigo: codigoRecuperacion,
       mensaje: 'Cuenta creada. Este es tu código de recuperación de PIN — apúntalo antes de continuar:',
-      continuarUrl: '/onboarding',
+      continuarUrl: '/captura',
     });
   } catch (err) {
     if (err.code === '23505') {
@@ -535,37 +548,18 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
   }
 });
 
-// rama-onboarding: solo se llega acá desde el link "continuar" de
-// /registro. Si ya se vio (onboarding_visto = TRUE) o el usuario navega
-// acá directo por su cuenta después de terminarlo, redirige a / sin
-// mostrarlo de nuevo.
-app.get('/onboarding', async (req, res) => {
+// rama-tutorial-interactivo: reemplaza a POST /onboarding/completar (carrusel
+// estático retirado). El tour vive en /captura -- este endpoint solo marca
+// que ya se vio, sea porque el usuario lo completó de verdad (guardó su
+// primer pendiente/idea/recordatorio) o porque tocó "Saltar" en cualquier
+// paso.
+app.post('/tutorial/completar', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT onboarding_visto, ia_especie, ia_nombre FROM usuarios WHERE id = $1',
-      [req.usuarioId]
-    );
-    const usuario = rows[0];
-    if (!usuario || usuario.onboarding_visto) {
-      return res.redirect('/captura');
-    }
-    res.render('onboarding', {
-      especie: usuario.ia_especie || 'monstera',
-      nombreIa: usuario.ia_nombre || 'tu planta',
-    });
+    await pool.query('UPDATE usuarios SET tutorial_interactivo_visto = TRUE WHERE id = $1', [req.usuarioId]);
   } catch (err) {
-    console.error('Error mostrando onboarding:', err.message);
-    res.redirect('/captura');
+    console.error('Error marcando tutorial interactivo como visto:', err.message);
   }
-});
-
-app.post('/onboarding/completar', async (req, res) => {
-  try {
-    await pool.query('UPDATE usuarios SET onboarding_visto = TRUE WHERE id = $1', [req.usuarioId]);
-  } catch (err) {
-    console.error('Error marcando onboarding como visto:', err.message);
-  }
-  res.redirect('/captura');
+  res.status(204).end();
 });
 
 app.get('/recuperar', (req, res) => {
@@ -658,8 +652,27 @@ async function ensureSchema() {
   // de esta rama) quedan en FALSE por defecto, pero nunca se les fuerza
   // el onboarding porque nada las redirige a /onboarding automáticamente
   // — solo el flujo de /registro lo hace.
+  // DEPRECADA por rama-tutorial-interactivo (reemplaza el carrusel
+  // estático de /onboarding por un tour interactivo en /captura, ver
+  // `tutorial_interactivo_visto` más abajo) -- se deja la columna y el
+  // comentario histórico sin tocar, no vale la pena una migración para
+  // borrar una columna booleana que ya nadie escribe.
   await pool.query(`
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS onboarding_visto BOOLEAN NOT NULL DEFAULT FALSE
+  `);
+  // rama-tutorial-interactivo: columna NUEVA y separada de
+  // `onboarding_visto` a propósito -- si reusara esa misma columna, TODAS
+  // las cuentas ya existentes (creadas antes de esta rama, con
+  // onboarding_visto=FALSE de fábrica -- confirmado contra la DB real:
+  // hasta la cuenta del propio dueño del proyecto está en FALSE) verían
+  // el tour disparado la próxima vez que abran /captura, que es API
+  // visitada por cualquier usuario logueado constantemente. DEFAULT TRUE
+  // (a diferencia de la columna vieja) para que ninguna cuenta existente
+  // se vea afectada; el registro nuevo (`POST /registro`) la inserta en
+  // FALSE explícitamente para que SOLO los usuarios que se registran de
+  // acá en adelante vean el tour.
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tutorial_interactivo_visto BOOLEAN NOT NULL DEFAULT TRUE
   `);
   await pool.query(`
     ALTER TABLE pendientes

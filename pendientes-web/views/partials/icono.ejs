@@ -40,6 +40,10 @@ const ICONOS = {
   // rama-metas: icono nuevo para Metas (Fase 2 de v0.2) -- mismo estilo que
   // el resto (lucide/outline 24x24), no habia ninguno de "objetivo" todavia.
   meta: '<circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle>',
+  // rama-interfaz (Fase 4 de v0.2): icono para el contador de "semillas" en
+  // la barra superior -- misma forma que la SEMILLA de partials/planta.ejs
+  // (ovalo + brote), a escala de icono 24x24 outline.
+  semilla: '<ellipse cx="12" cy="15" rx="4.5" ry="6"></ellipse><path d="M12 9c1.5 2 1.5 4 0 6"></path>',
 };
 const nombreIcono = (typeof nombre !== 'undefined' && ICONOS[nombre]) ? nombre : null;
 %><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><%- nombreIcono ? ICONOS[nombreIcono] : '' %></svg>

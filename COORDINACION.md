@@ -2318,6 +2318,74 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "Fase 3 v0.2: racha diaria
   comparable entre amigos").
 
+### rama-interfaz
+- Estado: implementada, commit local hecho, **NO pusheada — esperando
+  "aprobado" del usuario, regla 8**. Worktree sobre `origin/main`
+  actualizado (ya incluye Fases 1-3 mergeadas).
+- Tarea: Fase 4 de v0.2 — paleta nueva, botones táctiles, barra superior
+  fija con mini planta/racha/semillas.
+- **Paleta**: reemplaza a "Jungla/Monstera" (mismo criterio que esa
+  migración usó con la anterior: mismos nombres de variable, no en
+  paralelo). Claro `--bg:#F3FBF3 --accent:#16A34A --accent-strong:#0B4A2E`,
+  oscuro `--bg:#0F1F17`, mismo `--accent`/`--accent-strong` en los dos
+  modos (a propósito, "mismos acentos" del enunciado — no se redefinen en
+  el media query oscuro). `--color-semillas:#F5B841` nuevo (mismo criterio
+  que `--color-racha`, adelantado en rama-racha). `--radius-sm` subido de
+  14px a 16px para que quede dentro del rango pedido (16-20px). Actualizado
+  también `theme-color` (head.ejs) y `theme_color`/`background_color`
+  (manifest.json), que tenían los hex viejos hardcodeados aparte de las
+  variables CSS.
+- **Botones táctiles**: `--shadow-tactil`/`--shadow-tactil-activo` (borde
+  sólido `--accent-strong` abajo + resplandor verde, en vez de la sombra
+  gris genérica `--shadow`). Aplicado a los botones primarios más visibles
+  (`.login-form button`, `.ajustes-form button`) — no a cada botón del
+  archivo, alcance acotado a las acciones principales.
+- **Barra superior fija**: nueva `partials/barra-superior.ejs` (mini planta
+  de `partials/planta.ejs` a tamaño chico + racha con llama + semillas),
+  incluida una sola vez dentro de `partials/nav.ejs` (así llega a las 34
+  vistas que ya incluyen nav, sin tocarlas una por una). Datos vía
+  `res.locals.barraSuperior`, poblados por un middleware nuevo que extiende
+  el que ya existía para `tema` (mismo criterio que esa rama: una consulta
+  más por request logueada, "aceptable para el tamaño de esta app" — acá
+  son 3 consultas en vez de 1, ver `barraSuperiorDeUsuario()`).
+- **Animación** ("anima al completar algo o subir racha"):
+  - Racha: comparación 100% client-side contra `localStorage` (el número
+    ya viene renderizado por el servidor, no hace falta otra consulta).
+  - Completar algo, rutas con navegación real (`POST /captura`,
+    `POST /pendientes/:id/completar` cuando nada intercepta el form):
+    `?logro=1` en el redirect, leído y limpiado con `replaceState` por
+    `partials/scripts.ejs`.
+  - Completar algo desde `index.ejs` (`.completar-form`): **hallazgo
+    importante en la prueba en navegador** — ese form intercepta el submit
+    con `fetch()` y actualiza el DOM a mano, nunca navega, así que el
+    `?logro=1` del redirect del servidor NUNCA llegaba a aplicarse (primer
+    intento de probarlo mostró racha/animación desactualizadas). Fix:
+    `window.animarLogroBarraSuperior()` expuesto desde `scripts.ejs`,
+    llamado directo desde el handler de `fetch` de `index.ejs` tras un
+    completado exitoso. Confirmado con el DOM real en el navegador
+    (`className` de la mini planta con la clase `animar`) que ahora
+    funciona en los dos caminos (navegación real y fetch interceptado).
+    Limitación conocida y aceptada: el NÚMERO de racha/semillas en la barra
+    no se actualiza en vivo tras un completar por fetch (solo la
+    animación) — se pone al día en la siguiente carga de página completa.
+- Qué se verificó, en navegador real (Chrome vía extensión, no solo
+  curl — esta fase es visual) contra la DB real, con un usuario descartable
+  (`test_interfaz_qa`, borrado al terminar): paleta clara Y oscura con los
+  hex exactos confirmados vía `getComputedStyle` (`--bg`, `--accent`,
+  `--accent-strong`, `--color-racha`, `--color-semillas`), botón con sombra
+  táctil visible en captura de pantalla, barra superior con
+  `position:fixed` y `top:0` confirmado (no solo visual — se verificó
+  computado, porque una primera lectura de pantalla parecía mostrarla
+  desplazada y resultó ser un desfase de escala entre coordenadas de
+  captura y viewport real, no un bug de CSS), contenido no tapado detrás
+  de la barra, racha correcta tras completar un pendiente (0 → 1 en una
+  carga fresca), animación de la mini planta confirmada en los dos
+  caminos. `npm run ci` (33 archivos) en verde. Sin errores de consola
+  propios (un error visto en consola era de una extensión de Chrome del
+  usuario, no de la app).
+- Commit: ver `git log` de esta rama (mensaje: "Fase 4 v0.2: paleta,
+  botones tactiles, barra superior fija").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -80,6 +80,70 @@
     })();
   </script>
   <script>
+    // rama-interfaz (Fase 4 de v0.2): anima la mini planta de la barra
+    // superior al completar algo o al subir la racha.
+    // - "Completar algo" en rutas de navegación real (POST /captura, POST
+    //   /pendientes/:id/completar cuando NO hay JS interceptando el form --
+    //   ver más abajo): agregan ?logro=1 a su redirect -- se lee acá, se
+    //   anima, y se limpia de la URL con replaceState (para que un refresh
+    //   no vuelva a animar).
+    // - "Completar algo" en rutas que SÍ interceptan el form con fetch()
+    //   (`.completar-form` en index.ejs -- confirmado leyendo su JS: usa
+    //   fetch + actualiza el DOM a mano, nunca navega, así que el
+    //   ?logro=1 del redirect del servidor nunca llega a aplicarse en el
+    //   navegador): esas vistas llaman a `window.animarLogroBarraSuperior()`
+    //   directamente tras el fetch exitoso. Se expone acá, en vez de
+    //   duplicar la lógica de animación en cada vista.
+    // - "Subir la racha": comparación puramente client-side contra
+    //   localStorage (el número ya viene renderizado por el servidor en
+    //   data-racha, no hace falta otra consulta a la DB) -- si es mayor que
+    //   la última vista, anima y actualiza el valor guardado. Se guarda por
+    //   usuario (usuarioId en la clave) porque el mismo navegador puede
+    //   tener sesiones de distintas cuentas de prueba.
+    (function () {
+      const barra = document.getElementById('barra-superior');
+      const planta = document.getElementById('barra-superior-planta');
+      if (!barra || !planta) {
+        window.animarLogroBarraSuperior = function () {};
+        return;
+      }
+
+      function animarPlanta() {
+        planta.classList.remove('animar');
+        // Forzar reflow para poder re-disparar la animación si ya estaba activa.
+        void planta.offsetWidth;
+        planta.classList.add('animar');
+      }
+
+      function animarDato(clase) {
+        const el = barra.querySelector('.' + clase);
+        if (!el) return;
+        el.classList.remove('animar');
+        void el.offsetWidth;
+        el.classList.add('animar');
+      }
+
+      window.animarLogroBarraSuperior = animarPlanta;
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('logro') === '1') {
+        animarPlanta();
+        params.delete('logro');
+        const query = params.toString();
+        window.history.replaceState({}, '', window.location.pathname + (query ? '?' + query : ''));
+      }
+
+      const rachaActual = Number(barra.dataset.racha) || 0;
+      const clave = 'racha_previa_' + (barra.dataset.usuario || 'anon');
+      const rachaPrevia = Number(localStorage.getItem(clave)) || 0;
+      if (rachaActual > rachaPrevia) {
+        animarPlanta();
+        animarDato('barra-superior-racha');
+      }
+      localStorage.setItem(clave, String(rachaActual));
+    })();
+  </script>
+  <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch(() => {});

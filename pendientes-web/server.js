@@ -143,16 +143,55 @@ app.use((req, res, next) => {
 app.use(async (req, res, next) => {
   if (!req.usuarioId) {
     res.locals.tema = null;
+    res.locals.barraSuperior = null;
     return next();
   }
   try {
-    const { rows } = await pool.query('SELECT tema FROM usuarios WHERE id = $1', [req.usuarioId]);
-    res.locals.tema = rows[0] ? rows[0].tema : null;
+    // rama-interfaz: se suma ia_especie/saldo_moneda a esta MISMA consulta
+    // (no una nueva) porque ya se estaba pidiendo `tema` acá para cada
+    // request logueada -- aprovecharla evita un roundtrip extra.
+    const { rows } = await pool.query(
+      'SELECT tema, ia_especie, saldo_moneda FROM usuarios WHERE id = $1',
+      [req.usuarioId]
+    );
+    const usuario = rows[0];
+    res.locals.tema = usuario ? usuario.tema : null;
+    res.locals.barraSuperior = await barraSuperiorDeUsuario(req.usuarioId, usuario);
   } catch (err) {
     res.locals.tema = null;
+    res.locals.barraSuperior = null;
   }
   next();
 });
+
+// rama-interfaz (Fase 4 de v0.2): datos de la barra superior fija (mini
+// planta + racha + semillas), expuestos a TODAS las vistas autenticadas vía
+// res.locals -- mismo criterio que `tema` arriba, ninguna de las 34 rutas
+// que hacen res.render tiene que pasarlo a mano. `usuarioFila` es el
+// resultado de la consulta que ya hizo el middleware de arriba (evita
+// repetirla); si no se pasa (llamadas fuera de ese middleware), la trae acá.
+// 2 consultas más (moneda de vida para la etapa de la planta, y la racha) --
+// mismo trade-off que ya aceptó rama-tema-jungla con la de `tema`.
+async function barraSuperiorDeUsuario(usuarioId, usuarioFila) {
+  let fila = usuarioFila;
+  if (!fila) {
+    const { rows } = await pool.query('SELECT ia_especie, saldo_moneda FROM usuarios WHERE id = $1', [usuarioId]);
+    fila = rows[0];
+  }
+  if (!fila) return null;
+  const [totalDeVida, rachas] = await Promise.all([
+    monedaAcumuladaDeVida(usuarioId),
+    rachasDeUsuarios([usuarioId]),
+  ]);
+  const etapa = etapaPorMoneda(totalDeVida);
+  return {
+    usuarioId,
+    especie: fila.ia_especie || 'monstera',
+    etapa: etapa.indice,
+    semillas: fila.saldo_moneda,
+    racha: rachas.get(usuarioId) || 0,
+  };
+}
 
 const TEMAS_VALIDOS = ['claro', 'oscuro', 'sistema'];
 
@@ -1209,7 +1248,9 @@ app.post('/pendientes/:id/completar', async (req, res) => {
       data: { defaultUrl: '/' },
     }).catch((err) => console.error('Error notificando tarea completada:', err.message));
   }
-  res.redirect('/');
+  // rama-interfaz: ?logro=1 -- la barra superior lo lee y anima la mini
+  // planta (ver partials/scripts.ejs), luego lo limpia de la URL.
+  res.redirect('/?logro=1');
 });
 
 // Borrado lógico: nunca DELETE real. historial_ediciones referencia
@@ -1834,7 +1875,9 @@ app.post('/captura', async (req, res) => {
     console.error('Error guardando captura rápida:', err.message);
     return res.status(500).render('captura', localsCaptura({ error: 'No se pudo guardar. Intenta de nuevo.' }));
   }
-  const params = new URLSearchParams({ guardado: '1' });
+  // rama-interfaz: ?logro=1 -- misma señal que /pendientes/:id/completar
+  // para que la barra superior anime la mini planta.
+  const params = new URLSearchParams({ guardado: '1', logro: '1' });
   if (avisoAsignacion) params.set('aviso', avisoAsignacion);
   if (metasTocadas.length) {
     // Codificado como "id:titulo:cantidad" separados por "|" -- evita

@@ -1,0 +1,30 @@
+<%
+  /* rama-interfaz (Fase 4 de v0.2): barra superior fija en TODAS las
+     pantallas (a diferencia de nav-bottom, que solo se ve en mobile) --
+     mini planta (misma ilustración de partials/planta.ejs, a tamaño chico),
+     racha con llama, contador de semillas. Los datos vienen de
+     res.locals.barraSuperior, poblado por un middleware en server.js para
+     TODA request logueada (mismo criterio que ya usaba res.locals.tema) --
+     así ninguna de las 34 rutas que hacen res.render tiene que acordarse de
+     pasarlo a mano.
+     Si no hay sesión (páginas públicas: /login, /registro, /recuperar...)
+     barraSuperior es null y esta barra no se dibuja nada -- esas páginas no
+     tienen `main` corrido hacia abajo tampoco (ver la regla CSS de
+     body.sin-barra-superior). */
+  const datos = typeof barraSuperior !== 'undefined' ? barraSuperior : null;
+%>
+<% if (datos) { %>
+  <div class="barra-superior" id="barra-superior" data-racha="<%= datos.racha %>" data-usuario="<%= datos.usuarioId %>">
+    <div class="barra-superior-planta" id="barra-superior-planta">
+      <%- include('planta', { especie: datos.especie, etapa: datos.etapa, tamano: 34, idSufijo: 'barra' }) %>
+    </div>
+    <div class="barra-superior-dato barra-superior-racha">
+      <%- include('icono', { nombre: 'llama' }) %>
+      <span><%= datos.racha %></span>
+    </div>
+    <div class="barra-superior-dato barra-superior-semillas">
+      <%- include('icono', { nombre: 'semilla' }) %>
+      <span><%= datos.semillas %></span>
+    </div>
+  </div>
+<% } %>

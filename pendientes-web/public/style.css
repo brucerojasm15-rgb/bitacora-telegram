@@ -1,21 +1,23 @@
-/* rama-tema-jungla: paleta "Jungla/Monstera" (tarea 5 del roadmap).
-   Fondo/verde/acento vienen fijados por el enunciado; el resto de los
-   tokens (superficies, texto, semánticos) se derivaron para que
-   contrasten bien en los dos modos, mismos nombres de variable que ya
-   usaba el tema anterior para no tener que tocar cada regla del archivo.
-   --accent pasó a ser el verde de marca (antes era el azul viejo);
-   --tono es el acento cálido D4A574 nuevo, sin equivalente antes. */
+/* rama-interfaz (Fase 4 de v0.2): paleta nueva, reemplaza a la "Jungla/
+   Monstera" de rama-tema-jungla -- mismo criterio que esa migración usó con
+   la anterior (mismos nombres de variable, no en paralelo, para no tener
+   que tocar cada regla del archivo). --bg/--accent/--accent-strong vienen
+   fijados por el enunciado; el resto (superficies, texto) se derivó para
+   contrastar bien. --accent y --accent-strong quedan IGUALES en claro y
+   oscuro a propósito ("mismos acentos" del enunciado) -- ver el media
+   query de abajo, no se redefinen ahí. --color-racha ya se había
+   adelantado en rama-racha; --color-semillas es nuevo acá. */
 :root {
-  --bg: #F4F1E8;
-  --bg-elevated: #FCFAF2;
+  --bg: #F3FBF3;
+  --bg-elevated: #FCFEFC;
   --bg-elevated-2: #FFFFFF;
-  --border: #DCD5C2;
-  --border-soft: #E8E2D2;
-  --text: #20291F;
-  --text-muted: #5C6B5B;
-  --accent: #2D5A3D;
-  --accent-strong: #234832;
-  --accent-rgb: 45, 90, 61;
+  --border: #D3E8D3;
+  --border-soft: #E3F2E3;
+  --text: #0D1F15;
+  --text-muted: #4D6B57;
+  --accent: #16A34A;
+  --accent-strong: #0B4A2E;
+  --accent-rgb: 22, 163, 74;
   --tono: #D4A574;
   --tono-suave: #F1E3D0;
   --danger: #C4573A;
@@ -26,14 +28,17 @@
   --success-bg: #E1EBE2;
   --warning: #B8863E;
   --warning-bg: #F1E3D0;
-  /* rama-racha (Fase 3 de v0.2): color acordado para la racha en la paleta
-     de Fase 4 (ver COORDINACION.md) -- se adelanta acá porque ya hace
-     falta un acento propio para el ícono de llama, igual en claro y
-     oscuro (no se redefine en el media query de abajo a propósito). */
   --color-racha: #FF6B35;
+  --color-semillas: #F5B841;
   --radius: 20px;
-  --radius-sm: 14px;
-  --shadow: 0 8px 24px -12px rgba(32, 41, 31, 0.18);
+  --radius-sm: 16px;
+  --shadow: 0 8px 24px -12px rgba(11, 74, 46, 0.18);
+  /* rama-interfaz: sombra "tipo labio" -- borde sólido abajo + resplandor
+     suave, ambos tintados en verde en vez del gris genérico que se usaba
+     antes (--shadow). Pensada para botones primarios, no para cada
+     elemento con sombra del archivo. */
+  --shadow-tactil: 0 4px 0 0 var(--accent-strong), 0 6px 14px -4px rgba(var(--accent-rgb), 0.4);
+  --shadow-tactil-activo: 0 1px 0 0 var(--accent-strong), 0 2px 6px -2px rgba(var(--accent-rgb), 0.4);
   --transition-fast: 0.18s ease;
   --transition-medium: 0.35s ease;
   --display: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", "Nunito", system-ui, sans-serif;
@@ -42,18 +47,19 @@
 /* Oscuro: reemplaza al tema oscuro anterior (rama-tema-chat/rama-visual)
    a propósito, no en paralelo — mismo criterio de paleta, tokens con el
    mismo nombre para que el resto del archivo no necesite tocarse. */
+/* rama-interfaz: --accent/--accent-strong/--accent-rgb NO se redefinen acá
+   a propósito -- "mismos acentos" en claro y oscuro, heredan del :root de
+   arriba. Todo lo demás (fondo, superficies, texto) sí cambia para el modo
+   oscuro, igual que antes. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1A2620;
-    --bg-elevated: #213027;
-    --bg-elevated-2: #263A2F;
-    --border: #33463A;
-    --border-soft: #2A3A30;
-    --text: #EDEAE0;
-    --text-muted: #9FB0A0;
-    --accent: #7CB88F;
-    --accent-strong: #3E7A52;
-    --accent-rgb: 124, 184, 143;
+    --bg: #0F1F17;
+    --bg-elevated: #16281E;
+    --bg-elevated-2: #1C3226;
+    --border: #2A4536;
+    --border-soft: #223A2C;
+    --text: #E6F5EA;
+    --text-muted: #9BC2A8;
     --tono: #D4A574;
     --tono-suave: #3B3324;
     --danger: #E08464;
@@ -68,16 +74,13 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #1A2620;
-  --bg-elevated: #213027;
-  --bg-elevated-2: #263A2F;
-  --border: #33463A;
-  --border-soft: #2A3A30;
-  --text: #EDEAE0;
-  --text-muted: #9FB0A0;
-  --accent: #7CB88F;
-  --accent-strong: #3E7A52;
-  --accent-rgb: 124, 184, 143;
+  --bg: #0F1F17;
+  --bg-elevated: #16281E;
+  --bg-elevated-2: #1C3226;
+  --border: #2A4536;
+  --border-soft: #223A2C;
+  --text: #E6F5EA;
+  --text-muted: #9BC2A8;
   --tono: #D4A574;
   --tono-suave: #3B3324;
   --danger: #E08464;
@@ -101,6 +104,11 @@ body {
   color: var(--text);
   margin: 0;
   padding: 2rem;
+  /* rama-interfaz: deja lugar para .barra-superior (fija, en todas las
+     pantallas). En las páginas públicas (login/registro/recuperar, que no
+     incluyen partials/nav ni por lo tanto la barra) es solo un poco de
+     aire de más arriba -- no hace falta una regla condicional aparte. */
+  padding-top: calc(2rem + 3.25rem + env(safe-area-inset-top));
 }
 
 main {
@@ -172,6 +180,87 @@ svg[viewBox="0 0 24 24"] {
 .toggle-tema svg {
   width: 16px;
   height: 16px;
+}
+
+/* rama-interfaz (Fase 4 de v0.2): barra superior fija, en TODAS las
+   pantallas (a diferencia de .nav-bottom, que es solo mobile) -- ver
+   partials/barra-superior.ejs. z-index 40, mismo nivel que .nav-bottom
+   (uno arriba, uno abajo, nunca se pisan). El padding-top de body de más
+   abajo deja lugar para que el contenido no quede tapado detrás. */
+.barra-superior {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  height: 3.25rem;
+  padding: 0 1rem calc(0px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: var(--shadow);
+}
+
+.barra-superior-planta {
+  display: flex;
+  align-items: center;
+  /* rama-interfaz: la mini planta "salta" cuando se completa algo o sube
+     la racha -- ver barra-superior-animar en scripts.ejs. Sin animación
+     activa se queda quieta. */
+  transition: transform var(--transition-fast);
+}
+
+.barra-superior-planta.animar {
+  animation: barra-superior-salto 0.6s ease;
+}
+
+@keyframes barra-superior-salto {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-6px) scale(1.15); }
+  55% { transform: translateY(0) scale(0.95); }
+  75% { transform: translateY(-2px) scale(1.05); }
+}
+
+.barra-superior-dato {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.barra-superior-dato svg {
+  width: 18px;
+  height: 18px;
+}
+
+.barra-superior-racha {
+  color: var(--color-racha);
+}
+
+.barra-superior-racha svg {
+  fill: var(--color-racha);
+}
+
+.barra-superior-semillas {
+  color: var(--color-semillas);
+}
+
+.barra-superior-semillas svg {
+  fill: var(--color-semillas);
+}
+
+.barra-superior-dato.animar {
+  animation: barra-superior-dato-pulso 0.5s ease;
+}
+
+@keyframes barra-superior-dato-pulso {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(1.25); }
 }
 
 .nav {
@@ -428,20 +517,25 @@ svg[viewBox="0 0 24 24"] {
   padding: 0.9rem 1rem;
   border: none;
   border-radius: var(--radius);
-  background: var(--accent-strong);
+  background: var(--accent);
   color: white;
   font-size: 1.05rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast);
+  /* rama-interfaz: sombra "tipo labio" en vez de la gris genérica -- ver
+     --shadow-tactil. El botón "presiona" bajando y perdiendo el labio en
+     :active, en vez de solo achicarse. */
+  box-shadow: var(--shadow-tactil);
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .login-form button:hover {
-  background: var(--accent);
+  background: var(--accent-strong);
 }
 
 .login-form button:active {
-  transform: scale(0.97);
+  transform: translateY(3px);
+  box-shadow: var(--shadow-tactil-activo);
 }
 
 .count {
@@ -1661,6 +1755,16 @@ tr.fila-saliendo {
   padding: 0.5rem 1rem;
   cursor: pointer;
   font-weight: 600;
+  /* rama-interfaz: mismo efecto "labio" que .login-form button, escalado a
+     un botón más chico (sombra más corta). */
+  box-shadow: 0 3px 0 0 var(--accent-strong), 0 4px 10px -3px rgba(var(--accent-rgb), 0.4);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.ajustes-form button:active,
+#ajustes-activar-notificaciones:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 var(--accent-strong), 0 2px 5px -2px rgba(var(--accent-rgb), 0.4);
 }
 
 .ajustes-nota {

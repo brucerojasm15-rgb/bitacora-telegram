@@ -2880,6 +2880,47 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 9. No mergees a main tú mismo — eso lo hace rama-integracion, o el usuario lo pide
    explícitamente.
 
+## Estado al cerrar v0.2 (2026-08-21) — punto de partida para v0.3
+
+v0.2 completo y en producción: Fase 1 (segmentación de ideas con Groq, 295
+ideas reales migradas), Fase 2 (Metas con auto-incremento por etiqueta),
+Fase 3 (racha diaria comparable entre amigos), Fase 4 (paleta nueva,
+botones táctiles, barra superior fija). Las 4 ramas ya se mergearon a
+`main` (PRs #56-#59) y se borraron (worktrees + ramas locales/remotas) por
+estar completamente mergeadas — nada se perdió, todo el historial queda en
+`main`. Ver "Historial de merges a main" y las secciones de cada rama más
+arriba para el detalle completo de decisiones y pruebas.
+
+**Sueltos que quedaron sin resolver, a tener en cuenta antes/durante v0.3:**
+- `rama-login-email` (commits `ce8ed4f`/`69ef703`): login por email+
+  contraseña como alternativa al de usuario+PIN, implementada y pusheada
+  hace tiempo, pero **nunca se mergeó a `main`** — quedó pendiente de
+  decisión del usuario, no relacionada a v0.2. Sigue viva en
+  `origin/rama-login-email` (worktree ya no existe localmente, recrear con
+  `git worktree add` si se retoma).
+- Idea `id=301` ("Hey") quedó con etiqueta `_revision_manual` tras la
+  migración de Fase 1 — Groq no pudo segmentarla ni siquiera tras
+  reintentar. Sin resolver, sin urgencia (dato de un usuario de prueba real
+  en producción, revisar si corresponde).
+- Limitación conocida de Fase 4: el número de racha/semillas en la barra
+  superior no se actualiza en vivo tras completar un pendiente desde la
+  pantalla principal (`.completar-form`, que usa `fetch` sin navegar) — la
+  animación sí funciona, el número se pone al día en la siguiente carga de
+  página. No se consideró bloqueante para el merge.
+- Capacitor + notificación nativa con `RemoteInput` (respuesta en línea de
+  verdad, a diferencia del botón actual que solo abre Captura rápida):
+  pospuesto explícitamente por el usuario durante Fase 2, como iniciativa
+  aparte — no es parte de v0.3 salvo que se decida lo contrario.
+- El diagnóstico de seguridad del bot de Telegram (ver sección "Eliminación
+  del bot de Telegram") ya se resolvió por completo el 2026-08-20: código
+  borrado, servicio `worker` eliminado de Railway. No queda nada pendiente
+  ahí, se menciona solo para que quede claro que no es un cabo suelto.
+
+**Candidatos ya anotados para v0.3** (ver Backlog abajo, agregados como
+fast-follow de v0.2, todavía sin construir ni diseñar en detalle):
+- IA sugiere un paso accionable para pendientes estancados.
+- Meta COMPARTIDA entre varios amigos (distinta de la meta individual).
+
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
 
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`

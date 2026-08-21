@@ -2691,6 +2691,12 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-21 — merge de rama-interfaz-v2 (f98d2fb) → main vía PR #60: sin
+  conflictos. CI verde. Commit de merge `19cb5ed`. Primer entregable de
+  v0.3 -- landing en Captura rápida + glassmorphism en toda la app,
+  reemplaza la dirección visual de rama-interfaz (Fase 4) que el usuario
+  rechazó al probarla en producción. Vista mobile (`.nav-bottom`) sin
+  verificar visualmente, ver la sección de la rama para el detalle.
 - 2026-08-21 — merge de rama-interfaz (f7e983a) → main vía PR #59: sin
   conflictos. CI verde. Commit de merge `2e24f87`. **Con este merge, v0.2
   queda completo en `main`** (Fases 1-4: segmentación de ideas, metas,

@@ -62,6 +62,13 @@
      producción. **Esta excepción NO aplica si el mismo commit toca código además de
      `COORDINACION.md`** — en ese caso la regla 8 se aplica completa, sin excepción, al
      commit entero.
+   - **[Aclaración 2026-08-21, confirmada explícitamente por el usuario]** El "aprobado"
+     de esta regla es sobre el DIFF, antes de pushear — eso sigue exactamente igual, sin
+     excepción. Lo que el usuario pidió sacar es un paso EXTRA que se venía agregando por
+     costumbre (no escrito acá): volver a preguntar, después de pushear y ver CI en verde
+     y el PR mergeable sin conflictos, si se procede a mergear ese mismo PR ya aprobado.
+     Ese segundo paso ya no hace falta -- una vez que el diff fue aprobado y se pusheó, si
+     CI pasa y el PR es mergeable, se mergea directo sin pedir confirmación de nuevo.
 
 ## Estado de ramas
 
@@ -2635,9 +2642,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   amistad_id en la barra de búsqueda del chat").
 
 ### rama-metas-progreso-manual
-- Estado: implementada, testeada contra la DB real, **NO pusheada —
-  esperando "aprobado" del usuario, regla 8**. Worktree sobre `origin/main`
-  actualizado (ya incluye rama-fix-recuperacion-pin y rama-fix-chat-ui).
+- Estado: **mergeada a main vía PR #65 (2026-08-21), desplegada en
+  Railway, verificada SUCCESS**. Ver "Historial de merges a main".
 - Tarea: bug/carencia reportada por el usuario y Lolo -- "no hay una
   manera de registrar progreso, ni se ve fácil para que ambas personas o
   grupo que comparten metas puedan ver la meta subiendo". Causa: la ÚNICA
@@ -2923,6 +2929,15 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-21 — merge de rama-metas-progreso-manual (5cd57e8) → main vía PR
+  #65: sin conflictos. CI verde. Commit de merge `1db31d2`. Desplegado en
+  Railway y verificado SUCCESS. Botón "Sumar progreso" a mano en metas
+  personales y compartidas (antes solo se podía por coincidencia de
+  etiqueta al capturar una Idea). A partir de este merge, el usuario pidió
+  no volver a preguntar confirmación para el paso de mergear un PR ya
+  aprobado y en verde -- sigue vigente mostrar el diff y pedir "aprobado"
+  antes de PUSHEAR (regla 8 de siempre), pero el merge en sí ya no
+  necesita una confirmación aparte una vez que el push fue aprobado.
 - 2026-08-21 — merge de rama-fix-chat-ui (01ec7ea) → main vía PR #64:
   CONFLICTING con rama-fix-recuperacion-pin solo por `COORDINACION.md`
   (ambas insertaban su sección en el mismo punto) -- resuelto con

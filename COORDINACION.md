@@ -2561,6 +2561,20 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-20 — merge de rama-segmentacion-ideas (0dc2699) → main vía PR #56:
+  sin conflictos (main no había avanzado desde que se creó la rama). CI
+  verde. Migración retroactiva de las 295 ideas reales ya había corrido
+  contra producción antes del merge (aprobada por el usuario aparte).
+  Commit de merge `786f7c1`.
+- 2026-08-20 — merge de rama-metas (c7a8a1a) → main vía PR #57: sin
+  conflictos. CI verde. Commit de merge `b710db9`.
+- 2026-08-20 — merge de rama-racha (4dd61c2) → main vía PR #58: sin
+  conflictos, a pesar de que rama-metas y rama-racha divergieron del mismo
+  punto (`rama-segmentacion-ideas`) y ambas tocaron `server.js` y
+  `COORDINACION.md` — confirmado sin conflicto real dos veces (GitHub +
+  `git merge-tree` local) antes de mergear. CI verde. Commit de merge
+  `f54d6e3`. Con este merge, Fases 1, 2 y 3 de v0.2 quedan completas en
+  `main` — falta Fase 4 (interfaz), que depende de este merge.
 - 2026-08-11 — merge de rama-visual (6e3328f) → main: sin conflictos, probado
   localmente (login + / + style.css sirviendo bien), commit de merge 1707a86, pusheado.
 - 2026-08-11 — merge de rama-chat (90f06ad) → main: sin conflictos con server.js

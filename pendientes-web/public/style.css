@@ -1893,6 +1893,53 @@ tr.fila-saliendo {
   color: var(--color-semillas, var(--text));
 }
 
+/* rama-sugerencia-estancados */
+.estancado-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.estancado-texto {
+  margin: 0 0 0.3rem;
+  font-weight: 600;
+}
+
+.estancado-texto code {
+  font-weight: 400;
+  background: var(--bg-elevated-2);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.35rem;
+}
+
+.estancado-fecha {
+  margin: 0 0 0.8rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.estancado-sugerencia {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  background: var(--bg-elevated-2);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  margin: 0 0 0.8rem;
+  font-size: 0.9rem;
+}
+
+.estancado-sugerencia svg {
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 0.1rem;
+}
+
 .ajustes-grupo h2 {
   margin-top: 0;
   font-size: 1.05rem;

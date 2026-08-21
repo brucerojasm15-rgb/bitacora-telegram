@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Estancados' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'arena' }) %> Estancados</h1>
+    <p class="count">Pendientes que llevan más de 14 días sin resolver -- una sugerencia de la IA para destrabar cada uno.</p>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else if (pendientes.length === 0) { %>
+      <div class="empty">
+        <%- include('partials/monstera', { tamano: 80, idSufijo: 'vacio-estancados' }) %>
+        <p>No hay pendientes estancados por ahora.</p>
+      </div>
+    <% } else { %>
+      <% pendientes.forEach((p) => { %>
+        <section class="estancado-card">
+          <p class="estancado-texto">
+            <%= p.texto %>
+            <% if (p.categoria) { %> <code>#<%= p.categoria %></code><% } %>
+          </p>
+          <p class="estancado-fecha">Creado el <%= new Date(p.creado).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) %></p>
+          <p class="estancado-sugerencia"><%- include('partials/icono', { nombre: 'bombilla' }) %> <%= p.sugerencia_ia %></p>
+          <form method="POST" action="/pendientes/<%= p.id %>/completar" class="meta-card-acciones">
+            <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Completar</button>
+          </form>
+          <form method="POST" action="/estancados/<%= p.id %>/descartar" class="meta-card-acciones">
+            <button type="submit">Descartar sugerencia</button>
+          </form>
+        </section>
+      <% }) %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

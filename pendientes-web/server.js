@@ -903,6 +903,18 @@ async function ensureSchema() {
       UNIQUE (usuario_id, fecha)
     )
   `);
+  // rama-sugerencia-estancados (fast-follow de v0.2, Backlog): sugerencia_ia
+  // queda en NULL hasta que el job la genera (ver revisarYSugerirPendientesEstancados)
+  // -- así el job sabe qué pendientes todavía no procesó sin necesitar una
+  // tabla aparte. sugerencia_ia_descartada es independiente de `hecho`: un
+  // pendiente descartado de /estancados sigue activo en la lista normal,
+  // simplemente no se le vuelve a mostrar (ni regenerar) la sugerencia.
+  await pool.query(`
+    ALTER TABLE pendientes
+      ADD COLUMN IF NOT EXISTS sugerencia_ia TEXT,
+      ADD COLUMN IF NOT EXISTS sugerencia_ia_generada_en TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS sugerencia_ia_descartada BOOLEAN NOT NULL DEFAULT FALSE
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -1361,6 +1373,45 @@ app.post('/pendientes/:id/reflexion', async (req, res) => {
   res.redirect('/');
 });
 
+// rama-sugerencia-estancados: mismo criterio de "propios o asignados" que
+// GET / (ver rama-tareas-compartidas) -- un pendiente asignado a mí también
+// puede aparecer acá si lleva estancado, no solo los que yo creé.
+app.get('/estancados', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, texto, categoria, creado, sugerencia_ia
+       FROM pendientes
+       WHERE hecho = FALSE AND eliminado = FALSE AND sugerencia_ia_descartada = FALSE
+         AND sugerencia_ia IS NOT NULL AND (usuario_id = $1 OR asignado_a = $1)
+       ORDER BY creado ASC`,
+      [req.usuarioId]
+    );
+    res.render('estancados', { pendientes: rows, error: null });
+  } catch (err) {
+    console.error('Error consultando pendientes estancados:', err.message);
+    res.status(500).render('estancados', { pendientes: [], error: 'No se pudo leer la base de datos.' });
+  }
+});
+
+// Descartar es permanente para ESE pendiente (no se vuelve a generar ni a
+// mostrar) -- si el usuario sigue sin resolverlo, ya vio la sugerencia una
+// vez, insistir con la misma cada día sería ruido, no ayuda.
+app.post('/estancados/:id/descartar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('id inválido');
+  }
+  try {
+    await pool.query(
+      'UPDATE pendientes SET sugerencia_ia_descartada = TRUE WHERE id = $1 AND (usuario_id = $2 OR asignado_a = $2)',
+      [id, req.usuarioId]
+    );
+  } catch (err) {
+    console.error('Error descartando sugerencia de pendiente estancado:', err.message);
+  }
+  res.redirect('/estancados');
+});
+
 app.post('/suscribir', async (req, res) => {
   const { subscription } = req.body;
   if (!subscription || !subscription.endpoint || !subscription.keys) {
@@ -1697,7 +1748,14 @@ function parsearMetasTocadas(param) {
 // respuesta al usuario que está esperando guardar su Idea.
 const MAX_REINTENTOS_429_CAPTURA = 2;
 
-async function llamarGroqConReintento(system, texto) {
+// `opciones` generalizado en rama-sugerencia-estancados para reutilizar este
+// mismo reintento desde generarSugerenciaEstancado, que no necesita JSON
+// (es una oración de texto libre) ni 4096 tokens (la respuesta es corta a
+// propósito). Los defaults reproducen el comportamiento previo exacto, así
+// que segmentarIdeaConGroq no cambia.
+async function llamarGroqConReintento(system, texto, opciones = {}) {
+  const maxTokens = opciones.maxTokens || 4096;
+  const responseFormat = opciones.responseFormat || 'json_object';
   for (let intento = 0; intento <= MAX_REINTENTOS_429_CAPTURA; intento++) {
     const respuesta = await fetch(GROQ_API_URL, {
       method: 'POST',
@@ -1711,9 +1769,9 @@ async function llamarGroqConReintento(system, texto) {
         // (Groq cortaba el JSON a la mitad), confirmado con la prueba de
         // ideas reales del 2026-08-20. Mismo cambio en el script de
         // migración, ver su comentario.
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         reasoning_effort: 'low',
-        response_format: { type: 'json_object' },
+        response_format: { type: responseFormat },
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: texto },
@@ -1785,6 +1843,72 @@ Respondé ÚNICAMENTE con JSON en este formato exacto, sin texto adicional ni ma
     return requiereRevision;
   }
 }
+
+// rama-sugerencia-estancados (fast-follow de v0.2, Backlog): cuántos días
+// sin resolver hacen falta para que un pendiente cuente como "estancado".
+// No hay columna de "última edición" en `pendientes` (solo `creado`), así
+// que el umbral se mide contra la fecha de creación -- suficiente para el
+// caso de uso (una tarea vieja que nunca se tocó), no distingue una tarea
+// vieja que se editó/pospuso recientemente de una completamente abandonada.
+const UMBRAL_DIAS_ESTANCADO = 14;
+
+// A propósito NO se le pide a la IA que invente un link o URL específica:
+// no hay forma de verificar que algo que el modelo generó sea una URL real,
+// y un link roto/inventado sería peor que no sugerir nada. Se le pide un
+// paso concreto en texto plano en cambio (ver system prompt abajo). Mismo
+// criterio "nunca lanza" que segmentarIdeaConGroq: cualquier fallo devuelve
+// null y el job de abajo simplemente lo reintenta al día siguiente (no
+// marca sugerencia_ia_generada_en si no hubo éxito).
+async function generarSugerenciaEstancado(texto) {
+  if (!groqClient) return null;
+  const system = `Un usuario tiene un pendiente en su lista de tareas que lleva más de ${UMBRAL_DIAS_ESTANCADO} días sin resolver. Sugerile UN paso concreto, pequeño y accionable para destrabarlo -- algo que pueda hacer en los próximos minutos, no un plan largo. Respondé en español, en 1-2 oraciones, sin viñetas ni markdown. NUNCA inventes un link o URL específica (no hay forma de verificar que sea real) -- si la sugerencia involucra buscar algo, decí "buscá..." en vez de dar un link.`;
+  try {
+    const respuesta = await llamarGroqConReintento(system, texto, { maxTokens: 200, responseFormat: 'text' });
+    const datos = await respuesta.json();
+    if (!respuesta.ok) {
+      throw new Error((datos.error && datos.error.message) || `Groq respondió ${respuesta.status}`);
+    }
+    const contenido = ((datos.choices[0] && datos.choices[0].message.content) || '').trim();
+    return contenido || null;
+  } catch (err) {
+    console.error('Error generando sugerencia de pendiente estancado:', err.message);
+    return null;
+  }
+}
+
+// Corre una vez al día (a diferencia del job de recordatorios, que corre
+// cada minuto porque necesita precisión al minuto) -- generar una
+// sugerencia no es urgente, y así se evita martillar la API de Groq todos
+// los días con los mismos pendientes. Solo procesa los que TODAVÍA no
+// tienen sugerencia (sugerencia_ia IS NULL) y no fueron descartados -- una
+// vez generada o descartada, no se vuelve a tocar ese pendiente.
+async function revisarYSugerirPendientesEstancados() {
+  if (!groqClient) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, texto FROM pendientes
+       WHERE hecho = FALSE AND eliminado = FALSE
+         AND sugerencia_ia IS NULL AND sugerencia_ia_descartada = FALSE
+         AND creado <= now() - make_interval(days => $1)`,
+      [UMBRAL_DIAS_ESTANCADO]
+    );
+    for (const p of rows) {
+      const sugerencia = await generarSugerenciaEstancado(p.texto);
+      if (!sugerencia) continue;
+      await pool.query(
+        'UPDATE pendientes SET sugerencia_ia = $1, sugerencia_ia_generada_en = now() WHERE id = $2',
+        [sugerencia, p.id]
+      );
+      console.log(`[cron] Sugerencia generada para pendiente estancado #${p.id}.`);
+    }
+  } catch (err) {
+    console.error('[cron] Error en el job de sugerencias de pendientes estancados:', err.message);
+  }
+}
+
+cron.schedule('0 9 * * *', revisarYSugerirPendientesEstancados, {
+  timezone: 'America/Lima',
+});
 
 app.get('/captura', (req, res) => {
   res.render('captura', localsCaptura({

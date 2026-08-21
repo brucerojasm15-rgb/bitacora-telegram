@@ -2507,6 +2507,71 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "v0.3: metas compartidas --
   fast-follow de metas entre amigos").
 
+### rama-sugerencia-estancados
+- Estado: implementada, testeada contra la DB real (con la API real de
+  Groq), **NO pusheada — esperando "aprobado" del usuario, regla 8**.
+  Worktree sobre `origin/main` actualizado (ya incluye rama-metas-
+  compartidas).
+- Tarea: v0.3, fast-follow ya anotado en el Backlog -- "cuando un pendiente
+  lleva mucho tiempo sin resolverse, la IA sugiere un paso accionable
+  concreto". Decisiones de producto (preguntadas al usuario, no estaban en
+  el backlog original): disparo **automático** en segundo plano (no un
+  botón manual), umbral de **14 días** sin resolver, sección **aparte**
+  ("Estancados", no inline en Pendientes).
+- **Schema**: 3 columnas nuevas en `pendientes` -- `sugerencia_ia` (texto,
+  NULL hasta que el job la genera), `sugerencia_ia_generada_en`,
+  `sugerencia_ia_descartada` (bool, para que un pendiente descartado no se
+  vuelva a mostrar ni recalcular).
+- **Job diario** (`revisarYSugerirPendientesEstancados`, cron a las 9am
+  Lima -- a diferencia del job de recordatorios que corre cada minuto,
+  generar una sugerencia no es urgente y así se evita martillar la API de
+  Groq todos los días con los mismos pendientes ya procesados): busca
+  pendientes activos, no eliminados, sin sugerencia todavía, creados hace
+  14+ días, y les genera una sugerencia con Groq. Decisión de prompt: a la
+  IA se le pide explícitamente que NUNCA invente un link/URL (no hay forma
+  de verificar que sea real; un link roto sería peor que no sugerir nada) --
+  en cambio da un paso concreto en texto plano.
+  `llamarGroqConReintento` (compartida con segmentación de ideas) se
+  generalizó con un parámetro `opciones` (maxTokens/responseFormat) para
+  poder reutilizarla acá sin tocar su comportamiento previo -- confirmado
+  que la llamada existente de segmentación sigue funcionando igual (sigue
+  pasando por los defaults).
+- **Vista `/estancados`** (nueva, con ícono de reloj de arena -- ya existía
+  en el set de íconos y encaja perfecto con "tiempo estancado"): tarjetas
+  con el texto del pendiente, fecha de creación, la sugerencia de la IA, y
+  dos acciones -- "Completar" (reutiliza la ruta existente
+  `POST /pendientes/:id/completar`, sin cambios ahí) y
+  "Descartar sugerencia" (`POST /estancados/:id/descartar`, marca
+  `sugerencia_ia_descartada` y no se vuelve a mostrar). Agregada al menú
+  desktop y al menú "Más" de mobile (no a la barra fija de 5 accesos --
+  mismo criterio que Hechos/Estadísticas, uso ocasional).
+- **Hallazgo importante durante el testing, no relacionado al código de
+  esta rama**: `GROQ_API_KEY` **no estaba configurada en Railway**
+  (confirmado mirando las Service Variables del servicio en producción) --
+  solo existía en un `.env` local de una sesión anterior, nunca se agregó
+  a producción. Esto significa que la segmentación de Ideas (Fase 1 de
+  v0.2) estuvo cayendo silenciosamente al fallback sin segmentar desde que
+  se desplegó, sin ningún error visible (por diseño -- `segmentarIdeaConGroq`
+  nunca lanza). El usuario generó una API key nueva en Groq y la agregó
+  tanto al `.env` local (para poder probar esta rama) como a Railway
+  (2026-08-21) -- confirmado con Railway que redesplegó con éxito después.
+  Efecto colateral bueno de este fast-follow: la segmentación de Ideas en
+  producción vuelve a funcionar de verdad.
+- Qué se verificó, contra la DB real de producción con una cuenta
+  descartable (`test_est_tmp`, borrada al terminar junto con sus
+  pendientes de prueba y su sesión): 3 pendientes de prueba (uno realmente
+  estancado -20 días, uno reciente -5 días, uno viejo pero ya completado
+  -30 días) -- el job (corrido con el cron acelerado a "cada minuto"
+  temporalmente solo para la prueba local, revertido a diario antes de
+  commitear) generó sugerencia SOLO para el estancado real, con una
+  respuesta coherente de Groq que no inventó ningún link ("buscá..." en vez
+  de un URL). Vista `/estancados` mostró la tarjeta correcta. "Completar"
+  la saca de la lista (por `hecho = TRUE`). "Descartar sugerencia" la saca
+  sin completarla (por `sugerencia_ia_descartada = TRUE`). `npm run ci` en
+  verde.
+- Commit: ver `git log` de esta rama (mensaje: "v0.3: sugerencia de IA para
+  pendientes estancados -- fast-follow de v0.2").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

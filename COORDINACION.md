@@ -2508,10 +2508,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   fast-follow de metas entre amigos").
 
 ### rama-sugerencia-estancados
-- Estado: implementada, testeada contra la DB real (con la API real de
-  Groq), **NO pusheada — esperando "aprobado" del usuario, regla 8**.
-  Worktree sobre `origin/main` actualizado (ya incluye rama-metas-
-  compartidas).
+- Estado: **mergeada a main vía PR #62 (2026-08-21), desplegada en Railway,
+  verificada SUCCESS**. Ver "Historial de merges a main" para el detalle.
 - Tarea: v0.3, fast-follow ya anotado en el Backlog -- "cuando un pendiente
   lleva mucho tiempo sin resolverse, la IA sugiere un paso accionable
   concreto". Decisiones de producto (preguntadas al usuario, no estaban en
@@ -2815,6 +2813,13 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-21 — merge de rama-sugerencia-estancados (bea7f30) → main vía PR
+  #62: sin conflictos. CI verde. Commit de merge `8cc6023`. Desplegado en
+  Railway y verificado SUCCESS. Tercer entregable de v0.3 -- sugerencia de
+  IA (Groq) para pendientes estancados 14+ días, ver la sección de la rama
+  para el detalle del hallazgo importante de esta rama: `GROQ_API_KEY`
+  nunca estuvo en Railway, así que la segmentación de Ideas venía fallando
+  en silencio en producción -- ya corregido, ambas features funcionan.
 - 2026-08-21 — merge de rama-metas-compartidas (5ac19d6) → main vía PR #61:
   sin conflictos. CI verde. Commit de merge `d441a8b`. Desplegado en Railway
   y verificado SUCCESS. Segundo entregable de v0.3 -- metas entre varios

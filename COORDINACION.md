@@ -2687,9 +2687,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   mano en metas personales y compartidas").
 
 ### rama-tutorial-interactivo
-- Estado: implementada, testeada contra la DB real y en navegador real, **NO
-  pusheada — esperando "aprobado" del usuario, regla 8**. Worktree sobre
-  `origin/main` actualizado.
+- Estado: **mergeada a main vía PR #66 (2026-08-21), desplegada en
+  Railway, verificada SUCCESS**. Ver "Historial de merges a main".
 - Tarea: último de los 4 puntos de feedback de Lolo -- "en lugar de dar un
   tutorial sería un tutorial interactivo donde te muestra como usar la
   app". El usuario eligió la opción más ambiciosa de las ofrecidas:
@@ -3002,6 +3001,13 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-21 — merge de rama-tutorial-interactivo (5c038de) → main vía PR
+  #66: sin conflictos. CI verde. Commit de merge `0fc9a8e`. Desplegado en
+  Railway y verificado SUCCESS. Cuarto y último punto del feedback de
+  Lolo -- reemplaza el carrusel estático de /onboarding (retirado) por un
+  tour interactivo sobre los controles reales de Captura rápida, ver la
+  sección de la rama para el detalle de los 2 bugs de CSS encontrados y
+  corregidos en testing con Chrome real.
 - 2026-08-21 — merge de rama-metas-progreso-manual (5cd57e8) → main vía PR
   #65: sin conflictos. CI verde. Commit de merge `1db31d2`. Desplegado en
   Railway y verificado SUCCESS. Botón "Sumar progreso" a mano en metas

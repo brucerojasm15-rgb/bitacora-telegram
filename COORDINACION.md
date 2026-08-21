@@ -2605,6 +2605,36 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "fix: la recuperación de PIN
   ya no exige el PIN que se quiere recuperar").
 
+### rama-fix-chat-ui
+- Estado: implementada, testeada visualmente contra la DB real, aprobada
+  por el usuario ("se ve bien"), **NO pusheada — esperando "aprobado" del
+  usuario para el push/PR, regla 8** (la aprobación de arriba fue solo del
+  aspecto visual). Worktree sobre `origin/main` actualizado.
+- Tarea: bug reportado por el usuario y Lolo probando la app -- "hay una
+  barra de búsqueda encima de cada chat mostrando un número, y no queda
+  bien". Causa: en `views/chat.ejs`, el formulario de búsqueda de mensajes
+  tenía un `<input type="number" name="amistad_id">` VISIBLE mostrando el
+  id interno de la amistad, al lado del campo de búsqueda -- un campo que
+  nunca debió ser editable a la vista (solo existe para que el GET sepa
+  qué conversación filtrar).
+- **No es un problema de seguridad**: `GET /chat` ya valida
+  `usuarioPerteneceAmistad(req.usuarioId, amistadId)` en el backend antes
+  de mostrar nada -- cambiar el número a mano en la URL/form ya fallaba
+  con "No tienes acceso a esta conversación." Es puramente un defecto
+  visual/UX.
+- **Fix**: el input de `amistad_id` pasa a `type="hidden"` (se sigue
+  mandando igual en el GET, solo que ya no se ve ni se puede tocar).
+  Botón renombrado de "Ver" a "Buscar" ahora que es lo único que hace ese
+  formulario visualmente.
+- Qué se verificó: contra la DB real con dos cuentas descartables amigas
+  entre sí (`test_chat_a_tmp`/`test_chat_b_tmp`, con mensajes de prueba),
+  captura de pantalla de `/chat` mostrada al usuario ANTES de pushear
+  (aprendizaje de rama-interfaz, ver COORDINACION.md) -- confirmó que se
+  ve bien. Todo borrado al terminar (mensajes, amistad, sesión, usuarios).
+  `npm run ci` en verde.
+- Commit: ver `git log` de esta rama (mensaje: "fix: oculta el id de
+  amistad_id en la barra de búsqueda del chat").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

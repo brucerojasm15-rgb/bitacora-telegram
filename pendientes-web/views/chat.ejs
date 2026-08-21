@@ -12,9 +12,9 @@
       <p class="empty">Indica una amistad con <code>?amistad_id=</code> para ver la conversación.</p>
     <% } else { %>
       <form method="GET" action="/chat" class="filtro-rango">
-        <input type="number" name="amistad_id" value="<%= amistadId %>" min="1" required>
+        <input type="hidden" name="amistad_id" value="<%= amistadId %>">
         <input type="text" name="buscar" value="<%= buscar %>" placeholder="Buscar mensajes...">
-        <button type="submit">Ver</button>
+        <button type="submit">Buscar</button>
         <% if (buscar) { %><a href="/chat?amistad_id=<%= amistadId %>" class="btn-link">Limpiar</a><% } %>
       </form>
 

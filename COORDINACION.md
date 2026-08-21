@@ -2386,6 +2386,68 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "Fase 4 v0.2: paleta,
   botones tactiles, barra superior fija").
 
+### rama-interfaz-v2
+- Estado: implementada, commit local hecho, **NO pusheada — esperando
+  "aprobado" del usuario, regla 8**. Worktree sobre `origin/main`
+  actualizado (ya incluye v0.2 completo).
+- Tarea: v0.3, primer pedido — el usuario abrió la app recién mergeada de
+  Fase 4 y **no le gustó** ("muy opaca", mal distribuida). Pidió: (1) la
+  app abre en Captura rápida en vez de Pendientes, (2) rediseño de
+  menú/interfaz con "vibras de futurismo". Aclarado con el usuario:
+  interfaz antes que el fast-follow de metas compartidas, y estilo
+  "glassmorphism futurista" específicamente (de 4 opciones ofrecidas).
+- **Landing page**: `/login`, `/registro`, `POST /login`, `/onboarding`
+  (las 3 rutas de "ya autenticado"/"recién registrado"/"onboarding visto")
+  ahora redirigen a `/captura` en vez de `/`. `/` (Pendientes) sigue
+  existiendo igual que antes -- sigue siendo el destino de los redirects
+  internos tras completar/posponer un pendiente, eso no cambió. También
+  `manifest.json` `start_url` -> `/captura` (así abrir el ícono de la PWA
+  instalada también entra ahí).
+- **Glassmorphism**: tokens nuevos (`--glass-bg`, `--glass-bg-fuerte`,
+  `--glass-border`, `--glass-blur`, `--glass-shadow`), con overrides en
+  oscuro (más dramático, es donde el efecto se nota de verdad) -- mismo
+  criterio de siempre, oscuro cambia fondo/superficies, accent/racha/
+  semillas no. Fondo del `body` con 4 resplandores radiales fijos
+  (`background-attachment: fixed`) tintados con los acentos que ya
+  existían -- sin esto el blur no tenía nada interesante detrás.
+  Aplicado (blur + borde brillante + sombra con resplandor, en vez de
+  fondo sólido) a: `.login-main`, `.ajustes-grupo`, `.meta-card`, `table`,
+  `.barra-superior`, `.nav`/`.nav-bottom`/`.nav-mas-menu`,
+  `.chat-mensajes li` (la burbuja propia queda sólida a propósito, con
+  glow en vez de blur -- contraste con las burbujas ajenas), `.ia-tarjeta`,
+  `.ia-tienda`, `.invitar-amigo`, `.codigo-recuperacion`, `.notificacion`,
+  `.secundario`, `.btn-link`. NO aplicado a `.error`/`.aviso-asignacion`
+  (decisión: un banner de error/advertencia debe leerse sólido y urgente,
+  no translúcido) ni a inputs/selects/textareas (blur en un campo de texto
+  chico no aporta nada, perjudica legibilidad).
+- **Menú rediseñado**: `.nav` de escritorio dejó de ser una lista de texto
+  subrayado -- ahora es una barra de "chips" de vidrio con brillo verde en
+  hover (pedido explícito: "innovar en un menú... diseño único").
+- **Captura rápida como hero**: los 3 botones de tipo (Pendiente/Idea/
+  Recordatorio) son ahora el primer elemento interactivo que ve el
+  usuario -- cada uno con su propio color (verde/semillas/racha) en vez
+  del mismo acento repetido 3 veces, e ícono más grande.
+- Qué se verificó, en navegador real (Chrome) contra la DB real, con
+  usuarios descartables (borrados al terminar): capturas enviadas al
+  usuario para aprobar la dirección ANTES de aplicarla al resto de la app
+  (aprendizaje de rama-interfaz: no repetir construir a ciegas sin
+  mostrarle nada hasta el final) -- confirmó que le gustaba. Después,
+  verificado visualmente `/captura` (claro y oscuro), `/amigos`
+  (`.invitar-amigo` con vidrio), `/ia` (`.ia-tarjeta` con vidrio). `npm run
+  ci` en verde en cada paso. Registro por UI tuvo problemas de coordenadas
+  de click en esta sesión (resueltos usando `find` + referencias de
+  elemento en vez de coordenadas de píxel) -- no relacionado a ningún bug
+  de la app, solo de cómo se automatizó la prueba.
+- Pendiente de una futura sesión, no bloqueante: la vista mobile
+  (`.nav-bottom`) no se pudo verificar visualmente en esta sesión
+  (`resize_window` no logró achicar el viewport real de forma confiable
+  en esta máquina) -- el cambio en sí es de bajo riesgo (solo propiedades
+  de fondo/sombra, no de layout/media query), pero no se vio con los
+  propios ojos. Confirmar en un celular real o revisar con más cuidado
+  antes de dar por completamente cerrado el rediseño mobile.
+- Commit: ver `git log` de esta rama (mensaje: "v0.3: interfaz -- Captura
+  rapida como home, glassmorphism en toda la app").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

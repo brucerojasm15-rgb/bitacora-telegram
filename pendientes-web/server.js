@@ -391,8 +391,12 @@ app.get('/terminos', (req, res) => {
 });
 
 app.get('/login', (req, res) => {
+  // rama-interfaz-v2: la app abre en Captura rápida, no en Pendientes --
+  // pedido explícito del usuario. /captura sigue siendo la única pantalla
+  // con el selector pendiente/idea/recordatorio, así que es la puerta de
+  // entrada natural. Pendientes sigue existiendo, solo dejó de ser home.
   if (req.session && req.session.usuario_id) {
-    return res.redirect('/');
+    return res.redirect('/captura');
   }
   res.render('login', { error: null, cuentaEliminada: req.query.cuenta_eliminada === '1' });
 });
@@ -411,7 +415,7 @@ app.post('/login', limitarIntentos('login'), async (req, res) => {
     }
     req.session.usuario_id = usuario.id;
     req.session.nombre_usuario = nombreUsuario;
-    res.redirect('/');
+    res.redirect('/captura');
   } catch (err) {
     console.error('Error en login:', err.message);
     res.status(500).render('login', { error: 'Error del servidor, intenta de nuevo.' });
@@ -439,7 +443,7 @@ async function resolverInvitador(codigo) {
 
 app.get('/registro', async (req, res) => {
   if (req.session && req.session.usuario_id) {
-    return res.redirect('/');
+    return res.redirect('/captura');
   }
   const codigoInvitacion = typeof req.query.invitacion === 'string' ? req.query.invitacion : '';
   const invitador = await resolverInvitador(codigoInvitacion).catch(() => null);
@@ -543,7 +547,7 @@ app.get('/onboarding', async (req, res) => {
     );
     const usuario = rows[0];
     if (!usuario || usuario.onboarding_visto) {
-      return res.redirect('/');
+      return res.redirect('/captura');
     }
     res.render('onboarding', {
       especie: usuario.ia_especie || 'monstera',
@@ -551,7 +555,7 @@ app.get('/onboarding', async (req, res) => {
     });
   } catch (err) {
     console.error('Error mostrando onboarding:', err.message);
-    res.redirect('/');
+    res.redirect('/captura');
   }
 });
 
@@ -561,7 +565,7 @@ app.post('/onboarding/completar', async (req, res) => {
   } catch (err) {
     console.error('Error marcando onboarding como visto:', err.message);
   }
-  res.redirect('/');
+  res.redirect('/captura');
 });
 
 app.get('/recuperar', (req, res) => {

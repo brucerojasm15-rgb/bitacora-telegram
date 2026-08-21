@@ -39,6 +39,16 @@
      elemento con sombra del archivo. */
   --shadow-tactil: 0 4px 0 0 var(--accent-strong), 0 6px 14px -4px rgba(var(--accent-rgb), 0.4);
   --shadow-tactil-activo: 0 1px 0 0 var(--accent-strong), 0 2px 6px -2px rgba(var(--accent-rgb), 0.4);
+  /* rama-interfaz-v2: "glassmorphism futurista" -- paneles semi-
+     transparentes con blur, borde con brillo sutil, sobre un fondo con
+     profundidad (ver body). En claro el vidrio es más opaco (si no, el
+     texto pierde contraste contra un fondo claro variado) -- en oscuro es
+     donde el efecto se nota de verdad. */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-fuerte: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(var(--accent-rgb), 0.28);
+  --glass-blur: 18px;
+  --glass-shadow: 0 8px 32px -12px rgba(11, 74, 46, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.4);
   --transition-fast: 0.18s ease;
   --transition-medium: 0.35s ease;
   --display: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", "Nunito", system-ui, sans-serif;
@@ -71,6 +81,10 @@
     --warning: #D9A968;
     --warning-bg: #3B3324;
     --shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.5);
+    --glass-bg: rgba(28, 50, 38, 0.45);
+    --glass-bg-fuerte: rgba(28, 50, 38, 0.65);
+    --glass-border: rgba(var(--accent-rgb), 0.35);
+    --glass-shadow: 0 8px 40px -8px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(var(--accent-rgb), 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
   }
 }
 :root[data-theme="dark"] {
@@ -92,15 +106,32 @@
   --warning: #D9A968;
   --warning-bg: #3B3324;
   --shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.5);
+  --glass-bg: rgba(28, 50, 38, 0.45);
+  --glass-bg-fuerte: rgba(28, 50, 38, 0.65);
+  --glass-border: rgba(var(--accent-rgb), 0.35);
+  --glass-shadow: 0 8px 40px -8px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(var(--accent-rgb), 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* rama-interfaz-v2: fondo con profundidad ("aurora") -- 4 resplandores
+   radiales fijos, tintados con los acentos que ya existen (verde, racha,
+   semillas) sobre --bg. Sin esto, el blur de los paneles de vidrio no
+   tiene nada interesante detrás y el efecto no se nota -- un blur de un
+   color plano se ve simplemente plano. `background-attachment: fixed`
+   para que no se mueva al scrollear (misma sensación en toda la app, no
+   solo arriba de la página). */
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(ellipse 800px 500px at 10% -10%, rgba(var(--accent-rgb), 0.16), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 110% 10%, rgba(255, 107, 53, 0.12), transparent 60%),
+    radial-gradient(ellipse 600px 600px at -10% 60%, rgba(245, 184, 65, 0.1), transparent 55%),
+    radial-gradient(ellipse 900px 700px at 100% 100%, rgba(var(--accent-rgb), 0.14), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   margin: 0;
   padding: 2rem;
@@ -109,6 +140,18 @@ body {
      incluyen partials/nav ni por lo tanto la barra) es solo un poco de
      aire de más arriba -- no hace falta una regla condicional aparte. */
   padding-top: calc(2rem + 3.25rem + env(safe-area-inset-top));
+}
+
+/* rama-interfaz-v2: clase de vidrio reutilizable -- blur + borde con
+   brillo + sombra con resplandor de color, en vez de fondo sólido. Se
+   aplica a los contenedores principales (ver más abajo) sin tener que
+   reescribir cada selector desde cero. */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 main {
@@ -200,9 +243,13 @@ svg[viewBox="0 0 24 24"] {
   height: 3.25rem;
   padding: 0 1rem calc(0px + env(safe-area-inset-top));
   padding-top: env(safe-area-inset-top);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-soft);
-  box-shadow: var(--shadow);
+  /* rama-interfaz-v2: vidrio -- solo borde inferior (no los 4 lados, sigue
+     siendo una barra pegada arriba) pero con el mismo blur/brillo. */
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 .barra-superior-planta {
@@ -263,25 +310,45 @@ svg[viewBox="0 0 24 24"] {
   40% { transform: scale(1.25); }
 }
 
+/* rama-interfaz-v2: el nav de escritorio deja de ser una lista de texto
+   subrayado -- ahora es una barra de "chips" de vidrio, cada ítem con su
+   propio contorno que se ilumina en hover/activo. Menú distinto al resto
+   de paneles a propósito (pedido explícito: "innovar en un menú... diseño
+   único"), pero con el mismo lenguaje visual (vidrio + brillo verde). */
 .nav {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
   flex-wrap: wrap;
+  padding: 0.5rem;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 .nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  transition: color var(--transition-fast);
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .nav a:hover {
-  color: var(--text);
-  text-decoration: underline;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: var(--glass-border);
+  box-shadow: 0 0 16px -6px rgba(var(--accent-rgb), 0.5);
 }
 
 .logout-form {
@@ -289,20 +356,25 @@ svg[viewBox="0 0 24 24"] {
 }
 
 .logout-form button {
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid transparent;
   background: none;
   color: var(--danger);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  padding: 0;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
   font-family: inherit;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .logout-form button:hover {
-  text-decoration: underline;
-  opacity: 0.85;
+  opacity: 1;
+  background: rgba(var(--danger-rgb), 0.12);
+  border-color: rgba(var(--danger-rgb), 0.35);
 }
 
 /* rama-nav-mobile: la barra inferior fija y el menú "Más" solo se ven en
@@ -334,11 +406,13 @@ svg[viewBox="0 0 24 24"] {
     right: 0;
     bottom: 0;
     z-index: 40;
-    background: var(--bg-elevated);
-    border-top: 1px solid var(--border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border-top: 1px solid var(--glass-border);
     padding: 0.35rem max(0.35rem, env(safe-area-inset-right))
       calc(0.35rem + env(safe-area-inset-bottom)) max(0.35rem, env(safe-area-inset-left));
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--glass-shadow);
   }
 
   .nav-bottom-item {
@@ -394,10 +468,12 @@ svg[viewBox="0 0 24 24"] {
     right: 0.6rem;
     bottom: calc(4.6rem + env(safe-area-inset-bottom));
     z-index: 50;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
+    background: var(--glass-bg-fuerte);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow);
+    box-shadow: var(--glass-shadow);
     padding: 0.4rem;
     max-height: 70vh;
     overflow-y: auto;
@@ -463,10 +539,12 @@ svg[viewBox="0 0 24 24"] {
   max-width: 320px;
   margin: 4rem auto 0;
   padding: 2.25rem 2rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--glass-shadow);
   text-align: center;
 }
 
@@ -598,9 +676,11 @@ svg[viewBox="0 0 24 24"] {
 .invitar-amigo {
   margin: 0 0 1.5rem;
   padding: 1rem;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--glass-border);
   border-radius: var(--radius);
-  background: var(--bg-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
 }
 
 .invitar-amigo label {
@@ -645,9 +725,11 @@ svg[viewBox="0 0 24 24"] {
   display: inline-block;
   margin-bottom: 1rem;
   padding: 0.7rem 1.2rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  background: var(--bg-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   color: var(--text);
   font-size: 0.95rem;
   cursor: pointer;
@@ -689,9 +771,11 @@ svg[viewBox="0 0 24 24"] {
   display: inline-flex;
   align-items: center;
   padding: 0.65rem 1.1rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  background: var(--bg-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   color: var(--text);
   font-size: 0.95rem;
   text-decoration: none;
@@ -865,8 +949,10 @@ svg[viewBox="0 0 24 24"] {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-align: center;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  background: var(--glass-bg-fuerte);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   padding: 1rem;
   margin: 1rem 0;
@@ -879,10 +965,12 @@ svg[viewBox="0 0 24 24"] {
 
 .notificacion {
   color: var(--accent);
-  background: var(--bg-elevated-2);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   padding: 0.7rem 1rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   margin-bottom: 1rem;
 }
 
@@ -1020,8 +1108,10 @@ svg[viewBox="0 0 24 24"] {
   max-width: 78%;
   padding: 0.65rem 0.9rem;
   border-radius: var(--radius);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-soft);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   animation: burbuja-entra var(--transition-medium);
 }
 
@@ -1036,6 +1126,10 @@ svg[viewBox="0 0 24 24"] {
   border-color: var(--accent-strong);
   color: white;
   border-bottom-right-radius: 3px;
+  /* rama-interfaz-v2: la burbuja propia es solida a proposito (contraste
+     con las de vidrio del resto) -- el glow reemplaza al blur para que
+     igual se sienta parte de la misma familia visual. */
+  box-shadow: 0 0 18px -6px rgba(var(--accent-rgb), 0.5);
 }
 
 .chat-mensajes .autor {
@@ -1096,11 +1190,13 @@ svg[viewBox="0 0 24 24"] {
 table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bg-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border-soft);
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
 }
 
 th, td {
@@ -1293,22 +1389,44 @@ tr.fila-saliendo {
   gap: 0.5rem;
 }
 
+/* rama-interfaz-v2: estos 3 son el primer elemento interactivo que ve el
+   usuario al abrir la app (Captura rápida es ahora la pantalla de inicio)
+   -- se les dio el tratamiento más "hero" de toda la interfaz: vidrio más
+   marcado, ícono más grande, y un resplandor de color propio por tipo
+   (verde/racha/semillas) en vez de un solo acento repetido 3 veces. */
 .captura-tipo-btn {
-  padding: 0.85rem 0.5rem;
-  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 1.1rem 0.5rem;
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  background: var(--bg-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  box-shadow: var(--glass-shadow);
   color: var(--text);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   text-align: center;
-  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+.captura-tipo-btn svg {
+  width: 26px;
+  height: 26px;
+}
+
+.captura-tipo-btn[data-tipo="pendiente"] { color: var(--accent); }
+.captura-tipo-btn[data-tipo="idea"] { color: var(--color-semillas); }
+.captura-tipo-btn[data-tipo="recordatorio"] { color: var(--color-racha); }
+
 .captura-tipo-btn:hover {
-  background: var(--bg-elevated-2);
-  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--glass-shadow), 0 0 22px -6px currentColor;
+  border-color: currentColor;
 }
 
 .captura-tipo-btn:active {
@@ -1397,10 +1515,12 @@ tr.fila-saliendo {
   display: flex;
   align-items: center;
   gap: 1.2rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-soft);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--glass-shadow);
   padding: 1.2rem;
   flex-wrap: wrap;
 }
@@ -1503,8 +1623,10 @@ tr.fila-saliendo {
 
 .ia-construccion,
 .ia-tienda {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-soft);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   padding: 1rem 1.2rem;
   margin-top: 1rem;
@@ -1629,10 +1751,12 @@ tr.fila-saliendo {
 
 /* rama-ajustes: página de perfil/ajustes */
 .ajustes-grupo {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-soft);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--glass-shadow);
   padding: 1.2rem;
   margin-bottom: 1rem;
 }
@@ -1641,10 +1765,12 @@ tr.fila-saliendo {
    con nombre propio porque tiene sus propios elementos (badge de estado,
    barra de progreso) que no aplican a las secciones de Ajustes. */
 .meta-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-soft);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--glass-shadow);
   padding: 1.2rem;
   margin-bottom: 1rem;
 }

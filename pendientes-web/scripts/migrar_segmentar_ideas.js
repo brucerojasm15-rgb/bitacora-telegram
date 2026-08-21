@@ -46,7 +46,11 @@ async function llamarGroqConReintento(system, texto) {
       },
       body: JSON.stringify({
         model: MODELO_IA_SEGMENTACION,
-        max_tokens: 1024,
+        // Subido de 1024 a 4096 -- confirmado con la prueba de 10 ideas
+        // reales (2026-08-20) que 1024 no alcanza para bloques largos: Groq
+        // cortaba el JSON a la mitad ("Failed to validate JSON") en varias
+        // de las ideas de 800+ caracteres.
+        max_tokens: 4096,
         reasoning_effort: 'low',
         response_format: { type: 'json_object' },
         messages: [
@@ -60,7 +64,12 @@ async function llamarGroqConReintento(system, texto) {
       const mensaje = (datos.error && datos.error.message) || '';
       const match = mensaje.match(/try again in ([\d.]+)s/i);
       const esperaMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 300 : 2000 * (intento + 1);
-      console.error(`  (rate limit, esperando ${(esperaMs / 1000).toFixed(2)}s y reintentando...)`);
+      // console.log (no console.error): iban a stderr mientras el resto del
+      // script usa stdout -- al capturar todo junto (2>&1) el orden entre
+      // los dos streams no está garantizado y los mensajes salían
+      // desordenados respecto al resultado de la idea que los generó
+      // (confirmado 2026-08-20, causó ambigüedad real leyendo los logs).
+      console.log(`  (rate limit, esperando ${(esperaMs / 1000).toFixed(2)}s y reintentando...)`);
       await esperar(esperaMs);
       continue;
     }
@@ -71,8 +80,16 @@ async function llamarGroqConReintento(system, texto) {
 // Copia de segmentarIdeaConGroq en server.js (misma lógica exacta, incluido
 // el reintento) — si se ajusta una, ajustar la otra. Documentado también en
 // COORDINACION.md al cerrar esta rama, para que quien mergee lo sepa.
+// Etiqueta centinela: nunca la pone Groq (el prompt solo pide temas cortos
+// tipo "trabajo"/"salud"), así que sirve para encontrar después, con un
+// simple WHERE etiqueta = '_revision_manual', todo lo que Groq NO pudo
+// segmentar de verdad -- a diferencia de null, que ahora solo significa
+// "el modelo decidió no partirlo" (una decisión real, no una falla).
+const ETIQUETA_REVISION_MANUAL = '_revision_manual';
+
 async function segmentarIdeaConGroq(texto) {
   const sinSegmentar = [{ texto, etiqueta: null }];
+  const requiereRevision = [{ texto, etiqueta: ETIQUETA_REVISION_MANUAL }];
   if (!groqClient) return sinSegmentar;
 
   const system = `Recibís una "idea" que un usuario escribió de corrido en una app de bitácora personal.
@@ -100,23 +117,42 @@ Respondé ÚNICAMENTE con JSON en este formato exacto, sin texto adicional ni ma
             : null,
       }))
       .filter((p) => p.texto);
-    return limpios.length ? limpios : sinSegmentar;
+    if (!limpios.length) {
+      // JSON válido, pero sin ningún pensamiento aprovechable (respuesta
+      // vacía o solo con texto vacío) -- no es una excepción, así que antes
+      // caía acá en silencio, indistinguible de "Groq decidió no partirlo".
+      console.log('  (Groq devolvió JSON válido pero sin pensamientos aprovechables -- marcada para revisión manual)');
+      return requiereRevision;
+    }
+    return limpios;
   } catch (err) {
-    console.error(`  (error de Groq, se deja sin segmentar: ${err.message})`);
-    return sinSegmentar;
+    // Cualquier excepción real: red, status no-2xx, o JSON.parse -- estas sí
+    // se logueaban antes, pero se deja igual de explícito para que "por qué
+    // falló" quede junto al resultado en el mismo stream (ver nota de
+    // console.log/console.error en llamarGroqConReintento).
+    console.log(`  (error de Groq, marcada para revisión manual: ${err.message})`);
+    return requiereRevision;
   }
 }
 
 async function asegurarBackup() {
-  const { rows } = await pool.query('SELECT COUNT(*)::int AS total FROM ideas_backup_pre_segmentacion');
-  if (rows[0].total > 0) {
-    console.log(`ideas_backup_pre_segmentacion ya tiene ${rows[0].total} fila(s) — no se vuelve a poblar.`);
+  // Antes: si el backup ya tenía filas, se asumía completo y no se tocaba
+  // más. Eso quedó desactualizado -- el backup se pobló una vez (233 filas,
+  // prueba del 2026-08-17) y desde entonces se agregaron ideas nuevas (295
+  // reales el 2026-08-20) que nunca quedaron respaldadas. Ahora completa lo
+  // que falte en vez de asumir que "tiene filas" == "está completo".
+  const { rows } = await pool.query(
+    'SELECT id FROM ideas WHERE id NOT IN (SELECT id FROM ideas_backup_pre_segmentacion)'
+  );
+  if (rows.length === 0) {
+    console.log('ideas_backup_pre_segmentacion ya cubre todas las ideas actuales — no falta nada.');
     return;
   }
   const { rowCount } = await pool.query(
-    'INSERT INTO ideas_backup_pre_segmentacion (id, fecha, idea, estado, usuario_id) SELECT id, fecha, idea, estado, usuario_id FROM ideas'
+    `INSERT INTO ideas_backup_pre_segmentacion (id, fecha, idea, estado, usuario_id)
+     SELECT id, fecha, idea, estado, usuario_id FROM ideas WHERE id NOT IN (SELECT id FROM ideas_backup_pre_segmentacion)`
   );
-  console.log(`Respaldo creado: ${rowCount} fila(s) copiadas a ideas_backup_pre_segmentacion.`);
+  console.log(`Respaldo completado: ${rowCount} fila(s) nueva(s) copiadas a ideas_backup_pre_segmentacion (las que faltaban).`);
 }
 
 async function main() {
@@ -125,6 +161,8 @@ async function main() {
   const desde = argDesde ? Number(argDesde.split('=')[1]) : null;
   const argLimit = process.argv.find((a) => a.startsWith('--limit='));
   const limit = argLimit ? Number(argLimit.split('=')[1]) : null;
+  const argIds = process.argv.find((a) => a.startsWith('--ids='));
+  const ids = argIds ? argIds.split('=')[1].split(',').map(Number) : null;
 
   if (!groqClient) {
     console.log(
@@ -135,11 +173,18 @@ async function main() {
 
   await asegurarBackup();
 
-  let sql = desde ? 'SELECT id, fecha, idea, estado, usuario_id FROM ideas WHERE id >= $1 ORDER BY id' : 'SELECT id, fecha, idea, estado, usuario_id FROM ideas ORDER BY id';
-  const params = desde ? [desde] : [];
-  if (limit) {
-    sql += ` LIMIT $${params.length + 1}`;
-    params.push(limit);
+  let sql;
+  let params;
+  if (ids) {
+    sql = `SELECT id, fecha, idea, estado, usuario_id FROM ideas WHERE id = ANY($1::int[]) ORDER BY id`;
+    params = [ids];
+  } else {
+    sql = desde ? 'SELECT id, fecha, idea, estado, usuario_id FROM ideas WHERE id >= $1 ORDER BY id' : 'SELECT id, fecha, idea, estado, usuario_id FROM ideas ORDER BY id';
+    params = desde ? [desde] : [];
+    if (limit) {
+      sql += ` LIMIT $${params.length + 1}`;
+      params.push(limit);
+    }
   }
   const { rows: ideas } = await pool.query(sql, params);
   console.log(
@@ -148,11 +193,15 @@ async function main() {
 
   let totalPensamientos = 0;
   let totalPartidas = 0;
+  const idsRevisionManual = [];
 
   for (const fila of ideas) {
     const pensamientos = await segmentarIdeaConGroq(fila.idea);
     totalPensamientos += pensamientos.length;
     if (pensamientos.length > 1) totalPartidas += 1;
+    if (pensamientos.some((p) => p.etiqueta === ETIQUETA_REVISION_MANUAL)) {
+      idsRevisionManual.push(fila.id);
+    }
 
     console.log(`[idea #${fila.id}] "${fila.idea}"`);
     pensamientos.forEach((p, i) =>
@@ -185,6 +234,13 @@ async function main() {
     `\nResumen: ${ideas.length} idea(s) originales -> ${totalPensamientos} pensamiento(s) atómico(s) ` +
       `(promedio ${promedio} por idea, ${totalPartidas} idea(s) se partieron en más de un pensamiento).`
   );
+  if (idsRevisionManual.length) {
+    console.log(
+      `⚠️  ${idsRevisionManual.length} idea(s) requieren revisión manual (Groq falló incluso tras reintentar, ` +
+        `quedaron con etiqueta '${ETIQUETA_REVISION_MANUAL}', texto original preservado): ` +
+        idsRevisionManual.join(', ')
+    );
+  }
   if (!ejecutar) {
     console.log('Dry-run: no se modificó la tabla `ideas`. Corré con --ejecutar para aplicar de verdad.');
   }

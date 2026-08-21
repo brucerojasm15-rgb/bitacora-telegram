@@ -1558,7 +1558,11 @@ async function llamarGroqConReintento(system, texto) {
       },
       body: JSON.stringify({
         model: MODELO_IA_SEGMENTACION,
-        max_tokens: 1024,
+        // Subido de 1024 a 4096 -- 1024 no alcanzaba para ideas largas
+        // (Groq cortaba el JSON a la mitad), confirmado con la prueba de
+        // ideas reales del 2026-08-20. Mismo cambio en el script de
+        // migración, ver su comentario.
+        max_tokens: 4096,
         reasoning_effort: 'low',
         response_format: { type: 'json_object' },
         messages: [
@@ -1585,8 +1589,16 @@ async function llamarGroqConReintento(system, texto) {
 // cualquier fallo (sin GROQ_API_KEY, Groq caído, JSON inválido) cae a
 // devolver el texto original sin cortar y etiqueta null — la Idea del
 // usuario nunca se pierde por un problema de la IA.
+// Etiqueta centinela para cuando Groq falla incluso tras reintentar (o
+// devuelve JSON válido sin pensamientos aprovechables) -- distingue "la IA
+// no pudo segmentar esto" de `etiqueta: null` (que ahora solo significa "el
+// modelo decidió que ya era un pensamiento atómico"). Mismo criterio que el
+// script de migración, ver su comentario.
+const ETIQUETA_REVISION_MANUAL = '_revision_manual';
+
 async function segmentarIdeaConGroq(texto) {
   const sinSegmentar = [{ texto, etiqueta: null }];
+  const requiereRevision = [{ texto, etiqueta: ETIQUETA_REVISION_MANUAL }];
   if (!groqClient) return sinSegmentar;
 
   const system = `Recibís una "idea" que un usuario escribió de corrido en una app de bitácora personal.
@@ -1614,10 +1626,14 @@ Respondé ÚNICAMENTE con JSON en este formato exacto, sin texto adicional ni ma
             : null,
       }))
       .filter((p) => p.texto);
-    return limpios.length ? limpios : sinSegmentar;
+    if (!limpios.length) {
+      console.error('Groq devolvió JSON válido pero sin pensamientos aprovechables -- marcada para revisión manual.');
+      return requiereRevision;
+    }
+    return limpios;
   } catch (err) {
-    console.error('Error segmentando idea con Groq (se guarda sin segmentar):', err.message);
-    return sinSegmentar;
+    console.error('Error segmentando idea con Groq (marcada para revisión manual):', err.message);
+    return requiereRevision;
   }
 }
 

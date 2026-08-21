@@ -11,6 +11,17 @@
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else { %>
+      <!-- rama-racha (Fase 3 de v0.2): racha DIARIA, distinta del contador
+           semanal de /estadisticas -- no lo reemplaza, es otro dato. -->
+      <p class="racha-propia">
+        <%- include('partials/icono', { nombre: 'llama' }) %>
+        <% if (miRacha > 0) { %>
+          Llevás <strong><%= miRacha %></strong> día<%= miRacha === 1 ? '' : 's' %> seguido<%= miRacha === 1 ? '' : 's' %> completando algo.
+        <% } else { %>
+          Todavía no armaste una racha — completar algo hoy es un buen comienzo.
+        <% } %>
+      </p>
+
       <form method="POST" action="/amigos/solicitar" class="nuevo">
         <input type="text" name="nombre_usuario" placeholder="Nombre de usuario..." autocapitalize="none" autocorrect="off" spellcheck="false" required>
         <button type="submit">Agregar</button>
@@ -82,6 +93,9 @@
           <% amigos.forEach((a) => { %>
             <li>
               <span class="autor"><%= a.nombre_usuario %></span>
+              <span class="racha-amigo" title="Racha diaria">
+                <%- include('partials/icono', { nombre: 'llama' }) %> <%= a.racha %>
+              </span>
               <a href="/chat?amistad_id=<%= a.amistad_id %>" class="btn-link"><%- include('partials/icono', { nombre: 'chat' }) %> Chat</a>
               <a href="/trazabilidad?amistad_id=<%= a.amistad_id %>" class="btn-link"><%- include('partials/icono', { nombre: 'grafico' }) %> Actividad</a>
             </li>

@@ -2281,6 +2281,43 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "Fase 2 v0.2: metas
   personales con auto-incremento por etiqueta").
 
+### rama-racha
+- Estado: implementada, commit local hecho, **NO pusheada — esperando
+  "aprobado" del usuario, regla 8**. Worktree sobre
+  `origin/rama-segmentacion-ideas` (mismo criterio que rama-metas).
+- Tarea: Fase 3 de v0.2 — racha DIARIA visible y comparable entre amigos,
+  independiente del contador semanal de `/estadisticas` (tarea 6) — no lo
+  reemplaza.
+- Decisión clave: en vez de inventar un cuarto criterio de "día con
+  actividad", se reusó exactamente el mismo que ya usan `/estadisticas`
+  (`racha`) y `/ia` (`observacionesIA`): `pendientes.hecho = TRUE`, con
+  `creado` como aproximación de fecha de completado, mismo helper
+  `calcularRacha`. Nuevo: `rachasDeUsuarios(idsUsuarios)`, una sola
+  consulta para calcular la racha del usuario propio + todos sus amigos a
+  la vez (no N+1 por amigo).
+- `/estadisticas` NO se tocó — se confirmó explícitamente con una prueba
+  contra la DB real que sigue respondiendo 200 sin cambios de comportamiento.
+- Vista: `/amigos` ahora muestra "Llevás N días seguidos..." arriba
+  (ícono de llama) y la racha de cada amigo al lado de su nombre en "Mis
+  amigos" — sin reordenar la lista (se queda alfabética, comparar no
+  implica ordenar).
+- Color nuevo: `--color-racha: #FF6B35` en `:root` — adelantado de la
+  paleta acordada para Fase 4 (mismo valor en claro/oscuro, no se
+  redefine en el media query oscuro a propósito).
+- Qué se verificó, contra la DB real de Railway, con 2 usuarios
+  descartables amigos entre sí (`test_racha_a_tmp`/`test_racha_b_tmp`,
+  borrados al terminar): pendientes completados con `creado` fabricado
+  (hoy/ayer/anteayer para A, solo hoy para B) para simular racha sin
+  esperar días reales → `/amigos` mostró "3 días" para A propio y "1" para
+  B en su fila, ambos correctos. `/estadisticas` de A confirmado sin
+  romperse (200). `npm run ci` en verde.
+- Corrigiendo el incidente de la limpieza en rama-metas: esta vez el
+  `DELETE FROM session` se filtró por `sess::text LIKE` con el
+  `usuario_id` exacto de cada usuario de prueba — no se tocó ninguna
+  sesión ajena.
+- Commit: ver `git log` de esta rama (mensaje: "Fase 3 v0.2: racha diaria
+  comparable entre amigos").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

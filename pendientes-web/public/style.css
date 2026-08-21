@@ -26,6 +26,11 @@
   --success-bg: #E1EBE2;
   --warning: #B8863E;
   --warning-bg: #F1E3D0;
+  /* rama-racha (Fase 3 de v0.2): color acordado para la racha en la paleta
+     de Fase 4 (ver COORDINACION.md) -- se adelanta acá porque ya hace
+     falta un acento propio para el ícono de llama, igual en claro y
+     oscuro (no se redefine en el media query de abajo a propósito). */
+  --color-racha: #FF6B35;
   --radius: 20px;
   --radius-sm: 14px;
   --shadow: 0 8px 24px -12px rgba(32, 41, 31, 0.18);
@@ -888,6 +893,30 @@ svg[viewBox="0 0 24 24"] {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+/* rama-racha (Fase 3 de v0.2): racha diaria propia (arriba de /amigos) y
+   por amigo (dentro de cada fila de "Mis amigos"). */
+.racha-propia {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-racha);
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.racha-propia svg {
+  flex-shrink: 0;
+}
+
+.racha-amigo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-racha);
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .chat-mensajes li {

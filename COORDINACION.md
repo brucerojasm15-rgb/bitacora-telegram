@@ -2571,9 +2571,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   pendientes estancados -- fast-follow de v0.2").
 
 ### rama-fix-recuperacion-pin
-- Estado: implementada, testeada contra la DB real, **NO pusheada —
-  esperando "aprobado" del usuario, regla 8**. Worktree sobre `origin/main`
-  actualizado (ya incluye rama-sugerencia-estancados).
+- Estado: **mergeada a main vía PR #63 (2026-08-21), desplegada en
+  Railway, verificada SUCCESS**. Ver "Historial de merges a main".
 - Tarea: bug reportado por el usuario y un amigo (Lolo) probando la app en
   producción -- "el código único de recuperación no funciona". Causa real:
   `POST /recuperar` exigía el PIN actual ADEMÁS del código (cambio de
@@ -2606,10 +2605,10 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   ya no exige el PIN que se quiere recuperar").
 
 ### rama-fix-chat-ui
-- Estado: implementada, testeada visualmente contra la DB real, aprobada
-  por el usuario ("se ve bien"), **NO pusheada — esperando "aprobado" del
-  usuario para el push/PR, regla 8** (la aprobación de arriba fue solo del
-  aspecto visual). Worktree sobre `origin/main` actualizado.
+- Estado: **mergeada a main vía PR #64 (2026-08-21), desplegada en
+  Railway, verificada SUCCESS**. Ver "Historial de merges a main" (incluye
+  el conflicto de `COORDINACION.md` con rama-fix-recuperacion-pin y cómo
+  se resolvió).
 - Tarea: bug reportado por el usuario y Lolo probando la app -- "hay una
   barra de búsqueda encima de cada chat mostrando un número, y no queda
   bien". Causa: en `views/chat.ejs`, el formulario de búsqueda de mensajes
@@ -2878,6 +2877,17 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-21 — merge de rama-fix-chat-ui (01ec7ea) → main vía PR #64:
+  CONFLICTING con rama-fix-recuperacion-pin solo por `COORDINACION.md`
+  (ambas insertaban su sección en el mismo punto) -- resuelto con
+  `git rebase origin/main` (conservando ambas secciones), CI verde tras
+  el rebase, force-push con `--force-with-lease`. Commit de merge
+  `9cdacbf`. Desplegado en Railway y verificado SUCCESS.
+- 2026-08-21 — merge de rama-fix-recuperacion-pin (40e9de3) → main vía PR
+  #63: sin conflictos. CI verde. Commit de merge `7389172`. Desplegado en
+  Railway y verificado SUCCESS. Ambos son bugs reportados por el usuario y
+  un amigo (Lolo) probando la app en producción -- ver las secciones de
+  cada rama para el detalle.
 - 2026-08-21 — merge de rama-sugerencia-estancados (bea7f30) → main vía PR
   #62: sin conflictos. CI verde. Commit de merge `8cc6023`. Desplegado en
   Railway y verificado SUCCESS. Tercer entregable de v0.3 -- sugerencia de

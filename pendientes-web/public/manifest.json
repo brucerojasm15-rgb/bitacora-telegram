@@ -2,7 +2,7 @@
   "name": "Pendientes",
   "short_name": "Pendientes",
   "description": "Lista de pendientes personal",
-  "start_url": "/",
+  "start_url": "/captura",
   "scope": "/",
   "display": "standalone",
   "background_color": "#F3FBF3",

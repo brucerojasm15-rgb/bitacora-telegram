@@ -44,6 +44,10 @@ const ICONOS = {
   // la barra superior -- misma forma que la SEMILLA de partials/planta.ejs
   // (ovalo + brote), a escala de icono 24x24 outline.
   semilla: '<ellipse cx="12" cy="15" rx="4.5" ry="6"></ellipse><path d="M12 9c1.5 2 1.5 4 0 6"></path>',
+  // rama-metas-progreso-manual: "+" simple para el botón de sumar progreso
+  // a mano -- no había ningún icono de "agregar/sumar" todavía (`mas` es
+  // el de "más opciones", 3 puntos, no sirve acá).
+  sumar: '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>',
 };
 const nombreIcono = (typeof nombre !== 'undefined' && ICONOS[nombre]) ? nombre : null;
 %><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><%- nombreIcono ? ICONOS[nombreIcono] : '' %></svg>

@@ -1847,6 +1847,41 @@ tr.fila-saliendo {
   color: var(--accent);
 }
 
+/* rama-metas-progreso-manual */
+.meta-sumar-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0.5rem 0.6rem 0;
+}
+
+.meta-sumar-form input[type="number"] {
+  width: 4.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+
+.meta-sumar-form button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.meta-sumar-form button:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
 /* rama-metas-compartidas */
 .meta-seccion-titulo {
   display: flex;

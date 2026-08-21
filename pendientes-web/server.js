@@ -2213,6 +2213,27 @@ app.post('/metas/:id/estado', async (req, res) => {
   res.redirect('/metas');
 });
 
+// rama-metas-progreso-manual (fast-follow pedido por el usuario, después
+// de probar la app con un amigo): hasta ahora la ÚNICA forma de sumar
+// progreso a una meta era indirecta -- capturar una Idea con la etiqueta
+// exacta de la meta. Sin un botón directo, nadie "veía subir" la meta en
+// la práctica. `cantidad` se acota entre 1 y 1000 (mismo criterio que el
+// resto de la app: nunca confiar ciegamente en un número que manda el
+// cliente, aunque acá no hay riesgo de seguridad real, es solo para
+// evitar un typo gigante rompiendo la barra de progreso).
+app.post('/metas/:id/sumar', async (req, res) => {
+  const cantidad = Math.max(1, Math.min(1000, Number(req.body.cantidad) || 1));
+  try {
+    await pool.query(
+      'UPDATE metas SET valor_actual = valor_actual + $1 WHERE id = $2 AND usuario_id = $3 AND estado = $4',
+      [cantidad, req.params.id, req.usuarioId, 'activa']
+    );
+  } catch (err) {
+    console.error('Error sumando progreso a meta:', err.message);
+  }
+  res.redirect('/metas');
+});
+
 // Deshace el auto-incremento aplicado por el toast de POST /captura --
 // `cantidad` es exactamente lo que esa captura le sumó a esta meta (puede
 // ser más de 1 si varios pensamientos de la misma Idea compartían
@@ -2321,6 +2342,46 @@ app.post('/metas/compartida/:id/estado', async (req, res) => {
   } catch (err) {
     console.error('Error cambiando estado de meta compartida:', err.message);
     return res.status(500).send('No se pudo actualizar.');
+  }
+  res.redirect('/metas');
+});
+
+// rama-metas-progreso-manual: mismo fast-follow que /metas/:id/sumar, pero
+// para el caso que de verdad lo motivó -- el usuario y un amigo probando
+// una meta compartida no tenían forma directa de sumar progreso, solo la
+// vía indirecta de coincidencia de etiqueta al capturar una Idea. Suma al
+// total del grupo Y al aporte individual de quien la usa en la misma
+// transacción, para que ambos números nunca queden desincronizados entre
+// sí (mismo cuidado que el resto de rutas de metas compartidas).
+app.post('/metas/compartida/:id/sumar', async (req, res) => {
+  const cantidad = Math.max(1, Math.min(1000, Number(req.body.cantidad) || 1));
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // El UPDATE de `aportado` se condiciona a `mc.estado = 'activa'` acá
+    // mismo (no en un if aparte después) -- si no, una meta ya archivada
+    // podría sumar al aporte individual sin sumar al total del grupo,
+    // desincronizando los dos números entre sí.
+    const { rows } = await client.query(
+      `UPDATE metas_compartidas_participantes p SET aportado = aportado + $1
+       FROM metas_compartidas mc
+       WHERE p.meta_compartida_id = mc.id AND p.meta_compartida_id = $2
+         AND p.usuario_id = $3 AND mc.estado = 'activa'
+       RETURNING p.meta_compartida_id`,
+      [cantidad, req.params.id, req.usuarioId]
+    );
+    if (rows.length) {
+      await client.query('UPDATE metas_compartidas SET valor_actual = valor_actual + $1 WHERE id = $2', [
+        cantidad,
+        req.params.id,
+      ]);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error sumando progreso a meta compartida:', err.message);
+  } finally {
+    client.release();
   }
   res.redirect('/metas');
 });

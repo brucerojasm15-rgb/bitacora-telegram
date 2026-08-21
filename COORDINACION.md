@@ -2684,6 +2684,14 @@ Si eres una sesión de Claude Code nueva que se acaba de abrir en este repo:
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [ ] Fast-follow de v0.2 (documentar, NO construir todavía, agregado
+  2026-08-20): cuando un pendiente lleva mucho tiempo sin resolverse, la IA
+  sugiere un paso accionable concreto (ej. link a simulacros para "sacar
+  licencia de conducir"). — sin asignar
+- [ ] Fast-follow de v0.2 (documentar, NO construir todavía, agregado
+  2026-08-20): meta COMPARTIDA entre varios amigos (ej. ahorrar juntos para
+  algo), distinta de la meta individual de Fase 2 (que es por usuario). —
+  sin asignar
 - [x] BUG: `GET /estadisticas` no existe en `server.js` (404 confirmado en
   producción y local) aunque `views/estadisticas.ejs` y el link de nav
   siguen ahí — se perdió en algún merge/reconstrucción posterior a

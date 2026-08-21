@@ -2448,6 +2448,66 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "v0.3: interfaz -- Captura
   rapida como home, glassmorphism en toda la app").
 
+### rama-metas-compartidas
+- Estado: implementada, testeada contra la DB real, **NO pusheada — esperando
+  "aprobado" del usuario, regla 8**. Worktree sobre `origin/main` actualizado
+  (ya incluye v0.3/rama-interfaz-v2).
+- Tarea: v0.3, segundo pedido del usuario ("prioriza el fast-follow de metas
+  compartidas") — metas entre varios amigos, donde el progreso de cada
+  captura de Idea con la etiqueta coincidente suma al total del grupo, no
+  solo a la meta personal de quien la escribió.
+- **Schema**: `metas_compartidas` (mismos campos que `metas` personales, más
+  `creado_por`) y `metas_compartidas_participantes` (`meta_compartida_id`,
+  `usuario_id`, `aportado` — cuánto sumó cada quien al total del grupo).
+- **Creación** (`POST /metas/compartida`): el creador elige de su lista real
+  de amigos aceptados (checkboxes) — igual que `POST /captura` con la
+  asignación de pendientes, los ids elegidos se re-validan contra la DB en
+  el servidor, nunca se confía en lo que manda el cliente. Si ninguno de los
+  ids elegidos sigue siendo amigo real (o eran inventados), se descarta el
+  guardado completo con error, en vez de crear una meta a medias.
+- **Auto-incremento** (`POST /captura`): extendido el bloque existente de
+  auto-incremento por etiqueta — ahora además de las metas personales del
+  usuario, también busca metas compartidas donde participa y que coincidan
+  en etiqueta, y suma tanto al `valor_actual` del grupo como al `aportado`
+  individual de quien capturó. El toast de confirmación (con opción de
+  deshacer) distingue "tu meta" vs. "la meta compartida" según de cuál se
+  trate.
+- **Bug encontrado y corregido en testing (integridad de datos)**: en
+  `POST /metas/compartida/:id/deshacer`, la versión original restaba
+  `cantidad` del total del grupo sin verificar cuánto había aportado
+  realmente quien pedía deshacer — un participante con `aportado = 0` podía
+  decrementar el total del grupo igual, dejando el total y la suma de
+  aportes individuales inconsistentes entre sí. Confirmado con una prueba
+  directa (A aportó 1, B aportó 0, B pidió deshacer → el total bajó a 0
+  igual, quedando desincronizado con el aporte real de A). Arreglado con
+  `SELECT aportado ... FOR UPDATE` + `Math.min(cantidad, aportado real)`
+  antes de escribir, dentro de una transacción — reverificado: el "deshacer"
+  de B ahora es un no-op, y el de A sigue funcionando bien.
+- **Bug encontrado y corregido en testing (crash del servidor)**: en
+  `POST /metas/compartida`, cuando ningún participante elegido pasaba la
+  re-validación de amistad, el código llamaba `client.release()` de forma
+  explícita antes del `return` Y el `finally` del mismo bloque también
+  llamaba `client.release()` — un doble release que **tumbaba todo el
+  proceso Node** (`pg-pool` lanza esa excepción de forma síncrona y no hay
+  manejo de `unhandledException` global). Se encontró probando justamente el
+  caso de un id de participante inventado (`999999`). Arreglado quitando el
+  release explícito duplicado — el `finally` ya cubre todos los caminos
+  (éxito, error validado con `return`, y excepción). Reverificado: la misma
+  prueba ahora devuelve 400 con el mensaje de error esperado y el servidor
+  sigue respondiendo con normalidad después.
+- Qué se verificó, contra la DB real de producción con dos cuentas
+  descartables amigas entre sí (`test_mc_a_tmp`/`test_mc_b_tmp`, borradas al
+  terminar junto con su amistad, sesiones acotadas por `usuario_id`, y la
+  meta compartida de prueba): creación de meta compartida válida (feliz),
+  creación con id de participante inválido (rechazada, sin crear nada
+  parcial, sin tumbar el servidor), cambio de estado por un participante que
+  no es el creador (permitido, correcto), el bug de "deshacer" descrito
+  arriba (encontrado y corregido). `npm run ci` en verde.
+- Pendiente antes de pushear: mostrar el diff completo al usuario y esperar
+  "aprobado" (regla 8).
+- Commit: ver `git log` de esta rama (mensaje: "v0.3: metas compartidas --
+  fast-follow de metas entre amigos").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

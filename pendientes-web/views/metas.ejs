@@ -39,6 +39,88 @@
       </form>
     </section>
 
+    <% if (typeof amigos !== 'undefined' && amigos.length > 0) { %>
+      <!-- rama-metas-compartidas: solo se ofrece si hay al menos un amigo
+           -- una "meta compartida" sin nadie más con quien compartirla no
+           tiene sentido. -->
+      <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'personas' }) %> Nueva meta compartida</h2>
+        <p class="ajustes-nota">Ahorrar juntos para algo, entrenar juntos, lo que sea -- cada quien suma con sus propias capturas, el progreso es de todos.</p>
+        <form method="POST" action="/metas/compartida" class="ajustes-form">
+          <label for="meta-c-titulo">Título</label>
+          <input type="text" name="titulo" id="meta-c-titulo" placeholder="Ej: Ahorrar para el viaje" required>
+
+          <label for="meta-c-etiqueta">Etiqueta que la vincula (opcional)</label>
+          <input type="text" name="etiqueta" id="meta-c-etiqueta" placeholder="Ej: viaje">
+
+          <label for="meta-c-tipo-metrica">Qué están contando (opcional)</label>
+          <input type="text" name="tipo_metrica" id="meta-c-tipo-metrica" placeholder="Ej: soles, veces">
+
+          <label for="meta-c-valor-objetivo">Objetivo</label>
+          <input type="number" name="valor_objetivo" id="meta-c-valor-objetivo" min="1" value="10" required>
+
+          <label for="meta-c-fecha-objetivo">Fecha límite (opcional)</label>
+          <input type="date" name="fecha_objetivo" id="meta-c-fecha-objetivo">
+
+          <fieldset class="meta-amigos-picker">
+            <legend>¿Con quién la compartís?</legend>
+            <% amigos.forEach((a) => { %>
+              <label class="meta-amigo-opcion">
+                <input type="checkbox" name="participantes" value="<%= a.id %>">
+                <%= a.nombre_usuario %>
+              </label>
+            <% }) %>
+          </fieldset>
+
+          <button type="submit">Crear meta compartida</button>
+        </form>
+      </section>
+    <% } %>
+
+    <% if (typeof metasCompartidas !== 'undefined' && metasCompartidas.length > 0) { %>
+      <h2 class="meta-seccion-titulo"><%- include('partials/icono', { nombre: 'personas' }) %> Metas compartidas</h2>
+      <% metasCompartidas.forEach((m) => { %>
+        <% const porcentaje = m.valor_objetivo > 0 ? Math.min(100, Math.round((m.valor_actual / m.valor_objetivo) * 100)) : 0; %>
+        <section class="meta-card <%= m.estado !== 'activa' ? 'meta-inactiva' : '' %>">
+          <div class="meta-card-header">
+            <h2><%= m.titulo %></h2>
+            <span class="meta-estado-badge"><%= m.estado %></span>
+          </div>
+          <p class="meta-progreso-texto">
+            <%= m.valor_actual %> / <%= m.valor_objetivo %><%= m.tipo_metrica ? ' ' + m.tipo_metrica : '' %>
+            (<%= porcentaje %>%)
+            <% if (m.etiqueta) { %> — etiqueta: <code><%= m.etiqueta %></code><% } %>
+            <% if (m.fecha_objetivo) { %> — límite: <%= new Date(m.fecha_objetivo).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) %><% } %>
+          </p>
+          <div class="meta-progreso-barra"><div class="meta-progreso-relleno" style="width: <%= porcentaje %>%"></div></div>
+          <ul class="meta-participantes">
+            <% m.participantes.forEach((p) => { %>
+              <li><%= p.nombre_usuario %>: <strong><%= p.aportado %></strong></li>
+            <% }) %>
+          </ul>
+
+          <% if (m.estado === 'activa') { %>
+            <form method="POST" action="/metas/compartida/<%= m.id %>/estado" class="meta-card-acciones">
+              <input type="hidden" name="estado" value="completada">
+              <button type="submit">Marcar completada</button>
+            </form>
+            <form method="POST" action="/metas/compartida/<%= m.id %>/estado" class="meta-card-acciones">
+              <input type="hidden" name="estado" value="archivada">
+              <button type="submit">Archivar</button>
+            </form>
+          <% } else { %>
+            <form method="POST" action="/metas/compartida/<%= m.id %>/estado" class="meta-card-acciones">
+              <input type="hidden" name="estado" value="activa">
+              <button type="submit">Reactivar</button>
+            </form>
+          <% } %>
+        </section>
+      <% }) %>
+    <% } %>
+
+    <% if (metas.length > 0) { %>
+      <h2 class="meta-seccion-titulo">Mis metas</h2>
+    <% } %>
     <% if (metas.length === 0) { %>
       <p class="empty">Todavía no tienes ninguna meta.</p>
     <% } else { %>

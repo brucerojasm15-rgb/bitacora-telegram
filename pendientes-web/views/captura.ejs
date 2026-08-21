@@ -22,9 +22,10 @@
       <!-- rama-metas: auto-incremento sin confirmación previa -- este toast
            ES la confirmación, después del hecho, con forma de deshacerlo. -->
       <% metasTocadas.forEach((m) => { %>
+        <% const esCompartida = m.tipo === 'compartida'; %>
         <div class="notificacion toast-meta">
-          <span>+<%= m.cantidad %> hacia tu meta <strong><%= m.titulo %></strong></span>
-          <form method="POST" action="/metas/<%= m.id %>/deshacer" class="toast-meta-deshacer">
+          <span>+<%= m.cantidad %> hacia <%= esCompartida ? 'la meta compartida' : 'tu meta' %> <strong><%= m.titulo %></strong></span>
+          <form method="POST" action="/metas/<%= esCompartida ? 'compartida/' : '' %><%= m.id %>/deshacer" class="toast-meta-deshacer">
             <input type="hidden" name="cantidad" value="<%= m.cantidad %>">
             <button type="submit">Deshacer</button>
           </form>

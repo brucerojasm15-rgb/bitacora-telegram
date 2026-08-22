@@ -6,44 +6,6 @@
 <body>
   <main>
 <%- include('partials/nav') %>
-    <% if (typeof mostrarTutorial !== 'undefined' && mostrarTutorial) { %>
-      <!-- rama-tutorial-interactivo: reemplaza el carrusel estático de
-           /onboarding (retirado) -- en vez de mostrar diapositivas, guía al
-           usuario nuevo a hacer un registro REAL (pendiente/idea/
-           recordatorio) usando los controles de verdad de esta misma
-           pantalla. Solo se dispara si `mostrarTutorial` vino en TRUE del
-           servidor (usuarios nuevos, ver server.js) -- todo lo demás abajo
-           es defensivo por si el JS corre en una pantalla donde no está el
-           form real (ej. la confirmación de asignación por texto). -->
-      <div id="tutorial-bienvenida" class="tutorial-modal-overlay" hidden>
-        <div class="tutorial-modal">
-          <h2>¡Bienvenido a zentIA!</h2>
-          <p>Te mostramos cómo funciona en 3 pasos rápidos -- anotando algo real tuyo ahora mismo.</p>
-          <div class="tutorial-modal-botones">
-            <button type="button" id="tutorial-saltar-inicio" class="btn-link">Saltar</button>
-            <button type="button" id="tutorial-empezar">Empezar</button>
-          </div>
-        </div>
-      </div>
-
-      <div id="tutorial-coach" class="tutorial-coach" hidden>
-        <p id="tutorial-coach-texto"></p>
-        <div class="tutorial-coach-botones">
-          <button type="button" id="tutorial-saltar" class="btn-link">Saltar</button>
-          <button type="button" id="tutorial-siguiente" hidden>Siguiente</button>
-        </div>
-      </div>
-
-      <div id="tutorial-final" class="tutorial-modal-overlay" hidden>
-        <div class="tutorial-modal">
-          <h2>¡Bien ahí!</h2>
-          <p>Guardaste tu primer registro. Así de simple es capturar algo en zentIA -- después lo encontrás en su sección correspondiente del menú.</p>
-          <div class="tutorial-modal-botones">
-            <button type="button" id="tutorial-entendido">Entendido</button>
-          </div>
-        </div>
-      </div>
-    <% } %>
     <h1><%- include('partials/icono', { nombre: 'rayo' }) %> Captura rápida</h1>
     <p class="count">Escribe lo que sea y elige qué es antes de guardarlo.</p>
 
@@ -151,14 +113,6 @@
     // rama-asignacion-texto: en la pantalla de confirmación de asignación
     // no existe #form-captura (son 2 forms simples de confirmar/cancelar,
     // sin selector de tipo ni campo de fecha) — nada que enganchar acá.
-    // rama-tutorial-interactivo: `tutorialEnPasoFinal` lo lee el listener de
-    // submit de más abajo -- si en el momento de un envío REAL (no el
-    // early-return de arriba, que solo revela el campo de fecha sin
-    // guardar nada todavía) el tour está en el paso 2, se guarda en
-    // localStorage que ya se llegó al envío real, para retomar el tour
-    // después del recargo de página con el modal de cierre.
-    let tutorialEnPasoFinal = false;
-
     if (form) {
       form.addEventListener('submit', (e) => {
         const tipo = e.submitter && e.submitter.dataset.tipo;
@@ -170,95 +124,10 @@
         }
         e.preventDefault();
         tipoOculto.value = tipo;
-        if (tutorialEnPasoFinal) {
-          localStorage.setItem('zentia_tutorial_paso', '3');
-        }
         reproducirSonido('enviar');
         setTimeout(() => form.submit(), 180);
       });
     }
-
-    // rama-tutorial-interactivo: tour de 3 pasos sobre los controles REALES
-    // de esta pantalla (no diapositivas aparte) -- reemplaza el carrusel
-    // estático de /onboarding. El estado del paso vive en localStorage
-    // porque el paso 2 termina en un submit real de formulario (recarga
-    // completa de página, no SPA) -- hace falta persistir "en qué iba"
-    // para retomar después de esa recarga y mostrar el modal de cierre.
-    (function () {
-      const mostrarTutorial = <%- mostrarTutorial ? 'true' : 'false' %>;
-      if (!mostrarTutorial || !form) return; // `!form`: pantalla de confirmación de asignación, sin controles reales que señalar.
-
-      const CLAVE_PASO = 'zentia_tutorial_paso';
-      const modalBienvenida = document.getElementById('tutorial-bienvenida');
-      const coach = document.getElementById('tutorial-coach');
-      const coachTexto = document.getElementById('tutorial-coach-texto');
-      const btnSiguiente = document.getElementById('tutorial-siguiente');
-      const modalFinal = document.getElementById('tutorial-final');
-      let elementoResaltado = null;
-
-      function resaltar(selector) {
-        if (elementoResaltado) elementoResaltado.classList.remove('tutorial-resaltado');
-        elementoResaltado = selector ? document.querySelector(selector) : null;
-        if (elementoResaltado) {
-          elementoResaltado.classList.add('tutorial-resaltado');
-          elementoResaltado.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        }
-      }
-
-      function terminarTutorial() {
-        resaltar(null);
-        coach.hidden = true;
-        modalFinal.hidden = true;
-        localStorage.removeItem(CLAVE_PASO);
-        fetch('/tutorial/completar', { method: 'POST' }).catch(() => {});
-      }
-
-      function mostrarPaso1() {
-        localStorage.setItem(CLAVE_PASO, '1');
-        coach.hidden = false;
-        coachTexto.textContent = 'Escribí acá algo real que tengas en mente -- un pendiente, una idea, o algo para recordar.';
-        btnSiguiente.hidden = false;
-        btnSiguiente.disabled = true;
-        resaltar('#captura-texto');
-        textareaCaptura.focus();
-      }
-
-      function mostrarPaso2() {
-        localStorage.setItem(CLAVE_PASO, '2');
-        tutorialEnPasoFinal = true;
-        coach.hidden = false;
-        coachTexto.textContent = 'Elegí qué es lo que escribiste, y tocá ese botón para guardarlo de verdad.';
-        btnSiguiente.hidden = true;
-        resaltar('.captura-tipos');
-      }
-
-      document.getElementById('tutorial-saltar-inicio').addEventListener('click', terminarTutorial);
-      document.getElementById('tutorial-saltar').addEventListener('click', terminarTutorial);
-      document.getElementById('tutorial-entendido').addEventListener('click', terminarTutorial);
-      document.getElementById('tutorial-empezar').addEventListener('click', () => {
-        modalBienvenida.hidden = true;
-        mostrarPaso1();
-      });
-      btnSiguiente.addEventListener('click', () => {
-        if (!btnSiguiente.disabled) mostrarPaso2();
-      });
-      textareaCaptura.addEventListener('input', () => {
-        btnSiguiente.disabled = textareaCaptura.value.trim().length === 0;
-      });
-
-      const params = new URLSearchParams(location.search);
-      const pasoGuardado = localStorage.getItem(CLAVE_PASO);
-      if (params.get('guardado') === '1' && pasoGuardado === '3') {
-        // Volvió de un guardado real hecho durante el paso 2 -- cierre.
-        modalFinal.hidden = false;
-      } else if (pasoGuardado === '1') {
-        mostrarPaso1();
-      } else if (pasoGuardado === '2') {
-        mostrarPaso2();
-      } else if (!pasoGuardado) {
-        modalBienvenida.hidden = false;
-      }
-    })();
   </script>
 <%- include('partials/scripts') %>
 </body>

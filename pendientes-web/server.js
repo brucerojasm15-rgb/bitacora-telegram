@@ -177,6 +177,16 @@ app.use((req, res, next) => {
   return res.status(401).end();
 });
 
+// rama-tutorial-multicapitulo: fuente de verdad del lado servidor -- solo
+// id + recompensa + validación de qué capítulos existen. Los pasos/
+// selectores/textos de cada capítulo son puramente de UI y viven en
+// public/tutorial.js, no acá.
+const TUTORIAL_CAPITULOS = {
+  basico: { recompensa: 20 },
+  organizacion: { recompensa: 15 },
+  social: { recompensa: 15 },
+};
+
 // rama-tema-jungla: expone `tema` a TODAS las vistas vía res.locals (así
 // partials/head.ejs puede fijar data-theme en el <html> sin parpadeo, sin
 // que cada ruta tenga que acordarse de pasarlo). Una consulta liviana más
@@ -185,29 +195,40 @@ app.use(async (req, res, next) => {
   if (!req.usuarioId) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
-    res.locals.mostrarTutorial = false;
+    res.locals.tutorialCapitulosCompletados = [];
+    res.locals.tutorialCapitulosPendientes = 0;
     return next();
   }
   try {
     // rama-interfaz: se suma ia_especie/saldo_moneda a esta MISMA consulta
     // (no una nueva) porque ya se estaba pidiendo `tema` acá para cada
     // request logueada -- aprovecharla evita un roundtrip extra.
-    // rama-tutorial-interactivo: mismo criterio, se suma
-    // tutorial_interactivo_visto -- se calcula acá para TODAS las vistas
-    // (como `tema`/`barraSuperior`) aunque solo `captura.ejs` lo use hoy,
-    // por si a futuro el tour necesita señalar algo fuera de Captura.
     const { rows } = await pool.query(
-      'SELECT tema, ia_especie, saldo_moneda, tutorial_interactivo_visto FROM usuarios WHERE id = $1',
+      'SELECT tema, ia_especie, saldo_moneda FROM usuarios WHERE id = $1',
       [req.usuarioId]
     );
     const usuario = rows[0];
     res.locals.tema = usuario ? usuario.tema : null;
     res.locals.barraSuperior = await barraSuperiorDeUsuario(req.usuarioId, usuario);
-    res.locals.mostrarTutorial = usuario ? !usuario.tutorial_interactivo_visto : false;
+    // rama-tutorial-multicapitulo: se calcula acá para TODAS las vistas
+    // (como `tema`/`barraSuperior`) porque el tour cruza varias páginas
+    // (captura, amigos, ia, metas, chat-general, trazabilidad) y la
+    // insignia del menú "Más" también necesita este dato en cualquier
+    // página.
+    const { rows: completadosRows } = await pool.query(
+      'SELECT capitulo FROM tutorial_capitulos_completados WHERE usuario_id = $1',
+      [req.usuarioId]
+    );
+    const completados = completadosRows.map((r) => r.capitulo);
+    res.locals.tutorialCapitulosCompletados = completados;
+    res.locals.tutorialCapitulosPendientes = Object.keys(TUTORIAL_CAPITULOS).filter(
+      (id) => !completados.includes(id)
+    ).length;
   } catch (err) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
-    res.locals.mostrarTutorial = false;
+    res.locals.tutorialCapitulosCompletados = [];
+    res.locals.tutorialCapitulosPendientes = 0;
   }
   next();
 });
@@ -730,16 +751,66 @@ app.post('/registro/email', limitarIntentos('registro'), async (req, res) => {
   }
 });
 
-// rama-tutorial-interactivo: reemplaza a POST /onboarding/completar (carrusel
-// estático retirado). El tour vive en /captura -- este endpoint solo marca
-// que ya se vio, sea porque el usuario lo completó de verdad (guardó su
-// primer pendiente/idea/recordatorio) o porque tocó "Saltar" en cualquier
-// paso.
-app.post('/tutorial/completar', async (req, res) => {
+// rama-tutorial-multicapitulo: lista los capítulos disponibles (básico +
+// opcionales) con su estado. El link "Empezar" de cada capítulo apunta
+// directo a la página de su primer paso con ?tutorial=<id> -- el motor
+// cliente (public/tutorial.js) toma la posta desde ahí. Para "social" se
+// suma el amistad_id del primer amigo (si tiene alguno) porque ese
+// capítulo tiene un 2do paso condicional a tener amigos.
+app.get('/tutorial', async (req, res) => {
   try {
-    await pool.query('UPDATE usuarios SET tutorial_interactivo_visto = TRUE WHERE id = $1', [req.usuarioId]);
+    const { rows: amistadRows } = await pool.query(
+      `SELECT id FROM amistades WHERE estado = 'aceptada' AND (usuario_a_id = $1 OR usuario_b_id = $1)
+       ORDER BY id ASC LIMIT 1`,
+      [req.usuarioId]
+    );
+    const primerAmistadId = amistadRows[0] ? amistadRows[0].id : null;
+    res.render('tutorial', {
+      completados: res.locals.tutorialCapitulosCompletados,
+      recompensas: Object.fromEntries(Object.entries(TUTORIAL_CAPITULOS).map(([id, c]) => [id, c.recompensa])),
+      primerAmistadId,
+      error: null,
+    });
   } catch (err) {
-    console.error('Error marcando tutorial interactivo como visto:', err.message);
+    console.error('Error consultando capítulos del tutorial:', err.message);
+    res.status(500).render('tutorial', {
+      completados: [], recompensas: {}, primerAmistadId: null, error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
+// rama-tutorial-multicapitulo: reemplaza a POST /tutorial/completar (que
+// marcaba un único booleano). Ahora hay un capítulo por :capitulo -- se
+// valida contra TUTORIAL_CAPITULOS, se marca completado (idempotente vía
+// ON CONFLICT) y, si es la primera vez de verdad (no un "Saltar" del
+// capítulo básico, ver `omitido`), se paga la recompensa con el mismo
+// helper que usa el resto de la app (pagarMoneda, ver rama-moneda-virtual)
+// -- respeta el mismo LIMITE_MONEDA_DIARIA que cualquier otra fuente de
+// moneda, no hace falta un límite aparte para esto.
+app.post('/tutorial/capitulo/:capitulo/completar', async (req, res) => {
+  const capitulo = req.params.capitulo;
+  if (!TUTORIAL_CAPITULOS[capitulo]) {
+    return res.status(400).send('Capítulo inválido.');
+  }
+  const omitido = req.body && req.body.omitido === true;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO tutorial_capitulos_completados (usuario_id, capitulo) VALUES ($1, $2)
+       ON CONFLICT (usuario_id, capitulo) DO NOTHING RETURNING usuario_id`,
+      [req.usuarioId, capitulo]
+    );
+    const seInsertoDeVerdad = rows.length > 0;
+    if (seInsertoDeVerdad && !omitido) {
+      await pagarMoneda(client, req.usuarioId, TUTORIAL_CAPITULOS[capitulo].recompensa, `Tutorial: capítulo "${capitulo}"`, null);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error marcando capítulo de tutorial como completado:', err.message);
+  } finally {
+    client.release();
   }
   res.status(204).end();
 });
@@ -953,6 +1024,29 @@ async function ensureSchema() {
   // acá en adelante vean el tour.
   await pool.query(`
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tutorial_interactivo_visto BOOLEAN NOT NULL DEFAULT TRUE
+  `);
+  // rama-tutorial-multicapitulo: reemplaza el booleano único de arriba por
+  // una tabla (varios capítulos posibles, no solo "visto sí/no"). Se DEJA
+  // `tutorial_interactivo_visto` sin usar de acá en más -- mismo criterio ya
+  // aplicado arriba con `onboarding_visto`, no vale la pena una migración
+  // para borrar una columna booleana que ya nadie escribe. Migración
+  // única: cualquier cuenta que ya tenía `tutorial_interactivo_visto = TRUE`
+  // (cuentas viejas por el DEFAULT, o cuentas que ya vieron/saltaron el tour
+  // de un solo capítulo) recibe una fila 'basico' acá, para no volver a
+  // dispararles el tour nuevo -- sin pagar recompensa, porque no es una
+  // finalización real de los 4 pasos nuevos.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tutorial_capitulos_completados (
+      usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      capitulo TEXT NOT NULL,
+      completado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (usuario_id, capitulo)
+    )
+  `);
+  await pool.query(`
+    INSERT INTO tutorial_capitulos_completados (usuario_id, capitulo)
+    SELECT id, 'basico' FROM usuarios WHERE tutorial_interactivo_visto = TRUE
+    ON CONFLICT (usuario_id, capitulo) DO NOTHING
   `);
   // rama-login-email: login alternativo por email+contraseña, ADICIONAL al
   // de usuario+PIN -- no lo reemplaza, ambos quedan disponibles a la vez.

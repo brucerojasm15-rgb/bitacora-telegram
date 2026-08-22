@@ -47,6 +47,7 @@
     <a href="/estancados"><%- include('icono', { nombre: 'arena' }) %> Estancados</a>
     <a href="/estadisticas"><%- include('icono', { nombre: 'grafico' }) %> Estadísticas</a>
     <a href="/amigos"><%- include('icono', { nombre: 'personas' }) %> Amigos</a>
+    <a href="/tutorial"><%- include('icono', { nombre: 'guia' }) %> Tutorial<% if (typeof tutorialCapitulosPendientes !== 'undefined' && tutorialCapitulosPendientes > 0) { %> <span class="no-leido" title="Capítulos pendientes">●</span><% } %></a>
     <a href="/ia"><%- include('icono', { nombre: 'planta' }) %> Mi planta</a>
     <a href="/chat-general"><%- include('icono', { nombre: 'chat' }) %> Chat general</a>
     <a href="/exportar"><%- include('icono', { nombre: 'descarga' }) %> Exportar</a>
@@ -92,6 +93,7 @@
     <a href="/metas" role="menuitem"><%- include('icono', { nombre: 'meta' }) %> <span>Metas</span></a>
     <a href="/estancados" role="menuitem"><%- include('icono', { nombre: 'arena' }) %> <span>Estancados</span></a>
     <a href="/estadisticas" role="menuitem"><%- include('icono', { nombre: 'grafico' }) %> <span>Estadísticas</span></a>
+    <a href="/tutorial" role="menuitem"><%- include('icono', { nombre: 'guia' }) %> <span>Tutorial<% if (typeof tutorialCapitulosPendientes !== 'undefined' && tutorialCapitulosPendientes > 0) { %> <span class="no-leido" title="Capítulos pendientes">●</span><% } %></span></a>
     <a href="/ia" role="menuitem"><%- include('icono', { nombre: 'planta' }) %> <span>Mi planta</span></a>
     <a href="/chat-general" role="menuitem"><%- include('icono', { nombre: 'chat' }) %> <span>Chat general</span></a>
     <a href="/exportar" role="menuitem"><%- include('icono', { nombre: 'descarga' }) %> <span>Exportar</span></a>

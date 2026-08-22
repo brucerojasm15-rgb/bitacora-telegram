@@ -150,3 +150,12 @@
       });
     }
   </script>
+  <script>
+    // rama-tutorial-multicapitulo: única variable que el motor genérico
+    // (public/tutorial.js) necesita del servidor -- qué capítulos ya están
+    // completados (para no re-disparar el básico, y para que /tutorial no
+    // dependa de otro roundtrip). El resto (pasos, textos, selectores) vive
+    // enteramente en el JS del cliente.
+    window.__tutorialCapitulosCompletados = <%- JSON.stringify(typeof tutorialCapitulosCompletados !== 'undefined' ? tutorialCapitulosCompletados : []) %>;
+  </script>
+  <script src="/tutorial.js" defer></script>

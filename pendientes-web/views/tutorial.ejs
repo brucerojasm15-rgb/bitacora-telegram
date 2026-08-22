@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Tutorial' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'guia' }) %> Tutorial</h1>
+    <p class="count">Capítulos cortos para conocer zentIA a tu ritmo -- cada uno paga semillas al completarlo.</p>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+      <%
+        const CAPITULOS_INFO = [
+          {
+            id: 'basico',
+            titulo: 'Básico',
+            descripcion: 'Capturá algo real, copiá tu enlace de invitación y ponele nombre a tu planta.',
+            inicio: '/captura?tutorial=basico',
+          },
+          {
+            id: 'organizacion',
+            titulo: 'Organización',
+            descripcion: 'Creá una meta personal real y revisá tus estadísticas.',
+            inicio: '/metas?tutorial=organizacion',
+          },
+          {
+            id: 'social',
+            titulo: 'Social',
+            descripcion: primerAmistadId
+              ? 'Mandá un mensaje al chat general y revisá la actividad de un amigo.'
+              : 'Mandá un mensaje al chat general.',
+            inicio: primerAmistadId
+              ? `/chat-general?tutorial=social&amistad_id=${primerAmistadId}`
+              : '/chat-general?tutorial=social',
+          },
+        ];
+      %>
+      <% CAPITULOS_INFO.forEach((c) => { %>
+        <% const completado = completados.includes(c.id); %>
+        <section class="estancado-card">
+          <p class="estancado-texto">
+            <%= c.titulo %>
+            <% if (completado) { %>
+              <span class="badge-completado"><%- include('partials/icono', { nombre: 'check' }) %> Completado</span>
+            <% } else { %>
+              <span class="badge-asignado"><%- include('partials/icono', { nombre: 'moneda' }) %> +<%= recompensas[c.id] %></span>
+            <% } %>
+          </p>
+          <p class="estancado-fecha"><%= c.descripcion %></p>
+          <% if (!completado) { %>
+            <form method="GET" action="<%= c.inicio.split('?')[0] %>">
+              <% new URLSearchParams(c.inicio.split('?')[1]).forEach((valor, clave) => { %>
+                <input type="hidden" name="<%= clave %>" value="<%= valor %>">
+              <% }) %>
+              <button type="submit"><%- include('partials/icono', { nombre: 'rayo' }) %> Empezar</button>
+            </form>
+          <% } %>
+        </section>
+      <% }) %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

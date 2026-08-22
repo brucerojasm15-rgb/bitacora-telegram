@@ -3002,6 +3002,82 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "fix: chat muestra el
   nombre real del autor y el buscador respeta el tema oscuro").
 
+### rama-tutorial-multicapitulo
+- Estado: probada de punta a punta (server + navegador real contra la DB de
+  Railway), lista para push/merge.
+- Tarea: 2do punto de la tanda de feedback del usuario (ver nota en
+  `rama-fix-chat-visual` -- orden: chat primero, esto segundo). Reemplaza
+  el tour de un solo flujo de `rama-tutorial-interactivo` (PR #66) por
+  varios capítulos: **"Básico"** (obligatorio, se sigue disparando solo
+  para usuarios nuevos en `/captura` -- captura rápida, copiar el enlace
+  de invitación en Amigos, ponerle nombre a la planta en Mi planta,
+  +20 semillas) y dos opcionales, elegidos con el usuario vía preguntas
+  puntuales antes de construir: **"Organización"** (crear una meta
+  personal + revisar Estadísticas, +15) y **"Social"** (mandar un mensaje
+  al chat general + revisar Actividad de un amigo si tiene alguno, +15).
+  Nueva página `/tutorial` (link en el menú "Más", con insignia tipo punto
+  no-leído -- misma clase `.no-leido` que ya usaba `chat.ejs`) lista los 3
+  capítulos con su estado.
+- Decisiones de diseño:
+  1. **Server solo sabe qué capítulos están COMPLETADOS** (tabla nueva
+     `tutorial_capitulos_completados`, reemplaza el booleano único
+     `tutorial_interactivo_visto` -- esa columna se deja sin usar, mismo
+     criterio ya aplicado ahí mismo con `onboarding_visto`). El progreso
+     DENTRO de un capítulo en curso vive enteramente en `localStorage` del
+     navegador, igual que el tour viejo -- evita una tabla de progreso
+     server-side; el único caso borde es que cambiar de dispositivo a
+     mitad de un capítulo lo reinicia en el dispositivo nuevo.
+  2. **Motor de tutorial genérico nuevo**, `public/tutorial.js`: construye
+     TODO el DOM (modales/coach) por JS, reutilizando clases CSS que ya
+     eran agnósticas de página (`.tutorial-modal-overlay`, `.tutorial-coach`,
+     `.tutorial-resaltado`). Ninguna vista aparte de `captura.ejs` (que
+     perdió el HTML/JS del tour viejo, ahora hardcodeado en
+     `public/tutorial.js`) necesitó tocarse para mostrar el tour --
+     `amigos.ejs`, `ia.ejs`, `metas.ejs`, `chat-general.ejs`,
+     `trazabilidad.ejs` quedaron intactas, el motor apunta a sus
+     controles reales por selector CSS.
+  3. El paso 2 del capítulo básico (elegir tipo y guardar en Captura) usa
+     una señal específica (`?guardado=1`, que ya agregaba el redirect de
+     `POST /captura`) en vez de un listener de `submit` genérico -- ese
+     form intercepta su propio submit (retraso de sonido antes de
+     navegar) y el flujo de "Recordatorio" hace un primer submit que solo
+     revela el campo de fecha sin guardar nada, lo que dispararía un falso
+     positivo con un listener genérico. El resto de los pasos con submit
+     real (nombre de planta, crear meta, mandar mensaje) sí usan un
+     listener nativo de `submit`, seguro porque esos forms no interceptan
+     nada y tienen `required` en el campo relevante.
+  4. Cuando el último paso de un capítulo es un submit real que ya está
+     navegando, no se puede mostrar el modal de "¡Capítulo completado!" en
+     esa misma carga de página -- se guarda un flag en `localStorage` y se
+     celebra recién en la página siguiente (mismo patrón que el toast de
+     metas en `captura.ejs`: feedback después del hecho, no antes).
+  5. "Saltar" en el capítulo básico marca completado igual (no vuelve a
+     nagear) pero SIN pagar recompensa -- mismo comportamiento que el tour
+     viejo. En los capítulos opcionales "Saltar" no llama al servidor,
+     quedan "pendiente" en `/tutorial` para retomar cuando quiera.
+  6. El paso de "planta" del capítulo básico se resolvió como ponerle
+     nombre real (`POST /ia/nombre`) en vez de "hacerla crecer" -- crecer
+     de verdad depende de moneda acumulada, no alcanzable en un solo paso
+     de tutorial; nombrarla es una acción real e inmediata, y de paso el
+     usuario ve la barra de progreso hacia la siguiente etapa. Confirmado
+     con el usuario antes de construir.
+- Qué se verificó: `npm run ci` en verde. Contra la DB real de Railway
+  (server local en :3055 para no chocar con otro proceso que ya tenía
+  ocupado el :3000, ver COORDINACION.md de por qué no se tocó ese
+  proceso): 3 cuentas de prueba (una completó los 3 capítulos de punta a
+  punta vía `curl`, otra probó "Saltar" en el básico sin pago, la tercera
+  hizo el capítulo básico completo EN EL NAVEGADOR con Chrome -- 4 pasos
+  reales, cross-page, coach marks, puentes entre pantallas, y el modal de
+  celebración con +20 semillas verificado visualmente). También se probó
+  el capítulo "social" con y sin amigo agregado (2 pasos vs 1). Las 3
+  cuentas de prueba se borraron (usuarios + sus filas relacionadas) al
+  terminar. Vista mobile del menú "Más" no se pudo forzar a un viewport
+  angosto con la automatización del navegador (limitación ya documentada
+  en `rama-interfaz-v2`) -- el HTML del link nuevo se revisó directo
+  (mismo patrón que los demás ítems de "Más", con la insignia agregada).
+- Pendiente: sign-off visual del usuario antes de dar el tema por cerrado
+  del todo (ver convención del proyecto).
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

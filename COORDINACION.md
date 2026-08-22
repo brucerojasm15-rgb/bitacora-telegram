@@ -4336,6 +4336,39 @@ el tiempo total sin generar conflictos de archivo entre ellas.
     ingresos: da visibilidad real de costo total de la app para decisiones
     futuras (ej. si hiciera falta poner un límite más estricto).
 
+  **Gestión con umbrales de confianza (agregado 2026-08-22, capa adicional
+  sobre la vinculación automática a Metas de Fase 2 de v0.2 y el perfil
+  acumulado de arriba — NO bloquea el resto de la tarea 9 ya aprobado en
+  PR #53; se implementa cuando Fase 1 de Metas y esta tarea avancen a su
+  siguiente paso real, ambas piezas tienen que existir primero):**
+
+  1. **Acción automática SOLO con alta confianza.** Coincidencia clara de
+     etiqueta + lenguaje similar al título de la meta → actualiza
+     `valor_actual` directo, con el mismo toast de deshacer ya diseñado e
+     implementado para el auto-incremento de Metas (`rama-metas`/
+     `rama-metas-compartidas`: "sin confirmación previa, el toast ES la
+     confirmación, después del hecho, con forma de deshacerlo").
+  2. **Confianza media → sugerencia pasiva, nunca acción.** Si la relación
+     entre lo capturado y una meta existente es plausible pero no obvia,
+     NO actualizar nada automáticamente — mostrar un aviso tipo "¿esto es
+     para tu meta 'X'?" que el usuario confirma o ignora. La IA nunca actúa
+     sola cuando no está segura — a diferencia del caso 1, acá la
+     confirmación es ANTES del hecho, no después.
+  3. **Registro de decisiones.** Tabla nueva (ej. `ia_decisiones`) que
+     guarda, por cada acción/sugerencia de la IA: qué decidió, con qué dato
+     de origen se justificó (ej. id de la idea/pendiente que lo disparó), y
+     cuándo. No se muestra al usuario de forma rutinaria — sirve para poder
+     rastrear el "por qué" si algo se ve raro después (ej. "¿por qué mi
+     meta subió sola?").
+  4. **El perfil no solo acumula, también revisa.** `perfil_ia.resumen` no
+     solo acumula — al regenerarse cada 15 mensajes (ver el punto de
+     "Perfil acumulado" más arriba), el prompt debe comparar explícitamente
+     contra el resumen anterior y decidir si algo cambió/quedó obsoleto (ya
+     diseñado antes para evitar que "usa Make" y "migró a Python" convivan
+     como verdad simultánea) — esta misma lógica de revisión aplica ahora
+     también a decisiones de gestión (ej. vinculaciones a Metas que ya no
+     tienen sentido), no solo a datos factuales sobre el usuario.
+
 - [x] **10. Integración con Google Calendar.** OAuth explícito, mismo patrón
   que cualquier conector tipo Claude (pantalla de consentimiento clara,
   scope mínimo necesario). La IA (o, si la Fase 1 de la tarea 8 todavía no

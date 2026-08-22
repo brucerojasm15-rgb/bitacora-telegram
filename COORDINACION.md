@@ -3203,6 +3203,62 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   en vez de probar contra el server local. Es el paso que falta antes de
   cerrar el tema del todo (es literalmente el canal que encontró el bug
   de la rama anterior).
+- **Corrección importante (ver `rama-fix-sw-cache` abajo)**: el usuario
+  probó esto en su celular real después de desplegado y el problema
+  SEGUÍA ahí -- resultó que la causa real nunca fue el nav en sí (ni acá
+  ni en `rama-nav-rediseno`), sino el service worker sirviendo un
+  `style.css` cacheado desde antes de TODOS estos cambios. Los diagnósticos
+  de "se rompe en ese navegador mobile" de esta sección y la anterior son
+  incorrectos -- quedan sin borrar por historial, pero ver la sección de
+  `rama-fix-sw-cache` para la causa real y el fix.
+
+### rama-fix-sw-cache
+- Estado: probada de punta a punta (reproducida la causa raíz localmente
+  Y confirmado el fix, contra la DB real de Railway), lista para
+  push/merge.
+- Tarea: causa raíz real de "el nav se ve roto en el celular", el mismo
+  síntoma que ya se le había atribuido (incorrectamente) a
+  `rama-nav-rediseno` primero y que seguía apareciendo después de
+  `rama-inicio-planta`. **No era un problema de CSS ni de navegador
+  mobile en absoluto**: `public/sw.js` (la app es una PWA instalable,
+  `rama-pwa-instalable`) cacheaba `/style.css` con una estrategia
+  cache-first pura (`caches.match(...).then(cached => cached ||
+  fetch(...))`) -- una vez que el archivo entraba al cache la PRIMERA vez
+  que el usuario visitó la app, nunca se volvía a pedir a la red, sin
+  importar cuántos deploys nuevos de CSS pasaran, porque el cache solo se
+  invalida cuando cambia el propio `sw.js` (lo que dispara un `install`
+  nuevo) -- y `sw.js` no se había tocado en ninguna de las rondas de nav.
+  Las navegaciones (HTML) sí van siempre a la red (eso ya estaba bien) --
+  el resultado exacto observado en el celular era HTML nuevo + CSS viejo:
+  la barra superior sin el layout nuevo, `.menu-pantalla` sin ningún
+  estilo (texto plano subrayado), pero el resto de la app (que no había
+  cambiado de CSS en mucho tiempo) se veía normal.
+- Fix en `public/sw.js`: (1) el fetch handler de assets estáticos pasa de
+  cache-first a network-first-con-fallback-a-cache (misma prioridad que
+  ya tenían las navegaciones: "nunca servir una versión vieja cacheada"
+  si hay red) -- previene que esto se repita con cualquier cambio de CSS
+  futuro, no solo corrige el estado actual. (2) `CACHE_NAME` pasa de
+  `'pendientes-static-v2'` a `'...-v3'`, para forzar una limpieza del
+  cache viejo en los dispositivos que ya lo tenían atascado.
+- Qué se verificó: reproducción real de la causa raíz en local antes de
+  escribir el fix -- se instaló el `sw.js` VIEJO (cache-first, v2) en un
+  navegador real, se confirmó que cachea `/style.css`, se editó
+  `style.css` en disco (simulando un deploy nuevo) y se confirmó que el
+  navegador seguía sirviendo la versión vieja sin el cambio (bug
+  reproducido byte a byte). Se restauró el `sw.js` arreglado (v3,
+  network-first), se forzó `registration.update()`, y se confirmó que:
+  el cache viejo (`v2`) se purgó solo, el nuevo (`v3`) se creó solo, y
+  `/style.css` pasó a servir la versión con el cambio -- sin que el
+  usuario tenga que hacer nada manual más que abrir la app de nuevo
+  (`skipWaiting()` + `clients.claim()`, ya presentes desde
+  `rama-pwa-instalable`, hacen que el SW nuevo tome control de inmediato,
+  sin esperar a cerrar todas las pestañas). `npm run ci` en verde.
+- Pendiente: confirmación del usuario en su celular real de que esto
+  finalmente resuelve lo que viene apareciendo roto desde
+  `rama-nav-rediseno`. Puede hacer falta que cierre y reabra la app una
+  vez (o la fuerce a refrescar) para que el navegador note el `sw.js`
+  nuevo -- los navegadores chequean actualizaciones de SW en cada
+  navegación pero no siempre de forma instantánea.
 
 ### rama-integracion
 - Estado: —

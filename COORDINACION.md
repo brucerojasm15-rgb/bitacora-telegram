@@ -69,6 +69,20 @@
      y el PR mergeable sin conflictos, si se procede a mergear ese mismo PR ya aprobado.
      Ese segundo paso ya no hace falta -- una vez que el diff fue aprobado y se pusheó, si
      CI pasa y el PR es mergeable, se mergea directo sin pedir confirmación de nuevo.
+   - **[Relajada 2026-08-22, confirmada explícitamente por el usuario -- "aprobar
+     siempre", confirmado con una pregunta directa antes de aplicarlo]** Se retira
+     también el primer paso: ya NO hace falta mostrar el diff completo y esperar un
+     "aprobado" explícito antes de **pushear**. Una vez que el trabajo está probado
+     (`npm run ci` en verde + probado contra la DB real cuando aplica) y documentado en la
+     sección de la rama correspondiente más abajo, se puede pushear, crear el PR, y
+     mergear directo (si CI pasa y es mergeable) sin esperar confirmación en ningún punto
+     del camino. **Lo que NO cambió**: seguir probando de verdad antes de pushear (CI +
+     DB real), seguir documentando cada rama en este archivo (qué se hizo, qué se
+     verificó, hash de commit), seguir limpiando datos de prueba con deletes acotados, y
+     seguir verificando el deploy en Railway después de mergear. Esta relajación es
+     específica de este repo (confirmada acá, no es una preferencia general del usuario
+     para cualquier proyecto) -- si una sesión nueva no encuentra esta sección, debe asumir
+     la regla 8 completa (mostrar diff + esperar "aprobado") hasta confirmar lo contrario.
 
 ## Estado de ramas
 
@@ -2953,9 +2967,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   tampoco borraba metas ni metas compartidas").
 
 ### rama-fix-chat-visual
-- Estado: implementada, testeada contra la DB real y en navegador real,
-  **NO pusheada — esperando "aprobado" del usuario, regla 8**. Worktree
-  sobre `origin/main` actualizado.
+- Estado: **mergeada a main vía PR #70 (2026-08-22), desplegada en
+  Railway**. Ver "Historial de merges a main".
 - Tarea: primer punto de una tanda nueva de feedback del usuario (pidió
   ir en orden: chat primero, resto -- tutorial por capítulos, rediseño de
   nav, cambio de usuario por email -- queda para después). "El chat de
@@ -3232,6 +3245,15 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-fix-chat-visual (100fd79) → main vía PR #70:
+  sin conflictos. CI verde. Commit de merge `3ad3ced`. Desplegado en
+  Railway. Primer punto de una tanda nueva de feedback del usuario (chat
+  pulido y sin errores visuales) -- 2 bugs reales encontrados probando la
+  app de verdad, ver la sección de la rama. **A partir de este merge deja
+  de aplicar la regla 8 en su forma original** -- ver la nueva
+  aclaración 2026-08-22 arriba, en la sección de reglas: ya no hace falta
+  mostrar el diff y esperar "aprobado" antes de pushear, solo seguir
+  probando/documentando igual que siempre.
 - 2026-08-22 — merge de rama-fix-metas-eliminar-cuenta (3a5f47c) → main
   vía PR #69: sin conflictos. CI verde. Commit de merge `0b03e23`.
   Desplegado en Railway y verificado SUCCESS. `POST /ajustes/eliminar-

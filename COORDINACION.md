@@ -2909,6 +2909,50 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   de Gmail y cargarla en Railway.
 - Worktree: `C:\Users\lenovo\Desktop\bitacora\worktrees\rama-login-email`.
 
+### rama-fix-metas-eliminar-cuenta
+- Estado: implementada, testeada contra la DB real, **NO pusheada —
+  esperando "aprobado" del usuario, regla 8**. Worktree sobre
+  `origin/main` actualizado (ya incluye rama-login-email).
+- Tarea: bug encontrado revisando `POST /ajustes/eliminar-cuenta` mientras
+  se testeaba `rama-login-email` en paralelo (no reportado por el
+  usuario, no específico de esa rama) -- la ruta nunca fue actualizada
+  para borrar `metas` (Fase 2 de v0.2) ni `metas_compartidas`/
+  `metas_compartidas_participantes` (rama-metas-compartidas), ambas
+  agregadas después de que esta ruta se escribió originalmente. Sin este
+  paso, el DELETE de `usuarios` fallaba por violación de FK para
+  cualquier cuenta que tuviera una meta o participara en una compartida.
+  Confirmado que ningún usuario real (bruce/hazel/lolo) tiene esas filas
+  hoy, así que no bloqueaba nada en producción todavía -- de todos modos
+  se decidió arreglarlo ahora, antes de que alguien lo pise.
+- **Decisión de diseño**: mismo criterio que el paso 6 ya existente para
+  pendientes asignados ("Caso A confirmado: desasignar, no borrar, los
+  datos de otra persona") -- una meta compartida creada por la cuenta que
+  se elimina, pero donde TODAVÍA participan otras personas, no se borra
+  entera (eso les arrastraría el progreso a los demás por una decisión
+  ajena). En cambio: se borra la fila de participante propia, y si a la
+  meta le queda al menos otro participante, `creado_por` pasa a `NULL`
+  (ya era "solo informativo, no da más permisos", ver el comentario donde
+  se define la tabla) en vez de tocar la meta en sí. Solo se borra la
+  meta compartida por completo si al aplicar esto no le queda NINGÚN
+  participante (la cuenta que se elimina era la única, o ya era la última
+  que quedaba).
+- Orden de los 4 pasos nuevos, insertados junto al paso 14 existente
+  (pendientes propios): metas personales (borrado directo, nadie más las
+  usa) → participación propia en cualquier meta compartida (propia o
+  ajena) → `creado_por = NULL` en las que le quedan otros participantes →
+  borrado de las que quedaron sin ninguno.
+- Qué se verificó, contra la DB real con 2 cuentas descartables
+  (`test_fm_a_tmp`/`test_fm_b_tmp`, más una tercera sin usar,
+  `test_fm_c_tmp`) y 3 casos de prueba a la vez: meta personal de A
+  (borrada); meta compartida donde A era el único participante (borrada
+  por completo); meta compartida A+B (preservada para B, `creado_por`
+  pasó a NULL, confirmado que B sigue viéndola en `/metas` y puede seguir
+  sumándole progreso normalmente sin que la app se rompa por el
+  `creado_por` nulo). Las 3 cuentas de prueba borradas al terminar.
+  `npm run ci` en verde.
+- Commit: ver `git log` de esta rama (mensaje: "fix: eliminar-cuenta
+  tampoco borraba metas ni metas compartidas").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

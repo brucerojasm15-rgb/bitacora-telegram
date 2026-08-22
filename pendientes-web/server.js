@@ -3709,6 +3709,36 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     // 14. Pendientes propios (los ajenos ya se desasignaron en el paso 6).
     await client.query('DELETE FROM pendientes WHERE usuario_id = $1', [usuarioId]);
 
+    // rama-fix-metas-eliminar-cuenta: metas (Fase 2 de v0.2) y metas
+    // compartidas (rama-metas-compartidas) no existían cuando se escribió
+    // originalmente esta ruta -- faltaban acá, lo que rompía el borrado con
+    // violación de FK para cualquier cuenta que hubiera creado o
+    // participado en una. Orden:
+    //   a. Metas personales: propias de nadie más, borrado directo.
+    //   b. La propia fila de participante en CUALQUIER meta compartida
+    //      (haya sido creada por este usuario o por otro).
+    //   c. Metas compartidas creadas por este usuario que TODAVÍA tienen
+    //      otros participantes (tras el paso b): mismo criterio que el
+    //      paso 6 de pendientes asignados -- preservar el dato ajeno en
+    //      vez de borrarlo, así que `creado_por` pasa a NULL (ya es
+    //      "solo informativo", ver comentario donde se define la tabla)
+    //      en vez de arrastrar la meta compartida de los demás con la
+    //      cuenta que se está eliminando.
+    //   d. Metas compartidas que quedaron sin ningún participante (el
+    //      creador la borra y era el único, o ya no quedan otros): esas
+    //      sí se borran del todo, no tiene sentido una meta compartida
+    //      sin nadie participando.
+    await client.query('DELETE FROM metas WHERE usuario_id = $1', [usuarioId]);
+    await client.query('DELETE FROM metas_compartidas_participantes WHERE usuario_id = $1', [usuarioId]);
+    await client.query(
+      `UPDATE metas_compartidas SET creado_por = NULL
+       WHERE creado_por = $1 AND EXISTS (
+         SELECT 1 FROM metas_compartidas_participantes WHERE meta_compartida_id = metas_compartidas.id
+       )`,
+      [usuarioId]
+    );
+    await client.query('DELETE FROM metas_compartidas WHERE creado_por = $1', [usuarioId]);
+
     // 15. Ideas, recordatorios, hechos.
     await client.query('DELETE FROM ideas WHERE usuario_id = $1', [usuarioId]);
     await client.query('DELETE FROM recordatorios WHERE usuario_id = $1', [usuarioId]);

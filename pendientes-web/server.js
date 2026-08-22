@@ -4045,6 +4045,17 @@ app.post('/mensajes-general', async (req, res) => {
   res.redirect('/chat-general');
 });
 
+// rama-fix-404: página propia con el estilo visual de la app en vez del
+// error genérico de Express ("Cannot GET /..."), para rutas que no
+// existen. Va AL FINAL, después de todas las rutas -- Express solo llega
+// acá si ninguna ruta anterior matcheó. `res.locals.barraSuperior` ya
+// está poblado (o no) por el middleware global de arriba para CUALQUIER
+// request que llegue hasta acá, logueado o no -- la vista usa eso para
+// decidir si mostrar el nav y a dónde manda "Volver al inicio".
+app.use((req, res) => {
+  res.status(404).render('404');
+});
+
 ensureSchema()
   .catch((err) => console.error('Error preparando el esquema:', err.message))
   .finally(() => {

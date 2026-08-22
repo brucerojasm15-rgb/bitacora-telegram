@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Página no encontrada' }) %>
+</head>
+<body>
+  <% if (typeof barraSuperior !== 'undefined' && barraSuperior) { %>
+<%- include('partials/nav') %>
+  <% } %>
+  <main>
+    <div class="empty">
+      <%- include('partials/monstera', { tamano: 90, idSufijo: '404' }) %>
+      <h1>Esta página no existe</h1>
+      <p>Revisá el enlace, o volvé al inicio.</p>
+      <p><a href="<%= typeof barraSuperior !== 'undefined' && barraSuperior ? '/captura' : '/login' %>" class="btn-link"><%- include('partials/icono', { nombre: 'casa' }) %> Volver al inicio</a></p>
+    </div>
+  </main>
+<%- include('partials/scripts') %>
+</body>
+</html>

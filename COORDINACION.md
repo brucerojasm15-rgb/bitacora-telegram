@@ -2952,6 +2952,43 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "fix: eliminar-cuenta
   tampoco borraba metas ni metas compartidas").
 
+### rama-fix-chat-visual
+- Estado: implementada, testeada contra la DB real y en navegador real,
+  **NO pusheada — esperando "aprobado" del usuario, regla 8**. Worktree
+  sobre `origin/main` actualizado.
+- Tarea: primer punto de una tanda nueva de feedback del usuario (pidió
+  ir en orden: chat primero, resto -- tutorial por capítulos, rediseño de
+  nav, cambio de usuario por email -- queda para después). "El chat de
+  amigos debe estar pulido y sin errores visuales" -- se probó la app de
+  verdad (cuenta descartable, mensajes reales en producción) y se
+  encontraron 2 bugs concretos:
+  1. Los mensajes ajenos mostraban **"Usuario 137"** (el `autor_id`
+     numérico crudo) en vez del nombre real -- `GET /chat` nunca hacía
+     JOIN a `usuarios` para traer `nombre_usuario`. `GET /chat-general`
+     ya lo hacía bien (`u.nombre_usuario AS autor_nombre`, con fallback a
+     `'Usuario ' + autor_id` si la cuenta ya no existe) -- se replicó el
+     mismo patrón acá.
+  2. El buscador de mensajes ("Buscar mensajes...") tenía fondo **blanco
+     sólido**, roto contra el tema oscuro del resto de la app. Causa:
+     `.filtro-rango` se diseñó originalmente solo para el filtro de
+     fechas de Estadísticas/Hechos (`input[type="number"]`);
+     `rama-fix-chat-ui` reutilizó esa misma clase para el buscador de
+     texto (`input[type="text"]`), que ese selector nunca cubrió --
+     caía al estilo por defecto del navegador. Se agregó `[type="text"]`
+     a la misma regla en vez de duplicarla.
+  Nota aparte: se probó mandar emojis por `curl` y salieron como `????`
+  en el chat -- confirmado que es un artefacto de cómo esta terminal
+  manda UTF-8 por `curl`, NO un bug de la app (reenviado el mismo mensaje
+  vía `fetch` de Node, con encoding correcto, se vio perfecto). Se
+  descarta, no hace falta ningún fix de encoding en la app.
+- Qué se verificó: contra la DB real con dos cuentas descartables
+  (`test_cv_a_tmp`/`test_cv_b_tmp`, amigas entre sí, con mensajes reales
+  intercambiados), y visualmente en Chrome -- captura mostrada al usuario
+  con ambos fixes aplicados a la vez (nombre real + buscador con fondo
+  oscuro). Cuentas de prueba borradas al terminar. `npm run ci` en verde.
+- Commit: ver `git log` de esta rama (mensaje: "fix: chat muestra el
+  nombre real del autor y el buscador respeta el tema oscuro").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

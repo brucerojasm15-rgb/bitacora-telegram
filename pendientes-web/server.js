@@ -515,7 +515,9 @@ app.post('/login/email', limitarIntentos('login-email'), async (req, res) => {
     }
     req.session.usuario_id = usuario.id;
     req.session.nombre_usuario = usuario.nombre_usuario;
-    res.redirect('/');
+    // rama-tutorial-interactivo: mismo destino que POST /login (usuario+PIN)
+    // -- /captura es la landing desde rama-interfaz-v2, no '/'.
+    res.redirect('/captura');
   } catch (err) {
     console.error('Error en login por email:', err.message);
     res.status(500).render('login', { error: 'Error del servidor, intenta de nuevo.', metodo: 'email', emailIngresado: email });

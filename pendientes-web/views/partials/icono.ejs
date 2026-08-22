@@ -52,6 +52,15 @@ const ICONOS = {
   // menu "Mas" -- mismo estilo lucide/outline 24x24, forma de brujula
   // (guiar/orientar), no habia ninguno para esto todavia.
   guia: '<circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>',
+  // rama-nav-rediseno: 2 iconos nuevos, mismo estilo lucide/outline 24x24
+  // que el resto -- "flecha-abajo" (chevron, para expandir/colapsar
+  // .nav-expandido -- se rota 180 grados por CSS cuando esta expandido en
+  // vez de tener un icono aparte para "colapsar") y "cuenta" (persona en
+  // circulo, para el boton que abre el drawer lateral -- distinto de
+  // "personas", que son DOS personas y ya significa "Amigos" en el resto
+  // de la app).
+  'flecha-abajo': '<path d="m6 9 6 6 6-6"></path>',
+  cuenta: '<path d="M18 20a6 6 0 0 0-12 0"></path><circle cx="12" cy="10" r="4"></circle><circle cx="12" cy="12" r="10"></circle>',
 };
 const nombreIcono = (typeof nombre !== 'undefined' && ICONOS[nombre]) ? nombre : null;
 %><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><%- nombreIcono ? ICONOS[nombreIcono] : '' %></svg>

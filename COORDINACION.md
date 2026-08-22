@@ -3078,6 +3078,64 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Pendiente: sign-off visual del usuario antes de dar el tema por cerrado
   del todo (ver convención del proyecto).
 
+### rama-nav-rediseno
+- Estado: probada de punta a punta (server + navegador real contra la DB
+  de Railway), lista para push/merge.
+- Tarea: 3er punto de la tanda de feedback del usuario (ver nota en
+  `rama-fix-chat-visual` -- orden: chat, tutorial, esto). El usuario no
+  quedó conforme con el nav de `rama-interfaz-v2` (chips en escritorio +
+  barra inferior fija + hoja "Más" en mobile, dos sistemas distintos según
+  ancho de pantalla). Reemplaza TODO eso por un sistema único, igual en
+  cualquier tamaño de pantalla: barra fija arriba (`.nav-top`, debajo de
+  `.barra-superior`, que no se tocó) con los 5 primarios de siempre en
+  solo-ícono (Captura, Pendientes, Ideas, Recordatorios, Amigos -- mismo
+  criterio ya documentado en `rama-nav-mobile`, sin cambios), un botón
+  para expandir (`.nav-expandido`, panel flotante con los 6 accesos
+  ocasionales: Hechos, Metas, Estancados, Estadísticas, Chat general,
+  Tutorial) y un botón de cuenta que abre un drawer lateral derecho nuevo
+  (`.nav-drawer`: Mi planta, Mercado, Ajustes, tema claro/oscuro,
+  Exportar, Cerrar sesión).
+- Antes de construir se le compartió al usuario una investigación de UX:
+  la nav "adaptativa" que reordena TODO según uso rompe la memoria
+  muscular de quien vuelve seguido (caso citado: Spotify). Confirmado con
+  el usuario vía preguntas puntuales: **los 5 primarios de `.nav-top`
+  NUNCA se reordenan** -- la adaptación por uso real (clics contados en
+  `localStorage`, clave `zentia_nav_uso`, mismo criterio "preferencia en
+  el navegador, no en la cuenta" que ya usan `sonidosActivos` y el
+  tutorial) se limita SOLO a los 6 ítems de `.nav-expandido`. Probado en
+  vivo: 3 clicks reales en "Chat general" lo subieron al primer puesto en
+  la siguiente carga de página, sin tocar el orden de los 5 primarios.
+- "Mercado" en el drawer apunta a `/ia#tienda` (ancla nueva agregada a la
+  sección "Usar la moneda" que ya existía en `views/ia.ejs`) en vez de
+  crear una página `/mercado` separada -- confirmado con el usuario.
+- 2 íconos nuevos en `partials/icono.ejs`: `flecha-abajo` (chevron, se
+  rota 180° por CSS al expandir, no hace falta un ícono aparte para
+  colapsar) y `cuenta` (persona en círculo, distinto de `personas` que ya
+  significa "Amigos").
+- `.nav-expandido`/`.nav-drawer` reutilizan el mismo mecanismo que ya
+  resolvía `.nav-mas-menu` (panel flotante + overlay que oscurece, cierra
+  con click afuera o Escape, solo anima la entrada no la salida) --
+  generalizado en `partials/scripts.ejs` para manejar los 2 paneles a la
+  vez (abrir uno cierra el otro si estaba abierto).
+- Qué se verificó: `npm run ci` en verde. Contra la DB real de Railway
+  (server local en :3056): una cuenta de prueba nueva, navegador real
+  (Chrome) -- confirmado visualmente que `.nav-top` se ve fija debajo de
+  `.barra-superior` con los 5 primarios + chevron + botón de cuenta, que
+  `.nav-expandido` se abre con los 6 ocasionales y el reordenado por uso
+  funciona (probado con `dispatchEvent` + reload real), que el drawer
+  entra desde la derecha con los 6 accesos de cuenta, y que "Mercado"
+  navega a `/ia` con scroll directo a la sección de compras. Cuenta de
+  prueba borrada al terminar. Vista en un viewport angosto real (mobile)
+  NO se pudo forzar con la automatización del navegador en esta sesión
+  (misma limitación ya documentada en `rama-tutorial-multicapitulo` y
+  `rama-interfaz-v2`) -- el CSS usa unidades relativas (`min(92vw, ...)`,
+  `min(85vw, ...)`, `env(safe-area-inset-*)`) y un `overflow-x: auto` de
+  respaldo en `.nav-top`, pero no se vio confirmado en un viewport chico
+  real dentro de esta sesión.
+- Pendiente: sign-off visual del usuario en vivo, especialmente en su
+  celular real (donde la automatización no pudo probar por la limitación
+  de arriba) -- antes de dar el tema por cerrado del todo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -138,8 +138,11 @@ body {
   /* rama-interfaz: deja lugar para .barra-superior (fija, en todas las
      pantallas). En las páginas públicas (login/registro/recuperar, que no
      incluyen partials/nav ni por lo tanto la barra) es solo un poco de
-     aire de más arriba -- no hace falta una regla condicional aparte. */
-  padding-top: calc(2rem + 3.25rem + env(safe-area-inset-top));
+     aire de más arriba -- no hace falta una regla condicional aparte.
+     rama-nav-rediseno: se suma la altura de .nav-top (3rem), que ahora
+     también es fija en TODAS las pantallas (antes el nav de escritorio
+     no era fijo, y el de mobile ocupaba abajo, no arriba). */
+  padding-top: calc(2rem + 3.25rem + 3rem + env(safe-area-inset-top));
 }
 
 /* rama-interfaz-v2: clase de vidrio reutilizable -- blur + borde con
@@ -179,7 +182,7 @@ h1 svg, h2 svg {
   color: var(--accent);
 }
 
-button, .btn-link, .nav a {
+button, .btn-link, .nav-top a, .nav-expandido a, .nav-drawer a {
   font-family: var(--display);
 }
 
@@ -193,12 +196,6 @@ svg[viewBox="0 0 24 24"] {
   height: 1.1em;
   vertical-align: -0.15em;
   flex-shrink: 0;
-}
-
-.nav a {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
 }
 
 .toggle-tema {
@@ -226,10 +223,12 @@ svg[viewBox="0 0 24 24"] {
 }
 
 /* rama-interfaz (Fase 4 de v0.2): barra superior fija, en TODAS las
-   pantallas (a diferencia de .nav-bottom, que es solo mobile) -- ver
-   partials/barra-superior.ejs. z-index 40, mismo nivel que .nav-bottom
-   (uno arriba, uno abajo, nunca se pisan). El padding-top de body de más
-   abajo deja lugar para que el contenido no quede tapado detrás. */
+   pantallas -- ver partials/barra-superior.ejs. z-index 40, mismo nivel
+   que .nav-top (rama-nav-rediseno), que se apila justo debajo (`top:
+   3.25rem`, la altura de esta barra) -- nunca se pisan, aunque compartan
+   z-index, porque ocupan franjas verticales distintas. El padding-top de
+   body de más abajo deja lugar para que el contenido no quede tapado
+   detrás de ninguna de las dos. */
 .barra-superior {
   position: fixed;
   top: 0;
@@ -310,45 +309,87 @@ svg[viewBox="0 0 24 24"] {
   40% { transform: scale(1.25); }
 }
 
-/* rama-interfaz-v2: el nav de escritorio deja de ser una lista de texto
-   subrayado -- ahora es una barra de "chips" de vidrio, cada ítem con su
-   propio contorno que se ilumina en hover/activo. Menú distinto al resto
-   de paneles a propósito (pedido explícito: "innovar en un menú... diseño
-   único"), pero con el mismo lenguaje visual (vidrio + brillo verde). */
-.nav {
+/* rama-nav-rediseno: reemplaza la lista de "chips" de vidrio de
+   rama-interfaz-v2 (que solo se veía en escritorio) por una barra fija
+   arriba, IGUAL en cualquier tamaño de pantalla -- ver la nota larga en
+   partials/nav.ejs y COORDINACION.md. Los 5 accesos primarios (Captura,
+   Pendientes, Ideas, Recordatorios, Amigos) son solo-ícono, en círculos
+   chicos con el mismo lenguaje visual (vidrio + brillo verde en hover) que
+   ya usaba `.nav a`. Justo debajo de `.barra-superior` (3.25rem), mismo
+   z-index que esa barra tenía documentado para "nunca se pisan". */
+.nav-top {
+  position: fixed;
+  top: 3.25rem;
+  left: 0;
+  right: 0;
+  z-index: 40;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  padding: 0.5rem;
-  border-radius: 999px;
+  gap: 0.35rem;
+  height: 3rem;
+  padding: 0 max(0.6rem, env(safe-area-inset-right)) 0 max(0.6rem, env(safe-area-inset-left));
   background: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  border: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
+  /* Si algún día se agrega un 6to primario y no entra en una pantalla muy
+     angosta, mejor un scroll horizontal contenido que romper el layout. */
+  overflow-x: auto;
 }
 
-.nav a {
+.nav-top a,
+.nav-top-expandir,
+.nav-top-cuenta {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.3rem;
+  height: 2.3rem;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 0.45rem 0.85rem;
-  border-radius: 999px;
   border: 1px solid transparent;
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  border-radius: 999px;
+  background: none;
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
 }
 
-.nav a:hover {
+.nav-top a svg,
+.nav-top-expandir svg,
+.nav-top-cuenta svg {
+  width: 20px;
+  height: 20px;
+}
+
+.nav-top a:hover,
+.nav-top-expandir:hover,
+.nav-top-cuenta:hover {
   color: var(--accent);
   background: rgba(var(--accent-rgb), 0.1);
   border-color: var(--glass-border);
-  box-shadow: 0 0 16px -6px rgba(var(--accent-rgb), 0.5);
+}
+
+/* El botón de cuenta pega a la derecha del todo; "expandir" queda pegado
+   a los 5 primarios (sin margin-left propio) -- mismo agrupamiento visual
+   que se ve en partials/nav.ejs (5 links, expandir, cuenta). */
+.nav-top-cuenta {
+  margin-left: auto;
+}
+
+.nav-top-expandir svg {
+  transition: transform var(--transition-fast);
+}
+
+.nav-top-expandir[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.nav-top-expandir[aria-expanded="true"],
+.nav-top-cuenta[aria-expanded="true"] {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .logout-form {
@@ -377,160 +418,141 @@ svg[viewBox="0 0 24 24"] {
   border-color: rgba(var(--danger-rgb), 0.35);
 }
 
-/* rama-nav-mobile: la barra inferior fija y el menú "Más" solo se ven en
-   mobile (breakpoint abajo) — acá quedan ocultos por default (escritorio),
-   igual que `.nav-desktop` queda oculta solo dentro del breakpoint. Ver el
-   criterio de qué 5 accesos quedan fijos abajo documentado en
-   `partials/nav.ejs` y en COORDINACION.md. */
-.nav-bottom,
-.nav-mas-menu,
-.nav-mas-overlay {
+/* rama-nav-rediseno: `.nav-expandido` (cuelga de `.nav-top`, lista los 6
+   accesos de uso ocasional, reordenados por uso real -- ver el IIFE de
+   `zentia_nav_uso` en scripts.ejs) y `.nav-drawer` (entra desde el borde
+   derecho, agrupa cuenta/config). Ya NO están limitados a un breakpoint
+   de mobile -- se ven igual en cualquier tamaño de pantalla, a diferencia
+   del `.nav-mas-menu` que reemplazan (que solo existía bajo 720px).
+   Reutilizan el mismo lenguaje visual que ya tenía ese menú (vidrio
+   fuerte, icono + etiqueta, hover con `--bg-elevated-2`). */
+.nav-expandido-overlay:not([hidden]),
+.nav-drawer-overlay:not([hidden]) {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 45;
+}
+
+.nav-expandido-overlay[hidden],
+.nav-drawer-overlay[hidden] {
   display: none;
 }
 
-@media (max-width: 720px) {
-  .nav-desktop {
-    display: none;
-  }
+.nav-expandido {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  position: fixed;
+  left: max(0.6rem, env(safe-area-inset-left));
+  width: min(92vw, 380px);
+  top: calc(3.25rem + 3rem + 0.4rem + env(safe-area-inset-top));
+  z-index: 50;
+  background: var(--glass-bg-fuerte);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  padding: 0.4rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  animation: nav-expandido-in 0.15s ease-out;
+}
 
-  /* Deja lugar para que la barra inferior fija no tape el final del
-     contenido — incluye el "notch" de home indicator de iOS. */
-  main {
-    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
-  }
+.nav-expandido[hidden] {
+  display: none;
+}
 
-  .nav-bottom {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 40;
-    background: var(--glass-bg);
-    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-    border-top: 1px solid var(--glass-border);
-    padding: 0.35rem max(0.35rem, env(safe-area-inset-right))
-      calc(0.35rem + env(safe-area-inset-bottom)) max(0.35rem, env(safe-area-inset-left));
-    box-shadow: var(--glass-shadow);
-  }
+.nav-expandido a,
+.nav-expandido button,
+.nav-drawer a,
+.nav-drawer button {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.75rem 0.7rem;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
 
-  .nav-bottom-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.15rem;
-    padding: 0.3rem 0.1rem;
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    text-decoration: none;
-    font-family: var(--display);
-    font-size: 0.68rem;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: color var(--transition-fast), background var(--transition-fast);
-  }
+.nav-expandido a:hover,
+.nav-expandido button:hover,
+.nav-drawer a:hover,
+.nav-drawer button:hover {
+  background: var(--bg-elevated-2);
+}
 
-  .nav-bottom-item svg {
-    width: 22px;
-    height: 22px;
+@keyframes nav-expandido-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-
-  .nav-bottom-item:hover,
-  .nav-bottom-item:active {
-    color: var(--accent);
-    background: var(--bg-elevated-2);
-  }
-
-  .nav-mas-btn[aria-expanded="true"] {
-    color: var(--accent);
-  }
-
-  .nav-mas-overlay:not([hidden]) {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.35);
-    z-index: 45;
-  }
-
-  .nav-mas-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    position: fixed;
-    left: 0.6rem;
-    right: 0.6rem;
-    bottom: calc(4.6rem + env(safe-area-inset-bottom));
-    z-index: 50;
-    background: var(--glass-bg-fuerte);
-    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius);
-    box-shadow: var(--glass-shadow);
-    padding: 0.4rem;
-    max-height: 70vh;
-    overflow-y: auto;
-    animation: nav-mas-in 0.15s ease-out;
-  }
-
-  .nav-mas-menu[hidden] {
-    display: none;
-  }
-
-  .nav-mas-menu a,
-  .nav-mas-menu button {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    width: 100%;
-    padding: 0.75rem 0.7rem;
-    border: none;
-    background: none;
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    text-decoration: none;
-    font-family: var(--display);
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .nav-mas-menu a:hover,
-  .nav-mas-menu button:hover {
-    background: var(--bg-elevated-2);
-  }
-
-  .nav-mas-menu .logout-form {
-    margin: 0;
-    width: 100%;
-  }
-
-  .nav-mas-menu .logout-form button {
-    color: var(--danger);
-  }
-
-  @keyframes nav-mas-in {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
-  .nav-mas-menu {
+/* rama-nav-rediseno: drawer lateral derecho -- alto completo, entra
+   deslizando desde el borde (mismo criterio de "solo animar la entrada,
+   no la salida" que ya usaba `.nav-mas-menu`/`nav-mas-in`, ahora
+   horizontal en vez de vertical). */
+.nav-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 55;
+  width: min(85vw, 320px);
+  padding: calc(1rem + env(safe-area-inset-top)) max(0.6rem, env(safe-area-inset-right)) 1rem 0.6rem;
+  background: var(--glass-bg-fuerte);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border-left: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  overflow-y: auto;
+  animation: nav-drawer-in 0.2s ease-out;
+}
+
+.nav-drawer[hidden] {
+  display: none;
+}
+
+.nav-drawer .logout-form {
+  margin: 0;
+  width: 100%;
+}
+
+.nav-drawer .logout-form button {
+  color: var(--danger);
+}
+
+@keyframes nav-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-expandido,
+  .nav-drawer {
     animation: none;
   }
 }

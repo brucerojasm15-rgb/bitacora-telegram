@@ -3253,12 +3253,37 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   (`skipWaiting()` + `clients.claim()`, ya presentes desde
   `rama-pwa-instalable`, hacen que el SW nuevo tome control de inmediato,
   sin esperar a cerrar todas las pestañas). `npm run ci` en verde.
-- Pendiente: confirmación del usuario en su celular real de que esto
-  finalmente resuelve lo que viene apareciendo roto desde
-  `rama-nav-rediseno`. Puede hacer falta que cierre y reabra la app una
-  vez (o la fuerce a refrescar) para que el navegador note el `sw.js`
-  nuevo -- los navegadores chequean actualizaciones de SW en cada
-  navegación pero no siempre de forma instantánea.
+- Pendiente: ~~confirmación del usuario en su celular real~~ **confirmado
+  2026-08-22** -- el usuario probó en su celular real después de este
+  deploy y anduvo bien. El tema del nav/pantalla principal queda cerrado
+  del todo.
+
+### rama-404
+- Estado: probada de punta a punta (server + navegador contra la DB real
+  de Railway), lista para push/merge.
+- Tarea: primer ítem del backlog agregado 2026-08-22 a partir de la
+  checklist genérica que trajo el usuario. Página 404 propia, con el
+  estilo visual de la app (vidrio + verde de acento), en vez del error
+  genérico de Express ("Cannot GET /...") para rutas que no existen.
+- Qué se hizo: vista nueva `views/404.ejs` -- reusa `.empty` (ya existía
+  para estados vacíos, ej. `estancados.ejs`) + `partials/monstera.ejs`
+  (misma ilustración que login/registro/estados vacíos) + un botón
+  `.btn-link` con el ícono `casa` para volver al inicio. Incluye
+  `partials/nav` (barra + menú) SOLO si `res.locals.barraSuperior` existe
+  -- para una request sin sesión. En la práctica esto casi no se ve: el
+  middleware de auth global (línea ~155) ya redirige cualquier GET sin
+  sesión a `/login` ANTES de llegar a la ruta 404 (confirmado leyendo el
+  middleware), así que el catch-all nuevo en la práctica solo lo ven
+  usuarios logueados que pifian una URL -- el link "Volver al inicio"
+  manda a `/captura` en ese caso, a `/login` en el caso defensivo de que
+  no hubiera sesión. Ruta nueva: `app.use((req, res) => res.status(404)
+  .render('404'))` al final de `server.js`, después de TODAS las demás
+  rutas (Express solo llega ahí si ninguna matcheó).
+- Qué se verificó: `npm run ci` en verde. Contra la DB real, con una
+  cuenta de prueba logueada: `GET` a una ruta inventada devuelve status
+  404 real (confirmado con curl) y la página se ve bien en Chrome (barra
+  superior, ilustración, mensaje, botón "Volver al inicio" que efectivamente
+  vuelve a `/captura`). Cuenta de prueba borrada al terminar.
 
 ### rama-integracion
 - Estado: —
@@ -3882,13 +3907,7 @@ fast-follow de v0.2, todavía sin construir ni diseñar en detalle):
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
-- [ ] Página 404 propia (con el estilo visual de la app -- vidrio + verde de
-  acento, ver `partials/head.ejs`/`public/style.css` -- en vez del error
-  genérico del navegador/Express) para rutas que no existen. Agregada
-  2026-08-22, a partir de repasar una checklist genérica de "antes de
-  lanzar" que trajo el usuario -- la mayoría de esos 20 puntos no aplican
-  (SEO/sitemap/OpenGraph/Analytics no tienen sentido para una app privada
-  de un círculo chico, no pública/indexable), pero este sí. — sin asignar
+- [x] Página 404 propia — tomada por rama-404
 - [ ] Loading states: algunas acciones (ej. capturar, completar un
   pendiente, guardar en /ia, etc.) no muestran ningún indicador mientras
   esperan la respuesta del servidor -- en una conexión lenta puede parecer

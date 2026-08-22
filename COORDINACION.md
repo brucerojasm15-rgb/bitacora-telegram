@@ -2794,13 +2794,10 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   client.release() en /ia/comprar y /ia/usar-comodin").
 
 ### rama-login-email
-- Estado: rebaseada sobre `main` actualizado (36 commits de diferencia --
-  incluye todo v0.2 y v0.3), testeada de punta a punta contra la DB real,
-  **NO pusheada — esperando "aprobado" del usuario, regla 8**. El commit
-  original quedó pusheado a `origin/rama-login-email` desde una sesión
-  anterior, pero esa versión no pasa por el estado actual de `main`
-  (chocaría con `/onboarding` retirado, entre otras cosas) -- el push de
-  esta sesión reescribe esa rama con la versión rebaseada.
+- Estado: **mergeada a main vía PR #68 (2026-08-22), desplegada en
+  Railway**. Ver "Historial de merges a main". Pendiente antes de
+  anunciar a usuarios reales: `GMAIL_APP_PASSWORD` real en Railway (ver
+  esa misma entrada del historial).
 - Retomada en esta sesión: se hizo `git rebase origin/main` (3 conflictos
   triviales, todos por inserciones en el mismo punto de
   `COORDINACION.md`/`.env.example`/`server.js`, resueltos conservando
@@ -3155,6 +3152,17 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-login-email (9c66c10) → main vía PR #68: sin
+  conflictos (rebaseada primero contra `origin/main`, 36 commits de
+  diferencia). CI verde. Commit de merge `c59a28e`. Desplegado en Railway.
+  Rama escrita en una sesión anterior, retomada y probada de punta a
+  punta recién ahora -- ver la sección de la rama para el detalle de los
+  3 bugs de integración encontrados y corregidos al retomarla (redirects
+  desactualizados tras rama-interfaz-v2/rama-tutorial-interactivo, y un
+  DELETE faltante en `/ajustes/eliminar-cuenta`). Pendiente antes de
+  anunciar a usuarios reales: configurar `GMAIL_APP_PASSWORD` real en
+  Railway (mismo patrón que `GROQ_API_KEY` antes) -- sin eso el reseteo
+  de contraseña por email no envía el correo de verdad.
 - 2026-08-22 — merge de rama-fix-doble-release (8af7422) → main vía PR
   #67: sin conflictos. CI verde. Commit de merge `d5aeff0`. Desplegado en
   Railway y verificado SUCCESS. Bug de crash (doble `client.release()`)

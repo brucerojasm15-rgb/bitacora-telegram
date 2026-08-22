@@ -2758,6 +2758,42 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Commit: ver `git log` de esta rama (mensaje: "feat: tutorial interactivo
   con tareas reales, reemplaza el onboarding estático").
 
+### rama-fix-doble-release
+- Estado: implementada, testeada contra la DB real, **NO pusheada —
+  esperando "aprobado" del usuario, regla 8**. Worktree sobre
+  `origin/main` actualizado.
+- Tarea: bug encontrado por casualidad revisando `rama-login-email` en
+  paralelo (no reportado por el usuario, no relacionado a esa rama) --
+  `POST /ia/comprar` y `POST /ia/usar-comodin` (la tienda de la planta
+  compañera) tenían un `client.release()` explícito antes de un `return`
+  de rechazo (tipo de compra inválido, moneda insuficiente, sin
+  comodines disponibles), duplicado con el `client.release()` del
+  `finally` que ya cubre todos los caminos. `pg-pool` lanza una excepción
+  síncrona ante un doble release que no cae en ningún try/catch de
+  Express -- **tumbaba el proceso Node entero** en cualquiera de esos 3
+  casos de rechazo. Mismo bug exacto (y mismo fix) que ya apareció dos
+  veces en v0.3 (ver rama-metas-compartidas en el historial de merges) --
+  esta vez en código de la tienda, mergeado hace tiempo, nunca antes
+  encontrado porque nadie había forzado esos 3 casos de rechazo en
+  producción.
+- **Fix**: se quitan los 2 `client.release()` explícitos redundantes,
+  dejando que el `finally` (que ya estaba en ambas rutas) libere el
+  cliente exactamente una vez en todos los caminos.
+- Se revisaron TODAS las demás ocurrencias de `client.release()` en
+  `server.js` (14 en total antes del fix) para confirmar que no quedara
+  ningún otro caso del mismo patrón -- solo estos 2 tenían el problema.
+- Qué se verificó, contra la DB real con una cuenta descartable
+  (`test_ia_tmp`, borrada al terminar): los 3 casos de rechazo (tipo
+  inválido, moneda insuficiente, sin comodines) ahora devuelven 400
+  correctamente y **el servidor sigue respondiendo después de cada uno**
+  (antes del fix, cualquiera de los 3 lo tumbaba). Camino feliz también
+  verificado sin cambios: compra de skin descuenta moneda y actualiza
+  `ia_skin` correctamente; compra + uso de comodín descuenta moneda,
+  pone `comodines_perdon_disponibles` en 0, y crea la fila en
+  `racha_protecciones`. `npm run ci` en verde.
+- Commit: ver `git log` de esta rama (mensaje: "fix: doble
+  client.release() en /ia/comprar y /ia/usar-comodin").
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

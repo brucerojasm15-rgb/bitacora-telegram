@@ -3046,6 +3046,16 @@ app.post('/ia/nombre', async (req, res) => {
 // Un solo endpoint para las 3 compras de moneda de la Fase 1 (skin, tema
 // extra, comodín) — mismo patrón simple que ya usa el resto del proyecto
 // para acciones con pocas variantes válidas (ver /captura con su `tipo`).
+// rama-fix-doble-release: los `client.release()` explícitos antes de los
+// `return` de rechazo (tipo inválido / moneda insuficiente) quedaron
+// duplicados con el `client.release()` del `finally` de más abajo -- ese
+// `finally` ya cubre TODOS los caminos (éxito, rechazo con `return`,
+// excepción), así que el release explícito de más arriba siempre corría
+// una segunda vez sobre el mismo cliente. `pg-pool` lanza una excepción
+// síncrona ante un doble release que no cae en ningún try/catch de Express
+// -- tumbaba el proceso Node entero. Mismo bug (y mismo fix) que ya
+// apareció dos veces en v0.3, ver rama-metas-compartidas en el historial
+// de merges.
 app.post('/ia/comprar', async (req, res) => {
   const tipo = req.body.tipo;
   const valor = req.body.valor;
@@ -3064,12 +3074,10 @@ app.post('/ia/comprar', async (req, res) => {
       if (ok) await client.query('UPDATE usuarios SET comodines_perdon_disponibles = comodines_perdon_disponibles + 1 WHERE id = $1', [req.usuarioId]);
     } else {
       await client.query('ROLLBACK');
-      client.release();
       return res.status(400).send('Compra inválida.');
     }
     if (!ok) {
       await client.query('ROLLBACK');
-      client.release();
       return res.status(400).send('No te alcanza la moneda.');
     }
     await client.query('COMMIT');
@@ -3088,6 +3096,9 @@ app.post('/ia/comprar', async (req, res) => {
 // de /estadisticas ni la que paga la tarea 7 — solo la racha que se
 // muestra en /ia (ver observacionesIA), a propósito para no arriesgar la
 // lógica de pago ya probada.
+// rama-fix-doble-release: mismo bug que /ia/comprar arriba -- el
+// `client.release()` explícito antes del `return` de "sin comodines"
+// duplicaba el del `finally`, tumbando el proceso Node.
 app.post('/ia/usar-comodin', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -3098,7 +3109,6 @@ app.post('/ia/usar-comodin', async (req, res) => {
     );
     if (!rows[0] || rows[0].comodines_perdon_disponibles <= 0) {
       await client.query('ROLLBACK');
-      client.release();
       return res.status(400).send('No tenés comodines disponibles.');
     }
     await client.query(

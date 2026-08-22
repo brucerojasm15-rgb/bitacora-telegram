@@ -139,10 +139,10 @@ body {
      pantallas). En las páginas públicas (login/registro/recuperar, que no
      incluyen partials/nav ni por lo tanto la barra) es solo un poco de
      aire de más arriba -- no hace falta una regla condicional aparte.
-     rama-nav-rediseno: se suma la altura de .nav-top (3rem), que ahora
-     también es fija en TODAS las pantallas (antes el nav de escritorio
-     no era fijo, y el de mobile ocupaba abajo, no arriba). */
-  padding-top: calc(2rem + 3.25rem + 3rem + env(safe-area-inset-top));
+     rama-inicio-planta: vuelve a ser SOLO la altura de .barra-superior --
+     `.nav-top` de rama-nav-rediseno (que sumaba 3rem más acá) se eliminó
+     por completo, `.barra-superior` es la única barra fija de nuevo. */
+  padding-top: calc(2rem + 3.25rem + env(safe-area-inset-top));
 }
 
 /* rama-interfaz-v2: clase de vidrio reutilizable -- blur + borde con
@@ -182,7 +182,7 @@ h1 svg, h2 svg {
   color: var(--accent);
 }
 
-button, .btn-link, .nav-top a, .nav-expandido a, .nav-drawer a {
+button, .btn-link, .menu-pantalla-item {
   font-family: var(--display);
 }
 
@@ -223,12 +223,13 @@ svg[viewBox="0 0 24 24"] {
 }
 
 /* rama-interfaz (Fase 4 de v0.2): barra superior fija, en TODAS las
-   pantallas -- ver partials/barra-superior.ejs. z-index 40, mismo nivel
-   que .nav-top (rama-nav-rediseno), que se apila justo debajo (`top:
-   3.25rem`, la altura de esta barra) -- nunca se pisan, aunque compartan
-   z-index, porque ocupan franjas verticales distintas. El padding-top de
-   body de más abajo deja lugar para que el contenido no quede tapado
-   detrás de ninguna de las dos. */
+   pantallas -- ver partials/barra-superior.ejs.
+   rama-inicio-planta: pasa a ser la ÚNICA barra fija de la app (antes
+   compartía el espacio con `.nav-top` de rama-nav-rediseno, que se
+   eliminó por completo -- se rompía en mobile real). Suma 2 botones,
+   "Casa" y "Cuenta", uno en cada punta (`justify-content: space-between`
+   en vez de `center`) -- el grupo planta/racha/semillas de siempre queda
+   agrupado y centrado en `.barra-superior-centro`. */
 .barra-superior {
   position: fixed;
   top: 0;
@@ -237,10 +238,10 @@ svg[viewBox="0 0 24 24"] {
   z-index: 40;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
+  justify-content: space-between;
+  gap: 0.5rem;
   height: 3.25rem;
-  padding: 0 1rem calc(0px + env(safe-area-inset-top));
+  padding: 0 max(0.6rem, env(safe-area-inset-right)) calc(0px + env(safe-area-inset-top)) max(0.6rem, env(safe-area-inset-left));
   padding-top: env(safe-area-inset-top);
   /* rama-interfaz-v2: vidrio -- solo borde inferior (no los 4 lados, sigue
      siendo una barra pegada arriba) pero con el mismo blur/brillo. */
@@ -249,6 +250,44 @@ svg[viewBox="0 0 24 24"] {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   border-bottom: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
+}
+
+.barra-superior-centro {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Mismo estilo circular que ya usaba `.toggle-tema` -- reusado para los
+   2 botones nuevos en vez de duplicar la regla. */
+.barra-superior-boton {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.barra-superior-boton:hover,
+.barra-superior-boton[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.barra-superior-boton svg {
+  width: 16px;
+  height: 16px;
 }
 
 .barra-superior-planta {
@@ -309,250 +348,135 @@ svg[viewBox="0 0 24 24"] {
   40% { transform: scale(1.25); }
 }
 
-/* rama-nav-rediseno: reemplaza la lista de "chips" de vidrio de
-   rama-interfaz-v2 (que solo se veía en escritorio) por una barra fija
-   arriba, IGUAL en cualquier tamaño de pantalla -- ver la nota larga en
-   partials/nav.ejs y COORDINACION.md. Los 5 accesos primarios (Captura,
-   Pendientes, Ideas, Recordatorios, Amigos) son solo-ícono, en círculos
-   chicos con el mismo lenguaje visual (vidrio + brillo verde en hover) que
-   ya usaba `.nav a`. Justo debajo de `.barra-superior` (3.25rem), mismo
-   z-index que esa barra tenía documentado para "nunca se pisan". */
-.nav-top {
+/* rama-inicio-planta: reemplaza TODO lo de rama-nav-rediseno (`.nav-top`,
+   `.nav-expandido`, `.nav-drawer` -- se rompía en mobile real, ver
+   COORDINACION.md) por un único menú de usuario en pantalla completa,
+   pedido por el usuario a partir de una app de referencia (mapa +
+   buscador tipo chat en la pantalla principal, menú de funciones en
+   grilla aparte). Se abre con el botón "Cuenta" de `.barra-superior`. A
+   propósito NO copia los colores pastel distintos por categoría de la
+   app de referencia -- el lenguaje visual de zentIA (vidrio + un solo
+   verde de acento) ya está aprobado, así que todos los tiles usan el
+   mismo estilo. */
+.menu-pantalla {
   position: fixed;
-  top: 3.25rem;
-  left: 0;
-  right: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  height: 3rem;
-  padding: 0 max(0.6rem, env(safe-area-inset-right)) 0 max(0.6rem, env(safe-area-inset-left));
-  background: var(--glass-bg);
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  padding: calc(1rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) calc(1.5rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  background: var(--glass-bg-fuerte);
   backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  border-bottom: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  /* Si algún día se agrega un 6to primario y no entra en una pantalla muy
-     angosta, mejor un scroll horizontal contenido que romper el layout. */
-  overflow-x: auto;
+  animation: menu-pantalla-in 0.18s ease-out;
 }
 
-.nav-top a,
-.nav-top-expandir,
-.nav-top-cuenta {
+.menu-pantalla[hidden] {
+  display: none;
+}
+
+.menu-pantalla-cerrar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
+}
+
+.menu-pantalla-cerrar button {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 2.3rem;
-  height: 2.3rem;
-  color: var(--text-muted);
-  text-decoration: none;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: none;
   cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
 }
 
-.nav-top a svg,
-.nav-top-expandir svg,
-.nav-top-cuenta svg {
-  width: 20px;
-  height: 20px;
-}
-
-.nav-top a:hover,
-.nav-top-expandir:hover,
-.nav-top-cuenta:hover {
+.menu-pantalla-cerrar button:hover {
+  border-color: var(--accent);
   color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-  border-color: var(--glass-border);
 }
 
-/* El botón de cuenta pega a la derecha del todo; "expandir" queda pegado
-   a los 5 primarios (sin margin-left propio) -- mismo agrupamiento visual
-   que se ve en partials/nav.ejs (5 links, expandir, cuenta). */
-.nav-top-cuenta {
-  margin-left: auto;
+.menu-pantalla-cerrar svg {
+  width: 16px;
+  height: 16px;
 }
 
-.nav-top-expandir svg {
-  transition: transform var(--transition-fast);
+.menu-pantalla-grilla {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.4rem 0.5rem;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
-.nav-top-expandir[aria-expanded="true"] svg {
-  transform: rotate(180deg);
-}
-
-.nav-top-expandir[aria-expanded="true"],
-.nav-top-cuenta[aria-expanded="true"] {
-  color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
-.logout-form {
-  margin: 0;
-}
-
-.logout-form button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  border: 1px solid transparent;
-  background: none;
-  color: var(--danger);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0.45rem 0.85rem;
-  border-radius: 999px;
-  font-family: inherit;
-  transition: opacity var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.logout-form button:hover {
-  opacity: 1;
-  background: rgba(var(--danger-rgb), 0.12);
-  border-color: rgba(var(--danger-rgb), 0.35);
-}
-
-/* rama-nav-rediseno: `.nav-expandido` (cuelga de `.nav-top`, lista los 6
-   accesos de uso ocasional, reordenados por uso real -- ver el IIFE de
-   `zentia_nav_uso` en scripts.ejs) y `.nav-drawer` (entra desde el borde
-   derecho, agrupa cuenta/config). Ya NO están limitados a un breakpoint
-   de mobile -- se ven igual en cualquier tamaño de pantalla, a diferencia
-   del `.nav-mas-menu` que reemplazan (que solo existía bajo 720px).
-   Reutilizan el mismo lenguaje visual que ya tenía ese menú (vidrio
-   fuerte, icono + etiqueta, hover con `--bg-elevated-2`). */
-.nav-expandido-overlay:not([hidden]),
-.nav-drawer-overlay:not([hidden]) {
-  display: block;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  z-index: 45;
-}
-
-.nav-expandido-overlay[hidden],
-.nav-drawer-overlay[hidden] {
-  display: none;
-}
-
-.nav-expandido {
+.menu-pantalla-item {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
-  position: fixed;
-  left: max(0.6rem, env(safe-area-inset-left));
-  width: min(92vw, 380px);
-  top: calc(3.25rem + 3rem + 0.4rem + env(safe-area-inset-top));
-  z-index: 50;
-  background: var(--glass-bg-fuerte);
-  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius);
-  box-shadow: var(--glass-shadow);
-  padding: 0.4rem;
-  max-height: 60vh;
-  overflow-y: auto;
-  animation: nav-expandido-in 0.15s ease-out;
-}
-
-.nav-expandido[hidden] {
-  display: none;
-}
-
-.nav-expandido a,
-.nav-expandido button,
-.nav-drawer a,
-.nav-drawer button {
-  display: flex;
   align-items: center;
-  gap: 0.65rem;
-  width: 100%;
-  padding: 0.75rem 0.7rem;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-align: center;
+  padding: 0;
   border: none;
   background: none;
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  text-decoration: none;
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 0.95rem;
-  text-align: left;
   cursor: pointer;
 }
 
-.nav-expandido a:hover,
-.nav-expandido button:hover,
-.nav-drawer a:hover,
-.nav-drawer button:hover {
-  background: var(--bg-elevated-2);
-}
-
-@keyframes nav-expandido-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* rama-nav-rediseno: drawer lateral derecho -- alto completo, entra
-   deslizando desde el borde (mismo criterio de "solo animar la entrada,
-   no la salida" que ya usaba `.nav-mas-menu`/`nav-mas-in`, ahora
-   horizontal en vez de vertical). */
-.nav-drawer {
+.menu-pantalla-item-icono {
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 55;
-  width: min(85vw, 320px);
-  padding: calc(1rem + env(safe-area-inset-top)) max(0.6rem, env(safe-area-inset-right)) 1rem 0.6rem;
-  background: var(--glass-bg-fuerte);
-  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  border-left: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  overflow-y: auto;
-  animation: nav-drawer-in 0.2s ease-out;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--accent);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.nav-drawer[hidden] {
-  display: none;
+.menu-pantalla-item:hover .menu-pantalla-item-icono {
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: 0 0 16px -6px rgba(var(--accent-rgb), 0.5);
 }
 
-.nav-drawer .logout-form {
-  margin: 0;
-  width: 100%;
+.menu-pantalla-item-icono svg {
+  width: 22px;
+  height: 22px;
 }
 
-.nav-drawer .logout-form button {
+.menu-pantalla-item-peligro .menu-pantalla-item-icono {
   color: var(--danger);
 }
 
-@keyframes nav-drawer-in {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
+.menu-pantalla-item-peligro:hover .menu-pantalla-item-icono {
+  background: rgba(var(--danger-rgb), 0.14);
+  box-shadow: 0 0 16px -6px rgba(var(--danger-rgb), 0.5);
+}
+
+.menu-pantalla-item-form {
+  margin: 0;
+}
+
+@keyframes menu-pantalla-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 420px) {
+  .menu-pantalla-grilla {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nav-expandido,
-  .nav-drawer {
+  .menu-pantalla {
     animation: none;
   }
 }
@@ -1397,6 +1321,24 @@ tr.fila-saliendo {
   color: white;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* rama-inicio-planta: hero de la pantalla principal (planta grande +
+   saludo), arriba de la Captura rápida de siempre en views/captura.ejs. */
+.inicio-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.inicio-saludo {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.3rem;
 }
 
 /* rama-captura-rapida: chat de captura rápida (Pendiente/Idea/Recordatorio) */

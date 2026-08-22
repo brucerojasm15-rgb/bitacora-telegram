@@ -1,78 +1,101 @@
 <%
-  /* rama-nav-rediseno: reemplaza el sistema anterior de 3 piezas
-     (`.nav`/`.nav-desktop` -- lista de chips solo en escritorio,
-     `.nav-bottom` -- barra fija solo en mobile, `.nav-mas-menu` -- hoja
-     flotante solo en mobile) por un sistema único que se comporta IGUAL
-     en cualquier tamaño de pantalla, pedido explícito del usuario tras no
-     quedar conforme con el nav de `rama-interfaz-v2`. Documentado a fondo
-     en COORDINACION.md (ver también la investigación de UX sobre nav
-     "adaptativa" que se le compartió al usuario antes de construir esto).
+  /* rama-inicio-planta: reemplaza TODO el sistema de rama-nav-rediseno
+     (`.nav-top` fija + `.nav-expandido` + `.nav-drawer`) -- se rompía en
+     un navegador mobile real (confirmado por el usuario vía control
+     remoto: el panel de accesos ocasionales quedaba como texto plano
+     subrayado en vez de un panel flotante). En vez de parchear eso, el
+     usuario pidió llevar zentIA al esquema de una app de referencia que
+     mostró (mapa + buscador tipo chat en la pantalla principal, menú de
+     funciones en grilla aparte): acá la "pantalla principal" es
+     `/captura` (ver ese archivo -- planta grande + saludo + la Captura
+     rápida de siempre) y el "menú aparte" es `.menu-pantalla`, este
+     mismo partial.
 
-     Tres piezas nuevas:
-     - `.nav-top`: fija arriba (debajo de `.barra-superior`, que no se
-       toca), una sola fila sin wrap. Muestra los 5 accesos PRIMARIOS
-       solo-ícono -- mismo criterio ya documentado en `rama-nav-mobile`
-       para qué 5 son "de uso esperado diario" (Captura, Pendientes,
-       Ideas, Recordatorios, Amigos): capturar + revisar los 3 tipos de
-       cosas que se capturan son el núcleo del producto, y Amigos es la
-       puerta de entrada al costado social. ESTOS 5 NUNCA cambian de
-       orden -- la "nav adaptativa" que pidió el usuario se limita
-       a la zona secundaria de abajo, a propósito (ver la nota de UX
-       research: adaptar la barra primaria completa rompe la memoria
-       muscular de usuarios que vuelven seguido).
-     - `.nav-expandido` (+ `.nav-expandido-overlay`): panel flotante que
-       cuelga de `.nav-top` al tocar el botón de expandir -- mismo
-       mecanismo que ya resolvía `.nav-mas-menu` antes (overlay que
-       oscurece, cierra con click afuera o Escape, ver
-       partials/scripts.ejs), solo que ya no está limitado a mobile.
-       Lista los 6 accesos de uso OCASIONAL (mismo criterio que antes
-       tenía "Más": Hechos, Metas, Estancados, Estadísticas, Chat
-       general, Tutorial) con ícono + etiqueta. Estos SÍ se reordenan
-       por clics reales de cada usuario (ver el IIFE de
-       `zentia_nav_uso` en scripts.ejs) -- el orden de acá abajo es el
-       de PRIMERA vez / sin datos, JS lo reordena en el navegador.
-     - `.nav-drawer` (+ `.nav-drawer-overlay`): panel nuevo que entra
-       desde el borde derecho -- agrupa todo lo de cuenta/config que
-       antes estaba mezclado con el contenido (Mi planta, Mercado --
-       ancla nueva a la sección de compras de /ia, Ajustes, tema
-       claro/oscuro, Exportar, Cerrar sesión). Se abre con el botón
-       "cuenta" en `.nav-top`. */
+     Ya no hay una barra de navegación con links sueltos en cada página --
+     la única barra fija es `partials/barra-superior.ejs` (mini planta +
+     racha + semillas, como siempre, más 2 botones nuevos: "Casa" vuelve
+     a /captura, "Cuenta" abre este menú). Todos los accesos que antes
+     estaban repartidos entre primarios/ocasionales/drawer ahora viven
+     juntos acá, en una sola grilla -- ya no hace falta esa separación
+     porque no hay que elegir qué entra en una barra angosta.
+
+     Se elimina el reordenado adaptativo por uso (`zentia_nav_uso` de
+     rama-nav-rediseno): la app de referencia no lo hace y una grilla fija
+     no tiene el mismo problema de espacio que una barra angosta. */
 %>
 <%- include('barra-superior') %>
-  <nav class="nav-top" aria-label="Navegación principal">
-    <a href="/captura" title="Captura rápida" aria-label="Captura rápida"><%- include('icono', { nombre: 'rayo' }) %></a>
-    <a href="/" title="Pendientes" aria-label="Pendientes"><%- include('icono', { nombre: 'portapapeles' }) %></a>
-    <a href="/ideas" title="Ideas" aria-label="Ideas"><%- include('icono', { nombre: 'bombilla' }) %></a>
-    <a href="/recordatorios" title="Recordatorios" aria-label="Recordatorios"><%- include('icono', { nombre: 'reloj' }) %></a>
-    <a href="/amigos" title="Amigos" aria-label="Amigos"><%- include('icono', { nombre: 'personas' }) %></a>
-    <button type="button" class="nav-top-expandir" id="btn-nav-expandir" aria-haspopup="true" aria-expanded="false" aria-controls="nav-expandido" title="Más secciones" aria-label="Más secciones">
-      <%- include('icono', { nombre: 'flecha-abajo' }) %>
-    </button>
-    <button type="button" class="nav-top-cuenta" id="btn-nav-drawer" aria-haspopup="true" aria-expanded="false" aria-controls="nav-drawer" title="Cuenta" aria-label="Cuenta">
-      <%- include('icono', { nombre: 'cuenta' }) %>
-    </button>
-  </nav>
-
-  <div class="nav-expandido-overlay" id="nav-expandido-overlay" hidden></div>
-  <div class="nav-expandido" id="nav-expandido" role="menu" aria-label="Más secciones" hidden>
-    <a href="/hechos" role="menuitem" data-nav-uso><%- include('icono', { nombre: 'check' }) %> <span>Hechos</span></a>
-    <a href="/metas" role="menuitem" data-nav-uso><%- include('icono', { nombre: 'meta' }) %> <span>Metas</span></a>
-    <a href="/estancados" role="menuitem" data-nav-uso><%- include('icono', { nombre: 'arena' }) %> <span>Estancados</span></a>
-    <a href="/estadisticas" role="menuitem" data-nav-uso><%- include('icono', { nombre: 'grafico' }) %> <span>Estadísticas</span></a>
-    <a href="/chat-general" role="menuitem" data-nav-uso><%- include('icono', { nombre: 'chat' }) %> <span>Chat general</span></a>
-    <a href="/tutorial" role="menuitem" data-nav-uso><%- include('icono', { nombre: 'guia' }) %> <span>Tutorial<% if (typeof tutorialCapitulosPendientes !== 'undefined' && tutorialCapitulosPendientes > 0) { %> <span class="no-leido" title="Capítulos pendientes">●</span><% } %></span></a>
-  </div>
-
-  <div class="nav-drawer-overlay" id="nav-drawer-overlay" hidden></div>
-  <div class="nav-drawer" id="nav-drawer" role="menu" aria-label="Cuenta" hidden>
-    <a href="/ia" role="menuitem"><%- include('icono', { nombre: 'planta' }) %> <span>Mi planta</span></a>
-    <a href="/ia#tienda" role="menuitem"><%- include('icono', { nombre: 'moneda' }) %> <span>Mercado</span></a>
-    <a href="/ajustes" role="menuitem"><%- include('icono', { nombre: 'ajustes' }) %> <span>Ajustes</span></a>
-    <button type="button" class="nav-drawer-tema" data-toggle-tema role="menuitem">
-      <%- include('icono', { nombre: 'sol' }) %> <span>Tema claro/oscuro</span>
-    </button>
-    <a href="/exportar" role="menuitem"><%- include('icono', { nombre: 'descarga' }) %> <span>Exportar</span></a>
-    <form method="POST" action="/logout" class="logout-form" role="menuitem">
-      <button type="submit"><%- include('icono', { nombre: 'salir' }) %> <span>Cerrar sesión</span></button>
-    </form>
+  <div class="menu-pantalla" id="menu-pantalla" role="menu" aria-label="Menú" hidden>
+    <div class="menu-pantalla-cerrar">
+      <button type="button" id="btn-menu-cerrar" aria-label="Cerrar menú">
+        <%- include('icono', { nombre: 'x' }) %>
+      </button>
+    </div>
+    <div class="menu-pantalla-grilla">
+      <a href="/" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'portapapeles' }) %></span>
+        <span>Pendientes</span>
+      </a>
+      <a href="/ideas" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'bombilla' }) %></span>
+        <span>Ideas</span>
+      </a>
+      <a href="/recordatorios" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'reloj' }) %></span>
+        <span>Recordatorios</span>
+      </a>
+      <a href="/hechos" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'check' }) %></span>
+        <span>Hechos</span>
+      </a>
+      <a href="/amigos" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'personas' }) %></span>
+        <span>Amigos</span>
+      </a>
+      <a href="/chat-general" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'chat' }) %></span>
+        <span>Chat general</span>
+      </a>
+      <a href="/metas" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'meta' }) %></span>
+        <span>Metas</span>
+      </a>
+      <a href="/estancados" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'arena' }) %></span>
+        <span>Estancados</span>
+      </a>
+      <a href="/estadisticas" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'grafico' }) %></span>
+        <span>Estadísticas</span>
+      </a>
+      <a href="/tutorial" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'guia' }) %></span>
+        <span>Tutorial<% if (typeof tutorialCapitulosPendientes !== 'undefined' && tutorialCapitulosPendientes > 0) { %> <span class="no-leido" title="Capítulos pendientes">●</span><% } %></span>
+      </a>
+      <a href="/ia" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'planta' }) %></span>
+        <span>Mi planta</span>
+      </a>
+      <a href="/ia#tienda" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'moneda' }) %></span>
+        <span>Mercado</span>
+      </a>
+      <a href="/ajustes" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'ajustes' }) %></span>
+        <span>Ajustes</span>
+      </a>
+      <a href="/exportar" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'descarga' }) %></span>
+        <span>Exportar</span>
+      </a>
+      <button type="button" class="menu-pantalla-item" data-toggle-tema role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'sol' }) %></span>
+        <span>Tema</span>
+      </button>
+      <form method="POST" action="/logout" class="menu-pantalla-item-form" role="menuitem">
+        <button type="submit" class="menu-pantalla-item menu-pantalla-item-peligro">
+          <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'salir' }) %></span>
+          <span>Cerrar sesión</span>
+        </button>
+      </form>
+    </div>
   </div>

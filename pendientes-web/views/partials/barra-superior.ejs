@@ -10,21 +10,35 @@
      Si no hay sesión (páginas públicas: /login, /registro, /recuperar...)
      barraSuperior es null y esta barra no se dibuja nada -- esas páginas no
      tienen `main` corrido hacia abajo tampoco (ver la regla CSS de
-     body.sin-barra-superior). */
+     body.sin-barra-superior).
+     rama-inicio-planta: suma 2 botones (casa, cuenta) -- reemplaza a
+     `.nav-top` de rama-nav-rediseno entero (se rompía en mobile real, ver
+     COORDINACION.md). Ahora es la ÚNICA barra fija de la app: "Casa"
+     vuelve a /captura (la pantalla principal nueva, planta + Captura
+     rápida), "Cuenta" abre el menú de usuario en pantalla completa
+     (`.menu-pantalla`, ver partials/nav.ejs). */
   const datos = typeof barraSuperior !== 'undefined' ? barraSuperior : null;
 %>
 <% if (datos) { %>
   <div class="barra-superior" id="barra-superior" data-racha="<%= datos.racha %>" data-usuario="<%= datos.usuarioId %>">
-    <div class="barra-superior-planta" id="barra-superior-planta">
-      <%- include('planta', { especie: datos.especie, etapa: datos.etapa, tamano: 34, idSufijo: 'barra' }) %>
+    <a href="/captura" class="barra-superior-boton" title="Inicio" aria-label="Inicio">
+      <%- include('icono', { nombre: 'casa' }) %>
+    </a>
+    <div class="barra-superior-centro">
+      <div class="barra-superior-planta" id="barra-superior-planta">
+        <%- include('planta', { especie: datos.especie, etapa: datos.etapa, tamano: 34, idSufijo: 'barra' }) %>
+      </div>
+      <div class="barra-superior-dato barra-superior-racha">
+        <%- include('icono', { nombre: 'llama' }) %>
+        <span><%= datos.racha %></span>
+      </div>
+      <div class="barra-superior-dato barra-superior-semillas">
+        <%- include('icono', { nombre: 'semilla' }) %>
+        <span><%= datos.semillas %></span>
+      </div>
     </div>
-    <div class="barra-superior-dato barra-superior-racha">
-      <%- include('icono', { nombre: 'llama' }) %>
-      <span><%= datos.racha %></span>
-    </div>
-    <div class="barra-superior-dato barra-superior-semillas">
-      <%- include('icono', { nombre: 'semilla' }) %>
-      <span><%= datos.semillas %></span>
-    </div>
+    <button type="button" class="barra-superior-boton" id="btn-menu-usuario" aria-haspopup="true" aria-expanded="false" aria-controls="menu-pantalla" title="Menú" aria-label="Menú">
+      <%- include('icono', { nombre: 'cuenta' }) %>
+    </button>
   </div>
 <% } %>

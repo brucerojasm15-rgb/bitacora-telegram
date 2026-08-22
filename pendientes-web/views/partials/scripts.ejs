@@ -46,6 +46,43 @@
     })();
   </script>
   <script>
+    // rama-loading-states: feedback visual genérico de "esto ya se está
+    // procesando" para cualquier submit de formulario -- antes ningún
+    // botón cambiaba mientras esperaba la respuesta del servidor, así que
+    // en una conexión lenta parecía que no había pasado nada y era fácil
+    // reintentar el click y duplicar la acción.
+    //
+    // `window.mostrarCargaBoton(boton)` queda expuesto para que las pocas
+    // páginas con su propio JS de submit (fetch en vez de navegación real,
+    // o un delay a propósito como en captura.ejs) lo llamen ELLAS MISMAS
+    // en el momento justo -- esas mismas páginas marcan su `<form>` con
+    // `data-carga-manual` para que el listener genérico de acá abajo no
+    // les pise el estado (ver captura.ejs e index.ejs).
+    //
+    // Para el resto (la gran mayoría, forms sin ningún JS propio, submit
+    // nativo de toda la vida): un solo listener de 'submit' en `document`
+    // alcanza. El navegador ya garantiza que el evento 'submit' no se
+    // dispara si el form tiene campos `required` sin completar -- no hace
+    // falta repetir esa validación acá.
+    (function () {
+      function mostrarCarga(boton) {
+        if (!boton || boton.disabled) return;
+        boton.disabled = true;
+        boton.classList.add('cargando');
+      }
+      window.mostrarCargaBoton = mostrarCarga;
+
+      document.addEventListener('submit', (e) => {
+        const form = e.target;
+        if (!(form instanceof HTMLFormElement) || form.dataset.cargaManual !== undefined) return;
+        const boton = (e.submitter && e.submitter.type === 'submit')
+          ? e.submitter
+          : form.querySelector('button[type="submit"]:not([disabled])');
+        mostrarCarga(boton);
+      });
+    })();
+  </script>
+  <script>
     // rama-inicio-planta: reemplaza al IIFE de 2 paneles de
     // rama-nav-rediseno (`.nav-expandido` + `.nav-drawer`) -- ahora es un
     // solo menú de pantalla completa (`.menu-pantalla`), así que no hace

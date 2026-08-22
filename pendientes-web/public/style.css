@@ -186,6 +186,45 @@ button, .btn-link, .menu-pantalla-item {
   font-family: var(--display);
 }
 
+/* rama-loading-states: tratamiento genérico para CUALQUIER botón de
+   submit mientras espera la respuesta del servidor -- sin esto, en una
+   conexión lenta el botón se ve igual que antes de tocarlo y es fácil
+   que el usuario reintente el click y duplique la acción (dos
+   pendientes iguales, etc.). Se agrega/saca con JS (ver
+   `window.mostrarCargaBoton` en partials/scripts.ejs), nunca a mano en
+   una vista. Oculta el contenido (texto + íconos con
+   `stroke/fill="currentColor"`, que heredan `color`) y centra un
+   spinner encima -- el botón mantiene su ancho de siempre, sin saltos
+   de layout. */
+button.cargando {
+  position: relative;
+  color: transparent !important;
+}
+
+button.cargando::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: girar-spinner 0.6s linear infinite;
+}
+
+@keyframes girar-spinner {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.cargando::after {
+    animation: none;
+  }
+}
+
 /* Íconos SVG en línea (partials/icono.ejs) — viewBox 24x24 fijo en todos,
    así que un solo selector por atributo alcanza para dimensionarlos
    consistentes con el texto que los rodea, en cualquier lugar del

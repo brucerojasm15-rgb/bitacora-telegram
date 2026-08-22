@@ -86,7 +86,7 @@
                     <div class="acciones">
                       <span class="badge-completado"><%- include('partials/icono', { nombre: 'check' }) %> Completado</span>
                       <a href="/pendientes/<%= p.id %>/editar" class="btn-link"><%- include('partials/icono', { nombre: 'lapiz' }) %> Editar</a>
-                      <form method="POST" action="/pendientes/<%= p.id %>/eliminar" class="eliminar-form">
+                      <form method="POST" action="/pendientes/<%= p.id %>/eliminar" class="eliminar-form" data-carga-manual>
                         <button type="submit"><%- include('partials/icono', { nombre: 'papelera' }) %> Eliminar</button>
                       </form>
                     </div>
@@ -96,21 +96,21 @@
                       <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Completar</button>
                     </form>
                   <% } else if (p.necesita_reflexion) { %>
-                    <form method="POST" action="/pendientes/<%= p.id %>/reflexion" class="reflexion-form">
+                    <form method="POST" action="/pendientes/<%= p.id %>/reflexion" class="reflexion-form" data-carga-manual>
                       <label>¿Qué pasa?</label>
                       <input type="text" name="respuesta" required>
                       <button type="submit">Guardar</button>
                     </form>
                   <% } else { %>
                     <div class="acciones">
-                      <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form">
+                      <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form" data-carga-manual>
                         <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Completar</button>
                       </form>
-                      <form method="POST" action="/pendientes/<%= p.id %>/posponer" class="posponer-form">
+                      <form method="POST" action="/pendientes/<%= p.id %>/posponer" class="posponer-form" data-carga-manual>
                         <button type="submit"><%- include('partials/icono', { nombre: 'arena' }) %> Posponer</button>
                       </form>
                       <a href="/pendientes/<%= p.id %>/editar" class="btn-link"><%- include('partials/icono', { nombre: 'lapiz' }) %> Editar</a>
-                      <form method="POST" action="/pendientes/<%= p.id %>/eliminar" class="eliminar-form">
+                      <form method="POST" action="/pendientes/<%= p.id %>/eliminar" class="eliminar-form" data-carga-manual>
                         <button type="submit"><%- include('partials/icono', { nombre: 'papelera' }) %> Eliminar</button>
                       </form>
                     </div>
@@ -176,6 +176,7 @@
     document.querySelectorAll('.completar-form').forEach((form) => {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (window.mostrarCargaBoton) window.mostrarCargaBoton(e.submitter);
         const fila = form.closest('tr');
         try {
           const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
@@ -207,6 +208,7 @@
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!confirm('¿Eliminar este pendiente?')) return;
+        if (window.mostrarCargaBoton) window.mostrarCargaBoton(e.submitter);
         const fila = form.closest('tr');
         try {
           await fetch(form.action, { method: 'POST', body: new FormData(form) });
@@ -222,6 +224,7 @@
     document.querySelectorAll('.posponer-form, .reflexion-form').forEach((form) => {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (window.mostrarCargaBoton) window.mostrarCargaBoton(e.submitter);
         const fila = form.closest('tr');
         if (fila) fila.classList.add('fila-posponiendo');
         try {

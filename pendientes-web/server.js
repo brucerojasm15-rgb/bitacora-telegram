@@ -3714,7 +3714,14 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     await client.query('DELETE FROM recordatorios WHERE usuario_id = $1', [usuarioId]);
     await client.query('DELETE FROM hechos WHERE usuario_id = $1', [usuarioId]);
 
-    // 16. La cuenta misma.
+    // 16. rama-login-email: tokens de reseteo de contraseña propios --
+    // `reseteos_password.usuario_id` no tenía ON DELETE CASCADE, así que
+    // sin este paso el DELETE de abajo fallaba por violación de FK para
+    // cualquier cuenta que hubiera pedido un reseteo alguna vez (aunque
+    // ya estuviera usado/vencido, la fila sigue existiendo).
+    await client.query('DELETE FROM reseteos_password WHERE usuario_id = $1', [usuarioId]);
+
+    // 17. La cuenta misma.
     await client.query('DELETE FROM usuarios WHERE id = $1', [usuarioId]);
 
     await client.query('COMMIT');
@@ -3726,7 +3733,7 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
   }
   client.release();
 
-  // 17. Destruir la sesión actual. Limitación conocida y documentada en
+  // 18. Destruir la sesión actual. Limitación conocida y documentada en
   // COORDINACION.md: sesiones abiertas en otro dispositivo quedan
   // huérfanas en la tabla `session` hasta que expiren solas (30 días).
   req.session.destroy((err) => {

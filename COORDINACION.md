@@ -2794,9 +2794,52 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   client.release() en /ia/comprar y /ia/usar-comodin").
 
 ### rama-login-email
-- Estado: implementada, commiteada (ce8ed4f) y **pusheada a
-  `origin/rama-login-email`** (aprobado por el usuario, regla 8) — NO
-  mergeada a main todavía, eso queda para rama-integracion.
+- Estado: rebaseada sobre `main` actualizado (36 commits de diferencia --
+  incluye todo v0.2 y v0.3), testeada de punta a punta contra la DB real,
+  **NO pusheada — esperando "aprobado" del usuario, regla 8**. El commit
+  original quedó pusheado a `origin/rama-login-email` desde una sesión
+  anterior, pero esa versión no pasa por el estado actual de `main`
+  (chocaría con `/onboarding` retirado, entre otras cosas) -- el push de
+  esta sesión reescribe esa rama con la versión rebaseada.
+- Retomada en esta sesión: se hizo `git rebase origin/main` (3 conflictos
+  triviales, todos por inserciones en el mismo punto de
+  `COORDINACION.md`/`.env.example`/`server.js`, resueltos conservando
+  ambos lados), se corrió `npm install` (bcrypt/nodemailer no estaban
+  instalados en este worktree), y se testeó en serio por primera vez.
+- **2 bugs de integración encontrados y corregidos al retomarla** (no
+  existían en el diseño original, aparecieron por rozar con ramas
+  mergeadas después de que esta se escribió):
+  1. `POST /login/email` redirigía a `/` -- inconsistente con
+     `POST /login` (usuario+PIN) y con toda la app desde
+     rama-interfaz-v2, donde `/captura` es la landing real. Corregido a
+     `/captura`.
+  2. `POST /registro/email` redirigía a `/onboarding`, que
+     rama-tutorial-interactivo retiró por completo (vista y rutas
+     borradas) -- hubiera sido un 404 para cualquiera que se registrara
+     por email. Además nunca marcaba `tutorial_interactivo_visto = FALSE`,
+     así que aunque se arreglara el redirect, esas cuentas se hubieran
+     perdido el tour nuevo. Corregido: redirect a `/captura` +
+     `tutorial_interactivo_visto = FALSE` explícito en el INSERT, mismo
+     criterio que `POST /registro`.
+- **1 bug de integridad de datos encontrado y corregido**, más serio:
+  `POST /ajustes/eliminar-cuenta` no borraba filas de `reseteos_password`
+  (tabla nueva de esta misma rama) antes de borrar la fila de `usuarios`
+  -- `reseteos_password.usuario_id` no tiene `ON DELETE CASCADE`, así que
+  el DELETE fallaba por violación de FK para CUALQUIER cuenta que hubiera
+  pedido un reseteo de contraseña alguna vez (usado, vencido, o
+  vigente -- la fila queda igual). Encontrado probando el flujo real de
+  principio a fin (pedir reseteo → confirmar → intentar eliminar la
+  cuenta). Corregido agregando el DELETE faltante como paso nuevo antes
+  de borrar `usuarios`.
+- **Hallazgo aparte, reportado y ya resuelto en su propia rama**: mientras
+  se revisaba este código se encontró que `/ajustes/eliminar-cuenta`
+  TAMPOCO borra `metas`/`metas_compartidas`/`metas_compartidas_participantes`
+  -- bug preexistente en `main` (esas tablas no existían cuando se escribió
+  originalmente esta ruta), no específico de esta rama. Confirmado que
+  ningún usuario real tiene esas filas hoy, así que no bloqueaba nada en
+  producción -- igual se decidió arreglarlo ahora en una rama aparte (ver
+  el historial de merges a main para el nombre y estado real de esa
+  rama).
 - Tarea: login por email+contraseña como opción ADICIONAL al de usuario+PIN
   (no lo reemplaza). Diseño (ajustado a mitad de la tarea, ver más abajo):
   evitar cuentas duplicadas para alguien que ya tiene usuario+PIN.
@@ -2841,12 +2884,32 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   `views/recuperar-email-confirmar.ejs` (nuevas), `public/style.css`
   (`.auth-metodo-toggle`), `package.json` (+bcrypt, +nodemailer),
   `.env.example` (+GMAIL_USER, +GMAIL_APP_PASSWORD).
-- Qué NO se verificó todavía: nada probado contra la DB real ni en local
-  (sin `npm install` corrido en este worktree, sin servidor levantado). El
-  envío real de email tampoco se probó (necesita `GMAIL_APP_PASSWORD` real).
-  Antes de mergear: correr `npm install`, levantar local, probar los 3
-  flujos (registro nuevo, vincular cuenta existente, reset por email) contra
-  una DB de prueba.
+- Qué se verificó, contra la DB real con cuentas descartables
+  (`test_le_a_tmp` a `test_le_d_tmp`, todas borradas al terminar junto con
+  sus sesiones y tokens de reseteo): registro nuevo por email (sin PIN,
+  con password, `tutorial_interactivo_visto=FALSE`); login por email
+  (redirige a `/captura`); vincular email+contraseña a una cuenta
+  usuario+PIN existente (misma fila, no duplica); rechazo correcto de
+  vincular con PIN incorrecto; pedido de reseteo de contraseña (sin
+  `GMAIL_APP_PASSWORD` configurado no se manda el correo real, pero el
+  token se genera y se guarda igual -- se probó insertando un token propio
+  con el mismo esquema de hash para no depender del envío real); reseteo
+  confirmado con el token (contraseña nueva funciona, vieja falla, token
+  es de un solo uso -- reintentarlo falla); eliminar cuenta 100% por email
+  con contraseña correcta (funciona tras el fix de `reseteos_password`) y
+  con contraseña incorrecta (rechazado); eliminar cuenta 100% por PIN sin
+  tocar (sigue funcionando exactamente igual que antes de esta rama).
+  Sign-off visual: capturas del toggle "Usuario y PIN"/"Email y
+  contraseña" en `/registro` mostradas al usuario, confirmado que se ve
+  bien integrado con el rediseño glassmorphism actual.
+- Qué NO se verificó: el envío REAL de email (necesita
+  `GMAIL_APP_PASSWORD` real, que no está configurado ni en este worktree
+  ni en Railway -- mismo patrón que `GROQ_API_KEY` antes de que se
+  arreglara, ver rama-sugerencia-estancados). Si se mergea sin esa
+  variable, `/recuperar-email` sigue respondiendo su mensaje genérico de
+  siempre pero nadie recibe el correo de verdad -- antes de anunciar esta
+  feature a usuarios reales, hay que generar una contraseña de aplicación
+  de Gmail y cargarla en Railway.
 - Worktree: `C:\Users\lenovo\Desktop\bitacora\worktrees\rama-login-email`.
 
 ### rama-integracion

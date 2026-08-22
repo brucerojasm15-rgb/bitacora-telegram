@@ -3285,6 +3285,58 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   superior, ilustración, mensaje, botón "Volver al inicio" que efectivamente
   vuelve a `/captura`). Cuenta de prueba borrada al terminar.
 
+### rama-loading-states
+- Estado: probada de punta a punta (server + navegador contra la DB real
+  de Railway), lista para push/merge.
+- Tarea: segundo ítem del backlog agregado 2026-08-22 a partir de la
+  checklist genérica que trajo el usuario. Ningún botón de submit
+  mostraba ningún indicador mientras esperaba la respuesta del servidor
+  -- en una conexión lenta parecía que no había pasado nada, y era fácil
+  reintentar el click y duplicar la acción.
+- Diseño (mismo criterio: tratamiento consistente, no caso por caso):
+  1. **CSS genérico** (`public/style.css`): clase `.cargando` en
+     cualquier `<button>` -- oculta el contenido (`color: transparent`,
+     también tapa íconos con `stroke/fill="currentColor"`, que heredan
+     `color`) y centra un spinner encima, sin cambiar el ancho del botón
+     (sin saltos de layout).
+  2. **JS genérico** (`partials/scripts.ejs`): un solo listener de
+     `'submit'` en `document` que deshabilita y marca `.cargando` al
+     botón que disparó el envío (`e.submitter`). El navegador ya
+     garantiza que `'submit'` no se dispara si hay campos `required` sin
+     completar -- no hace falta revalidar eso a mano. Esto cubre la
+     gran mayoría de los forms de la app (todos los que hacen submit
+     nativo de toda la vida) sin tocar ninguna vista.
+  3. **Opt-out explícito** (`data-carga-manual` en el `<form>`) para las
+     pocas páginas que YA tenían su propio JS de submit y necesitan
+     mostrar el spinner en el momento justo, no apenas se dispara el
+     evento: `captura.ejs` (`#form-captura` -- el primer click en
+     "Recordatorio" solo revela el campo de fecha, no es un envío real
+     todavía; llama a `window.mostrarCargaBoton(e.submitter)` a mano
+     DESPUÉS de esa guarda) e `index.ejs` (`.completar-form`,
+     `.eliminar-form`, `.posponer-form`, `.reflexion-form` -- interceptan
+     el submit con `fetch()` y actualizan el DOM a mano; llaman a
+     `window.mostrarCargaBoton` justo antes de cada `fetch()`, después de
+     cualquier `confirm()` que pueda cancelar).
+  4. `window.mostrarCargaBoton(boton)` queda expuesto global para que
+     cualquier página futura con su propio JS de submit lo reuse en vez
+     de reinventar el mismo CSS/lógica.
+- No re-habilita el botón en ningún caso -- no hizo falta: todo camino
+  del código (submit nativo, redirect del server, `form.submit()` de
+  fallback, `window.location.reload()`) termina en una navegación real o
+  en que la fila se borra del DOM, nunca en quedarse pegado. Si algún día
+  aparece un caso que NO termine así, ahí sí hace falta un timeout
+  defensivo de respaldo -- no se agregó preventivamente.
+- Bug encontrado (no corregido, documentado arriba en el backlog):
+  `.completar-asignado-form` en `index.ejs` no coincide con el selector
+  `.completar-form` que usa el JS existente -- ya era así antes de esta
+  rama, no relacionado a loading states, fuera de alcance corregirlo acá.
+- Qué se verificó: `npm run ci` en verde. Contra la DB real de Railway,
+  en Chrome: spinner confirmado en un form 100% nativo (crear cuenta),
+  en el semi-nativo con delay por sonido (Captura rápida -- Y confirmado
+  que el primer click en "Recordatorio" NO muestra spinner falso, solo
+  el segundo click real lo muestra), y en un form AJAX (Completar un
+  pendiente en /). Cuenta de prueba borrada al terminar.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -3908,16 +3960,21 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
 - [x] Página 404 propia — tomada por rama-404
-- [ ] Loading states: algunas acciones (ej. capturar, completar un
-  pendiente, guardar en /ia, etc.) no muestran ningún indicador mientras
-  esperan la respuesta del servidor -- en una conexión lenta puede parecer
-  que no pasó nada y el usuario reintenta el click. Agregada 2026-08-22,
-  mismo origen que la tarea de arriba. Alcance a definir al tomarla:
-  revisar qué formularios/botones ya usan `reproducirSonido('enviar')` +
-  el patrón `setTimeout(() => form.submit(), 180)` (ver captura.ejs) como
-  punto de partida, decidir un tratamiento visual consistente (¿spinner en
-  el botón? ¿deshabilitarlo mientras envía?) en vez de resolverlo caso por
-  caso. — sin asignar
+- [x] Loading states — tomada por rama-loading-states
+- [ ] BUG encontrado al implementar `rama-loading-states` (no relacionado a
+  esa tarea, no corregido ahí -- documentado para no arreglar cosas fuera
+  de alcance sin autorización): en `views/index.ejs`, el form de completar
+  un pendiente ASIGNADO por un amigo usa `class="completar-asignado-form"`
+  (línea ~94), pero el JS que intercepta el submit con `fetch()` para dar
+  feedback instantáneo (animación, fila que desaparece sin recargar)
+  busca `document.querySelectorAll('.completar-form')` -- un nombre de
+  clase distinto, así que ese form en particular nunca entra al `fetch()`
+  y cae a un submit nativo de toda la vida (funciona, pero sin la
+  animación ni el resto del tratamiento AJAX que sí tienen los pendientes
+  propios). Fix probable: renombrar la clase a `completar-form` (o sumarla
+  al selector) y confirmar que el resto del handler no asume nada que no
+  aplique a un pendiente asignado (ej. el campo "Comentario" opcional que
+  sí tiene este form y el otro no). — sin asignar
 - [ ] Fast-follow de v0.2 (documentar, NO construir todavía, agregado
   2026-08-20): cuando un pendiente lleva mucho tiempo sin resolverse, la IA
   sugiere un paso accionable concreto (ej. link a simulacros para "sacar

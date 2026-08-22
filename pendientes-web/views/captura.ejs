@@ -72,7 +72,7 @@
       </form>
       <p><a href="/captura?texto=<%= encodeURIComponent(confirmarAsignacion.texto) %>">&larr; Corregir el texto</a></p>
     <% } else { %>
-    <form method="POST" action="/captura" id="form-captura" class="captura-form">
+    <form method="POST" action="/captura" id="form-captura" class="captura-form" data-carga-manual>
       <textarea name="texto" id="captura-texto" rows="1" placeholder="Escribe aquí..." required autofocus><%= typeof textoPrefill !== 'undefined' ? textoPrefill : '' %></textarea>
 
       <input type="hidden" name="tipo" id="captura-tipo-oculto">
@@ -127,6 +127,12 @@
     // rama-asignacion-texto: en la pantalla de confirmación de asignación
     // no existe #form-captura (son 2 forms simples de confirmar/cancelar,
     // sin selector de tipo ni campo de fecha) — nada que enganchar acá.
+    // rama-loading-states: este form tiene `data-carga-manual` (el
+    // listener genérico de partials/scripts.ejs lo ignora) porque el
+    // primer click en "Recordatorio" NO es un envío real todavía (solo
+    // revela el campo de fecha) -- mostrar el spinner ahí sería
+    // engañoso. Se llama a `mostrarCargaBoton` a mano, solo en el envío
+    // de verdad (después de esa guarda).
     if (form) {
       form.addEventListener('submit', (e) => {
         const tipo = e.submitter && e.submitter.dataset.tipo;
@@ -138,6 +144,7 @@
         }
         e.preventDefault();
         tipoOculto.value = tipo;
+        if (window.mostrarCargaBoton) window.mostrarCargaBoton(e.submitter);
         reproducirSonido('enviar');
         setTimeout(() => form.submit(), 180);
       });

@@ -2910,9 +2910,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Worktree: `C:\Users\lenovo\Desktop\bitacora\worktrees\rama-login-email`.
 
 ### rama-fix-metas-eliminar-cuenta
-- Estado: implementada, testeada contra la DB real, **NO pusheada —
-  esperando "aprobado" del usuario, regla 8**. Worktree sobre
-  `origin/main` actualizado (ya incluye rama-login-email).
+- Estado: **mergeada a main vía PR #69 (2026-08-22), desplegada en
+  Railway, verificada SUCCESS**. Ver "Historial de merges a main".
 - Tarea: bug encontrado revisando `POST /ajustes/eliminar-cuenta` mientras
   se testeaba `rama-login-email` en paralelo (no reportado por el
   usuario, no específico de esa rama) -- la ruta nunca fue actualizada
@@ -3196,6 +3195,15 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-fix-metas-eliminar-cuenta (3a5f47c) → main
+  vía PR #69: sin conflictos. CI verde. Commit de merge `0b03e23`.
+  Desplegado en Railway y verificado SUCCESS. `POST /ajustes/eliminar-
+  cuenta` no borraba `metas`/`metas_compartidas`/
+  `metas_compartidas_participantes` -- encontrado revisando código
+  cercano mientras se trabajaba en rama-login-email, sin bloquear nada en
+  producción todavía (ningún usuario real tenía esas filas). Ver la
+  sección de la rama para la decisión de diseño (preservar metas
+  compartidas ajenas con `creado_por = NULL` en vez de borrarlas).
 - 2026-08-22 — merge de rama-login-email (9c66c10) → main vía PR #68: sin
   conflictos (rebaseada primero contra `origin/main`, 36 commits de
   diferencia). CI verde. Commit de merge `c59a28e`. Desplegado en Railway.

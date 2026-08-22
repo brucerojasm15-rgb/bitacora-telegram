@@ -3882,6 +3882,23 @@ fast-follow de v0.2, todavía sin construir ni diseñar en detalle):
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [ ] Página 404 propia (con el estilo visual de la app -- vidrio + verde de
+  acento, ver `partials/head.ejs`/`public/style.css` -- en vez del error
+  genérico del navegador/Express) para rutas que no existen. Agregada
+  2026-08-22, a partir de repasar una checklist genérica de "antes de
+  lanzar" que trajo el usuario -- la mayoría de esos 20 puntos no aplican
+  (SEO/sitemap/OpenGraph/Analytics no tienen sentido para una app privada
+  de un círculo chico, no pública/indexable), pero este sí. — sin asignar
+- [ ] Loading states: algunas acciones (ej. capturar, completar un
+  pendiente, guardar en /ia, etc.) no muestran ningún indicador mientras
+  esperan la respuesta del servidor -- en una conexión lenta puede parecer
+  que no pasó nada y el usuario reintenta el click. Agregada 2026-08-22,
+  mismo origen que la tarea de arriba. Alcance a definir al tomarla:
+  revisar qué formularios/botones ya usan `reproducirSonido('enviar')` +
+  el patrón `setTimeout(() => form.submit(), 180)` (ver captura.ejs) como
+  punto de partida, decidir un tratamiento visual consistente (¿spinner en
+  el botón? ¿deshabilitarlo mientras envía?) en vez de resolverlo caso por
+  caso. — sin asignar
 - [ ] Fast-follow de v0.2 (documentar, NO construir todavía, agregado
   2026-08-20): cuando un pendiente lleva mucho tiempo sin resolverse, la IA
   sugiere un paso accionable concreto (ej. link a simulacros para "sacar

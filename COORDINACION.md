@@ -2759,9 +2759,8 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   con tareas reales, reemplaza el onboarding estático").
 
 ### rama-fix-doble-release
-- Estado: implementada, testeada contra la DB real, **NO pusheada —
-  esperando "aprobado" del usuario, regla 8**. Worktree sobre
-  `origin/main` actualizado.
+- Estado: **mergeada a main vía PR #67 (2026-08-22), desplegada en
+  Railway, verificada SUCCESS**. Ver "Historial de merges a main".
 - Tarea: bug encontrado por casualidad revisando `rama-login-email` en
   paralelo (no reportado por el usuario, no relacionado a esa rama) --
   `POST /ia/comprar` y `POST /ia/usar-comodin` (la tienda de la planta
@@ -3037,6 +3036,12 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-fix-doble-release (8af7422) → main vía PR
+  #67: sin conflictos. CI verde. Commit de merge `d5aeff0`. Desplegado en
+  Railway y verificado SUCCESS. Bug de crash (doble `client.release()`)
+  encontrado al pasar en `/ia/comprar` y `/ia/usar-comodin`, sin relación
+  con `rama-login-email` -- mismo bug que ya apareció 2 veces antes en
+  v0.3, ver la sección de la rama para el detalle.
 - 2026-08-21 — merge de rama-tutorial-interactivo (5c038de) → main vía PR
   #66: sin conflictos. CI verde. Commit de merge `0fc9a8e`. Desplegado en
   Railway y verificado SUCCESS. Cuarto y último punto del feedback de

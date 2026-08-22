@@ -3337,6 +3337,35 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   el segundo click real lo muestra), y en un form AJAX (Completar un
   pendiente en /). Cuenta de prueba borrada al terminar.
 
+### rama-fix-completar-asignado
+- Estado: probada de punta a punta (server + navegador contra la DB real
+  de Railway, con 2 cuentas para reproducir el caso real de una tarea
+  asignada), lista para push/merge.
+- Tarea: el bug documentado en `rama-loading-states` (ver arriba). El
+  form de completar un pendiente ASIGNADO por un amigo tenía
+  `class="completar-asignado-form"`, un nombre distinto al selector
+  `.completar-form` que usa el JS de `fetch()` en `index.ejs` -- ese form
+  en particular nunca entraba al tratamiento AJAX (animación, sonido,
+  fila que desaparece sin recargar) y caía a un submit nativo de toda la
+  vida. Funcionaba (la ruta del servidor, `POST /pendientes/:id/completar`,
+  ya maneja los dos casos -- propio y asignado -- en un solo handler,
+  agnóstico de cuál formulario lo llame), solo se veía peor.
+- Fix: se unificó la clase a `completar-form` (se sacó
+  `completar-asignado-form` del todo, no tenía otro uso) y se agregó
+  `data-carga-manual` para que entre también al tratamiento de
+  `rama-loading-states`. El handler de `fetch()` ya era genérico (usa
+  `form.action` + `new FormData(form)`, sin asumir campos concretos), así
+  que el campo "Comentario" opcional de este form viaja igual dentro del
+  `FormData` -- no hizo falta tocar el JS ni el server para nada más.
+- Qué se verificó: `npm run ci` en verde. Contra la DB real de Railway,
+  con 2 cuentas de prueba (A y B, amigas entre sí): A creó un pendiente y
+  se lo asignó a B (`POST /pendientes/:id/asignar`), B lo completó desde
+  el navegador -- confirmado visualmente que ahora dispara el mismo
+  spinner de `rama-loading-states`, la animación de check, y la fila
+  desaparece sola sin recargar la página (antes de este fix hubiera sido
+  un submit nativo con recarga completa). Ambas cuentas de prueba y sus
+  datos relacionados (amistad, pendiente, eventos) borrados al terminar.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -3961,20 +3990,7 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
 - [x] Página 404 propia — tomada por rama-404
 - [x] Loading states — tomada por rama-loading-states
-- [ ] BUG encontrado al implementar `rama-loading-states` (no relacionado a
-  esa tarea, no corregido ahí -- documentado para no arreglar cosas fuera
-  de alcance sin autorización): en `views/index.ejs`, el form de completar
-  un pendiente ASIGNADO por un amigo usa `class="completar-asignado-form"`
-  (línea ~94), pero el JS que intercepta el submit con `fetch()` para dar
-  feedback instantáneo (animación, fila que desaparece sin recargar)
-  busca `document.querySelectorAll('.completar-form')` -- un nombre de
-  clase distinto, así que ese form en particular nunca entra al `fetch()`
-  y cae a un submit nativo de toda la vida (funciona, pero sin la
-  animación ni el resto del tratamiento AJAX que sí tienen los pendientes
-  propios). Fix probable: renombrar la clase a `completar-form` (o sumarla
-  al selector) y confirmar que el resto del handler no asume nada que no
-  aplique a un pendiente asignado (ej. el campo "Comentario" opcional que
-  sí tiene este form y el otro no). — sin asignar
+- [x] BUG de `completar-asignado-form` (encontrado en `rama-loading-states`) — tomada por rama-fix-completar-asignado
 - [ ] Fast-follow de v0.2 (documentar, NO construir todavía, agregado
   2026-08-20): cuando un pendiente lleva mucho tiempo sin resolverse, la IA
   sugiere un paso accionable concreto (ej. link a simulacros para "sacar

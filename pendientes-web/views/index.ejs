@@ -91,7 +91,15 @@
                       </form>
                     </div>
                   <% } else if (esAsignado) { %>
-                    <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-asignado-form">
+                    <!-- rama-fix-completar-asignado: antes era class="completar-asignado-form",
+                         un nombre distinto que el selector `.completar-form` del script de
+                         abajo nunca matcheaba -- este form caía a un submit nativo de toda la
+                         vida (funcionaba, pero sin la animación/sonido/actualización en vivo
+                         que sí tienen los pendientes propios). El handler ya es genérico
+                         (usa form.action + new FormData(form), sin asumir campos concretos),
+                         así que unificar la clase alcanza -- el input "comentario" opcional
+                         viaja igual dentro del FormData. -->
+                    <form method="POST" action="/pendientes/<%= p.id %>/completar" class="completar-form" data-carga-manual>
                       <input type="text" name="comentario" placeholder="Comentario (opcional)">
                       <button type="submit"><%- include('partials/icono', { nombre: 'check' }) %> Completar</button>
                     </form>

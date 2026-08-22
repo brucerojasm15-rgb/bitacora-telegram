@@ -568,6 +568,33 @@ svg[viewBox="0 0 24 24"] {
   height: 72px;
 }
 
+/* rama-login-email: toggle entre "usuario y PIN" / "email y contraseña" en
+   login y registro. */
+.auth-metodo-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.auth-metodo-toggle button {
+  flex: 1;
+  padding: 0.6rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text-muted, var(--text));
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.auth-metodo-toggle button.activo {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: white;
+}
+
 .login-form {
   display: flex;
   flex-direction: column;

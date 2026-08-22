@@ -14,16 +14,54 @@
     <% if (typeof cuentaEliminada !== 'undefined' && cuentaEliminada) { %>
       <p class="notificacion">Tu cuenta se eliminó. Gracias por haber usado la app.</p>
     <% } %>
+    <% if (typeof password_actualizada !== 'undefined' && password_actualizada) { %>
+      <p class="notificacion">Tu contraseña se actualizó. Ya podés entrar con ella.</p>
+    <% } %>
 
-    <form method="POST" action="/login" class="login-form">
-      <input type="text" name="nombre_usuario" placeholder="Usuario" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required autofocus>
-      <input type="password" name="pin" placeholder="PIN" inputmode="numeric" required>
+    <% const metodoActivo = (typeof metodo !== 'undefined' && metodo === 'email') ? 'email' : 'pin'; %>
+    <% const emailPrevio = typeof emailIngresado !== 'undefined' ? emailIngresado : ''; %>
+
+    <div class="auth-metodo-toggle" id="auth-metodo-toggle">
+      <button type="button" data-metodo="pin" class="<%= metodoActivo === 'pin' ? 'activo' : '' %>">Usuario y PIN</button>
+      <button type="button" data-metodo="email" class="<%= metodoActivo === 'email' ? 'activo' : '' %>">Entrar con email</button>
+    </div>
+
+    <form method="POST" action="/login" class="login-form auth-metodo-form" data-metodo="pin" style="<%= metodoActivo === 'pin' ? '' : 'display:none' %>">
+      <input type="text" name="nombre_usuario" placeholder="Usuario" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" <%= metodoActivo === 'pin' ? 'required' : '' %> autofocus>
+      <input type="password" name="pin" placeholder="PIN" inputmode="numeric" <%= metodoActivo === 'pin' ? 'required' : '' %>>
+      <button type="submit">Entrar</button>
+    </form>
+
+    <form method="POST" action="/login/email" class="login-form auth-metodo-form" data-metodo="email" style="<%= metodoActivo === 'email' ? '' : 'display:none' %>">
+      <input type="email" name="email" placeholder="Email" value="<%= emailPrevio %>" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="email" <%= metodoActivo === 'email' ? 'required' : '' %>>
+      <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" <%= metodoActivo === 'email' ? 'required' : '' %>>
       <button type="submit">Entrar</button>
     </form>
 
     <p><a href="/registro">Crear cuenta nueva</a></p>
     <p><a href="/recuperar">¿Olvidaste tu PIN?</a></p>
+    <p><a href="/recuperar-email">¿Olvidaste tu contraseña?</a></p>
   </main>
+
+  <script>
+    // Alterna entre los dos formularios sin recargar la página. Cada
+    // formulario deshabilita el "required" de sus campos cuando está oculto
+    // -- si no, el navegador bloquearía el submit del que SÍ se ve pidiendo
+    // que se llene el que está escondido.
+    document.querySelectorAll('#auth-metodo-toggle button').forEach((boton) => {
+      boton.addEventListener('click', () => {
+        const metodo = boton.dataset.metodo;
+        document.querySelectorAll('#auth-metodo-toggle button').forEach((b) => b.classList.toggle('activo', b === boton));
+        document.querySelectorAll('.auth-metodo-form').forEach((form) => {
+          const esEste = form.dataset.metodo === metodo;
+          form.style.display = esEste ? '' : 'none';
+          form.querySelectorAll('input').forEach((input) => {
+            if (input.type !== 'submit') input.required = esEste;
+          });
+        });
+      });
+    });
+  </script>
 
 <%- include('partials/scripts') %>
 </body>

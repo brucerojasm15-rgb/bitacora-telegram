@@ -18,6 +18,8 @@
         <p class="notificacion">Especie de planta actualizada.</p>
       <% } else if (typeof guardado !== 'undefined' && guardado === 'notificaciones') { %>
         <p class="notificacion">Notificaciones desactivadas en este navegador.</p>
+      <% } else if (typeof guardado !== 'undefined' && guardado === 'email') { %>
+        <p class="notificacion">Email y contraseña vinculados. Ya podés entrar con cualquiera de los dos métodos.</p>
       <% } %>
 
       <section class="ajustes-grupo">
@@ -44,6 +46,35 @@
           <button type="submit">Guardar</button>
         </form>
         <p class="ajustes-nota">Cambiar de especie no reinicia el crecimiento — la etapa depende de la moneda que ya ganaste, no de qué planta elijas.</p>
+      </section>
+
+      <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'candado' }) %> Email y contraseña</h2>
+        <% if (typeof errorVincular !== 'undefined' && errorVincular) { %>
+          <p class="error"><%= errorVincular %></p>
+        <% } %>
+        <% if (tieneEmailPassword) { %>
+          <p class="ajustes-estado">Vinculado a <strong><%= emailActual %></strong>. Podés entrar con usuario+PIN o con email+contraseña, lo que prefieras.</p>
+          <p class="ajustes-nota">Volvé a completar el formulario de abajo si querés cambiar el email o la contraseña vinculados.</p>
+        <% } else { %>
+          <p class="ajustes-nota">Agregá email y contraseña como una segunda forma de entrar a esta misma cuenta -- tu usuario y PIN siguen funcionando igual que ahora, esto no los reemplaza.</p>
+        <% } %>
+        <form method="POST" action="/ajustes/vincular-email" class="ajustes-form">
+          <label for="vincular-email">Email</label>
+          <input type="email" name="email" id="vincular-email" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="email" required>
+          <label for="vincular-password">Contraseña nueva</label>
+          <input type="password" name="password" id="vincular-password" autocomplete="new-password" minlength="8" required>
+          <label for="vincular-confirmar">Repite la contraseña</label>
+          <input type="password" name="confirmar_password" id="vincular-confirmar" autocomplete="new-password" minlength="8" required>
+          <% if (tienePin) { %>
+            <label for="vincular-pin">Tu PIN actual (para confirmar que sos vos)</label>
+            <input type="password" name="pin" id="vincular-pin" inputmode="numeric" required>
+          <% } else { %>
+            <label for="vincular-password-actual">Tu contraseña actual (para confirmar que sos vos)</label>
+            <input type="password" name="password_actual" id="vincular-password-actual" autocomplete="current-password" required>
+          <% } %>
+          <button type="submit"><%= tieneEmailPassword ? 'Actualizar' : 'Vincular' %></button>
+        </form>
       </section>
 
       <section class="ajustes-grupo">
@@ -86,8 +117,13 @@
           <a href="/terminos">Términos y privacidad</a>.
         </p>
         <form method="POST" action="/ajustes/eliminar-cuenta" class="ajustes-form" id="form-eliminar-cuenta">
-          <label for="ajustes-eliminar-pin">Tu PIN actual</label>
-          <input type="password" name="pin" id="ajustes-eliminar-pin" inputmode="numeric" required>
+          <% if (tienePin) { %>
+            <label for="ajustes-eliminar-pin">Tu PIN actual</label>
+            <input type="password" name="pin" id="ajustes-eliminar-pin" inputmode="numeric" required>
+          <% } else { %>
+            <label for="ajustes-eliminar-password">Tu contraseña actual</label>
+            <input type="password" name="password_actual" id="ajustes-eliminar-password" autocomplete="current-password" required>
+          <% } %>
           <label for="ajustes-eliminar-confirmar">Escribe ELIMINAR para confirmar</label>
           <input type="text" name="confirmar" id="ajustes-eliminar-confirmar" autocomplete="off" required>
           <button type="submit" class="ajustes-boton-peligro">Eliminar mi cuenta</button>

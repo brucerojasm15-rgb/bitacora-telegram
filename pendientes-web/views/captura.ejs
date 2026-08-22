@@ -6,6 +6,20 @@
 <body>
   <main>
 <%- include('partials/nav') %>
+    <% if (typeof barraSuperior !== 'undefined' && barraSuperior) { %>
+      <!-- rama-inicio-planta: /captura pasa a ser la pantalla principal
+           de la app (planta + Captura rápida juntas), pedida por el
+           usuario a partir de una app de referencia (pantalla principal
+           con mapa + buscador tipo chat). La planta grande reusa
+           partials/planta.ejs con la MISMA especie/etapa que ya trae
+           res.locals.barraSuperior -- sin consulta nueva a la DB. El
+           saludo usa res.locals.nombreUsuario, expuesto por el mismo
+           middleware global de server.js que ya arma barraSuperior. -->
+      <section class="inicio-hero">
+        <%- include('partials/planta', { especie: barraSuperior.especie, etapa: barraSuperior.etapa, tamano: 140, idSufijo: 'inicio' }) %>
+        <p class="inicio-saludo">Hola<%= typeof nombreUsuario !== 'undefined' && nombreUsuario ? ', ' + nombreUsuario : '' %> 👋</p>
+      </section>
+    <% } %>
     <h1><%- include('partials/icono', { nombre: 'rayo' }) %> Captura rápida</h1>
     <p class="count">Escribe lo que sea y elige qué es antes de guardarlo.</p>
 

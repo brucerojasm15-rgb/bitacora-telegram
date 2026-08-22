@@ -195,6 +195,7 @@ app.use(async (req, res, next) => {
   if (!req.usuarioId) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
+    res.locals.nombreUsuario = null;
     res.locals.tutorialCapitulosCompletados = [];
     res.locals.tutorialCapitulosPendientes = 0;
     return next();
@@ -203,12 +204,17 @@ app.use(async (req, res, next) => {
     // rama-interfaz: se suma ia_especie/saldo_moneda a esta MISMA consulta
     // (no una nueva) porque ya se estaba pidiendo `tema` acá para cada
     // request logueada -- aprovecharla evita un roundtrip extra.
+    // rama-inicio-planta: mismo criterio, se suma nombre_usuario -- lo
+    // necesita el saludo de la pantalla principal nueva ("Hola, {nombre}"),
+    // pero se expone acá (no solo en captura.ejs) por si a futuro hace
+    // falta en otro lado, igual que ya se hizo con `tema`/`barraSuperior`.
     const { rows } = await pool.query(
-      'SELECT tema, ia_especie, saldo_moneda FROM usuarios WHERE id = $1',
+      'SELECT tema, ia_especie, saldo_moneda, nombre_usuario FROM usuarios WHERE id = $1',
       [req.usuarioId]
     );
     const usuario = rows[0];
     res.locals.tema = usuario ? usuario.tema : null;
+    res.locals.nombreUsuario = usuario ? usuario.nombre_usuario : null;
     res.locals.barraSuperior = await barraSuperiorDeUsuario(req.usuarioId, usuario);
     // rama-tutorial-multicapitulo: se calcula acá para TODAS las vistas
     // (como `tema`/`barraSuperior`) porque el tour cruza varias páginas
@@ -227,6 +233,7 @@ app.use(async (req, res, next) => {
   } catch (err) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
+    res.locals.nombreUsuario = null;
     res.locals.tutorialCapitulosCompletados = [];
     res.locals.tutorialCapitulosPendientes = 0;
   }

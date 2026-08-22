@@ -3135,6 +3135,74 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 - Pendiente: sign-off visual del usuario en vivo, especialmente en su
   celular real (donde la automatización no pudo probar por la limitación
   de arriba) -- antes de dar el tema por cerrado del todo.
+- **Actualización**: el usuario sí la probó en su celular real vía
+  control remoto y encontró un bug real (`.nav-top`/`.nav-expandido` rotos
+  en ese navegador mobile). En vez de parchearlo, pidió un esquema
+  distinto -- ver `rama-inicio-planta` abajo, que reemplaza esta rama por
+  completo.
+
+### rama-inicio-planta
+- Estado: probada de punta a punta (server + navegador de escritorio
+  contra la DB de Railway), lista para push/merge. **Falta la verificación
+  en celular real** -- ver "Pendiente" abajo.
+- Tarea: reemplaza por completo `rama-nav-rediseno` de arriba (mergeada
+  hace un rato en esta misma sesión). El usuario la probó en su celular
+  real vía control remoto y encontró el bug que se temía en esa rama:
+  `.nav-top`/`.nav-expandido` se rompían de verdad en su navegador mobile
+  (el panel de accesos ocasionales quedaba como texto plano subrayado en
+  vez de un panel flotante -- probablemente el CSS no cargaba/aplicaba
+  bien ahí). En vez de parchear eso, mostró 2 capturas de una app de
+  mototaxis (pantalla principal = mapa + buscador tipo chat "¿A dónde vas
+  hoy?", menú de usuario aparte en grilla de íconos) y pidió el mismo
+  esquema para zentIA -- confirmado con preguntas puntuales: el "comando
+  con un botón" en la pantalla principal ES la Captura rápida de siempre,
+  solo reubicada (no un chat con IA interpretando lenguaje libre), y esto
+  reemplaza `rama-nav-rediseno` entera (no vale la pena arreglar el bug
+  de algo que se iba a tirar).
+- Qué cambió:
+  1. `/captura` (misma ruta de siempre, sigue siendo donde aterriza el
+     login) pasa a ser la pantalla principal: planta compañera GRANDE
+     arriba (reusa `partials/planta.ejs` con la misma especie/etapa que
+     ya traía `res.locals.barraSuperior` -- sin consulta nueva) + saludo
+     ("Hola, {nombre_usuario} 👋") + EXACTAMENTE el mismo form de Captura
+     rápida de siempre, sin tocar su lógica.
+  2. `partials/barra-superior.ejs` (la única barra fija que queda, ya no
+     hay una segunda barra tipo `.nav-top`) suma 2 botones: "Casa" (→
+     /captura, ícono nuevo `casa`) y "Cuenta" (→ abre el menú, ícono
+     `cuenta` ya existente de `rama-nav-rediseno`).
+  3. Nuevo menú de usuario en PANTALLA COMPLETA (`.menu-pantalla`,
+     `partials/nav.ejs`), grilla de 4 columnas con los 16 accesos que
+     antes estaban repartidos entre `.nav-top`/`.nav-expandido`/
+     `.nav-drawer` -- ya no hace falta esa separación primarios/
+     ocasionales/cuenta porque no hay que elegir qué entra en una barra
+     angosta. A propósito NO se copiaron los colores pastel por categoría
+     de la app de referencia -- se mantuvo el lenguaje visual ya aprobado
+     de zentIA (vidrio + un solo verde de acento).
+  4. Se eliminó el reordenado adaptativo por uso (`zentia_nav_uso`) de
+     `rama-nav-rediseno` -- la app de referencia no lo hace y una grilla
+     fija no tiene el mismo problema de espacio que forzó esa idea en la
+     rama anterior. Se puede retomar más adelante si hace falta.
+- Archivos tocados: `server.js` (suma `nombre_usuario` a la consulta que
+  ya armaba `barraSuperior` en el middleware global, expone
+  `res.locals.nombreUsuario` -- nada de rutas ni esquema de DB),
+  `views/captura.ejs`, `views/partials/barra-superior.ejs`,
+  `views/partials/nav.ejs` (reescrito, mucho más simple que antes),
+  `views/partials/scripts.ejs` (un solo IIFE de abrir/cerrar en vez de
+  los 2 + el de reordenado), `views/partials/icono.ejs` (ícono nuevo
+  `casa`, se borra `flecha-abajo` que quedó sin uso), `public/style.css`
+  (se borra TODO lo de `.nav-top`/`.nav-expandido`/`.nav-drawer`, se
+  agrega `.menu-pantalla*` + los 2 botones nuevos de `.barra-superior`).
+- Qué se verificó: `npm run ci` en verde. Contra la DB real de Railway
+  (server local en :3057), navegador de escritorio (Chrome): la pantalla
+  principal muestra la planta + saludo correctos, una captura real se
+  sigue guardando igual que siempre ("Guardado." confirmado), "Casa"
+  vuelve a /captura desde otra página, "Cuenta" abre la grilla con los 16
+  ítems y cada uno navega bien. Cuenta de prueba borrada al terminar.
+- Pendiente: **verificación en el celular real del usuario vía control
+  remoto** -- el usuario prefirió esperar a que esto esté en producción
+  en vez de probar contra el server local. Es el paso que falta antes de
+  cerrar el tema del todo (es literalmente el canal que encontró el bug
+  de la rama anterior).
 
 ### rama-integracion
 - Estado: —

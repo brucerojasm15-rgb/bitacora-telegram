@@ -3787,12 +3787,20 @@ app.get('/chat', async (req, res) => {
       return res.status(403).render('chat', { mensajes: [], amistadId: null, error: 'No tienes acceso a esta conversación.', usuarioId: req.usuarioId, buscar });
     }
     const params = [amistadId];
-    let consulta = 'SELECT id, amistad_id, autor_id, texto, fecha, leido FROM mensajes WHERE amistad_id = $1';
+    // rama-fix-chat-visual: se suma el JOIN a usuarios para traer el nombre
+    // real del autor -- antes la vista mostraba "Usuario " + autor_id (el
+    // ID interno crudo) porque esta consulta nunca lo trajo. Mismo patrón
+    // que ya usa GET /chat-general (`u.nombre_usuario AS autor_nombre`,
+    // LEFT JOIN por si la cuenta del autor ya no existe).
+    let consulta = `SELECT m.id, m.amistad_id, m.autor_id, m.texto, m.fecha, m.leido, u.nombre_usuario AS autor_nombre
+       FROM mensajes m
+       LEFT JOIN usuarios u ON u.id = m.autor_id
+       WHERE m.amistad_id = $1`;
     if (buscar) {
       params.push(`%${buscar}%`);
-      consulta += ` AND texto ILIKE $${params.length}`;
+      consulta += ` AND m.texto ILIKE $${params.length}`;
     }
-    consulta += ' ORDER BY fecha ASC';
+    consulta += ' ORDER BY m.fecha ASC';
     const { rows } = await pool.query(consulta, params);
     // Se capturan los mensajes ANTES de marcarlos como leídos, para que la
     // vista todavía pueda mostrar cuáles llegaron sin leer en esta apertura

@@ -1057,7 +1057,15 @@ svg[viewBox="0 0 24 24"] {
   margin-bottom: 1rem;
 }
 
-.filtro-rango input[type="number"] {
+/* rama-fix-chat-visual: `.filtro-rango` se diseñó originalmente solo para
+   el filtro de fechas de Estadísticas/Hechos (siempre `input[type="number"]`
+   ahí). El buscador de mensajes del chat (rama-fix-chat-ui) reutiliza esta
+   misma clase pero con `input[type="text"]` -- ese selector no lo cubría,
+   así que caía al estilo por defecto del navegador (fondo blanco), roto
+   contra el tema oscuro del resto de la app. Se agrega `[type="text"]` a
+   la regla en vez de duplicarla. */
+.filtro-rango input[type="number"],
+.filtro-rango input[type="text"] {
   flex: 1;
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--border);
@@ -1068,7 +1076,8 @@ svg[viewBox="0 0 24 24"] {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.filtro-rango input[type="number"]:focus {
+.filtro-rango input[type="number"]:focus,
+.filtro-rango input[type="text"]:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);

@@ -36,7 +36,7 @@
             const esMio = m.autor_id === usuarioId;
           %>
             <li class="<%= esMio ? 'mensaje-propio' : 'mensaje-otro' %>">
-              <% if (!esMio) { %><span class="autor">Usuario <%= m.autor_id %></span><% } %>
+              <% if (!esMio) { %><span class="autor"><%= m.autor_nombre || ('Usuario ' + m.autor_id) %></span><% } %>
               <span class="texto"><%= m.texto %></span>
               <span class="fecha">
                 <%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %>

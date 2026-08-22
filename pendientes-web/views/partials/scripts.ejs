@@ -46,36 +46,102 @@
     })();
   </script>
   <script>
-    // rama-nav-mobile: menú "Más" de la barra de navegación inferior
-    // (mobile). Solo existe si el partial de nav está presente en la
-    // página (todas las vistas autenticadas) — con guardia por si algún
-    // día una vista no lo incluye.
+    // rama-nav-rediseno: reemplaza al IIFE de "menú Más" de rama-nav-mobile
+    // (mismo mecanismo -- botón + panel + overlay que oscurece, cierra con
+    // click afuera o Escape) generalizado para los 2 paneles nuevos de
+    // partials/nav.ejs: `.nav-expandido` (secciones de uso ocasional) y
+    // `.nav-drawer` (cuenta/config). Abrir uno cierra el otro si estaba
+    // abierto -- no tiene sentido tener los dos a la vez. Con guardia por
+    // si algún día una vista no incluye el partial de nav.
     (function () {
-      const btn = document.getElementById('btn-nav-mas');
-      const menu = document.getElementById('nav-mas-menu');
-      const overlay = document.getElementById('nav-mas-overlay');
-      if (!btn || !menu || !overlay) return;
+      function armarPanel(idBoton, idPanel, idOverlay) {
+        const btn = document.getElementById(idBoton);
+        const panel = document.getElementById(idPanel);
+        const overlay = document.getElementById(idOverlay);
+        if (!btn || !panel || !overlay) return null;
 
-      function abrir() {
-        menu.hidden = false;
-        overlay.hidden = false;
-        btn.setAttribute('aria-expanded', 'true');
+        function cerrar() {
+          panel.hidden = true;
+          overlay.hidden = true;
+          btn.setAttribute('aria-expanded', 'false');
+        }
+
+        function abrir() {
+          panel.hidden = false;
+          overlay.hidden = false;
+          btn.setAttribute('aria-expanded', 'true');
+        }
+
+        btn.addEventListener('click', () => {
+          if (panel.hidden) abrir(); else cerrar();
+        });
+        overlay.addEventListener('click', cerrar);
+
+        return { abrir, cerrar, estaAbierto: () => !panel.hidden };
       }
 
-      function cerrar() {
-        menu.hidden = true;
-        overlay.hidden = true;
-        btn.setAttribute('aria-expanded', 'false');
+      const expandido = armarPanel('btn-nav-expandir', 'nav-expandido', 'nav-expandido-overlay');
+      const drawer = armarPanel('btn-nav-drawer', 'nav-drawer', 'nav-drawer-overlay');
+
+      if (expandido && drawer) {
+        document.getElementById('btn-nav-expandir').addEventListener('click', () => {
+          if (drawer.estaAbierto()) drawer.cerrar();
+        });
+        document.getElementById('btn-nav-drawer').addEventListener('click', () => {
+          if (expandido.estaAbierto()) expandido.cerrar();
+        });
       }
-
-      btn.addEventListener('click', () => {
-        if (menu.hidden) abrir(); else cerrar();
-      });
-
-      overlay.addEventListener('click', cerrar);
 
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !menu.hidden) cerrar();
+        if (e.key !== 'Escape') return;
+        if (expandido && expandido.estaAbierto()) expandido.cerrar();
+        if (drawer && drawer.estaAbierto()) drawer.cerrar();
+      });
+    })();
+  </script>
+  <script>
+    // rama-nav-rediseno: "nav adaptativa" limitada a la zona secundaria
+    // (`.nav-expandido`) -- los 5 accesos primarios de `.nav-top` NUNCA se
+    // reordenan (ver la nota de UX research en COORDINACION.md: adaptar la
+    // barra primaria completa rompe la memoria muscular de quien ya
+    // vuelve seguido). Cuenta clics reales por href en localStorage
+    // (mismo criterio "la preferencia vive en el navegador, no en la
+    // cuenta" que ya usan `sonidosActivos` y el tutorial) y, en cada
+    // carga de página, reordena esos mismos nodos de mayor a menor uso --
+    // sin datos (usuario nuevo) o empatados, se respeta el orden por
+    // defecto que ya trae el HTML.
+    (function () {
+      const CLAVE = 'zentia_nav_uso';
+      const contenedor = document.getElementById('nav-expandido');
+      if (!contenedor) return;
+      const items = Array.from(contenedor.querySelectorAll('[data-nav-uso]'));
+      if (!items.length) return;
+
+      let usos = {};
+      try {
+        usos = JSON.parse(localStorage.getItem(CLAVE)) || {};
+      } catch (e) {
+        usos = {};
+      }
+
+      items.forEach((item, indice) => {
+        item.dataset.navOrdenDefault = indice;
+      });
+
+      const ordenados = items.slice().sort((a, b) => {
+        const usoA = usos[a.getAttribute('href')] || 0;
+        const usoB = usos[b.getAttribute('href')] || 0;
+        if (usoA !== usoB) return usoB - usoA;
+        return Number(a.dataset.navOrdenDefault) - Number(b.dataset.navOrdenDefault);
+      });
+      ordenados.forEach((item) => contenedor.appendChild(item));
+
+      items.forEach((item) => {
+        item.addEventListener('click', () => {
+          const href = item.getAttribute('href');
+          usos[href] = (usos[href] || 0) + 1;
+          localStorage.setItem(CLAVE, JSON.stringify(usos));
+        });
       });
     })();
   </script>

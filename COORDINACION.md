@@ -3538,7 +3538,7 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   `barraSuperiorDeUsuario`/`GET /ia`/`GET /trazabilidad` refactorizadas
   para usarla, el SELECT del middleware global extendido con las columnas
   que la función necesita).
-- Último commit: ver Historial de merges.
+- Último commit: `eb68014`.
 
 ### rama-integracion
 - Estado: —
@@ -3783,6 +3783,14 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-perfil-juego (eb68014) → main vía PR #79:
+  sin conflictos (mergeStateStatus MERGEABLE). CI verde. Commit de merge
+  `2ffb1b1`. Resuelve la tarea O del backlog — sin tabla/columna nueva,
+  una sola función `perfilJuegoDeUsuario()` reemplaza 3 mini-consultas
+  repetidas (barra superior, `/ia`, `/trazabilidad`). Verificado contra la
+  DB real con cuenta de prueba: los 3 lugares muestran exactamente los
+  mismos números (semillas/etapa/saldo) que antes del refactor. Ver la
+  sección `rama-perfil-juego` para el detalle completo.
 - 2026-08-22 — merge de rama-ia-companera-fase2-v2 (3a7fac3) → main vía PR
   #78: sin conflictos (mergeStateStatus CLEAN). CI verde. Commit de merge
   `310658d`. Reemplaza el PR #53 (`rama-ia-companera-fase2`), cerrado sin

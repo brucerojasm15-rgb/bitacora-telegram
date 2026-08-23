@@ -208,8 +208,14 @@ app.use(async (req, res, next) => {
     // necesita el saludo de la pantalla principal nueva ("Hola, {nombre}"),
     // pero se expone acá (no solo en captura.ejs) por si a futuro hace
     // falta en otro lado, igual que ya se hizo con `tema`/`barraSuperior`.
+    // rama-perfil-juego: mismo criterio otra vez -- se suman las columnas
+    // que perfilJuegoDeUsuario necesita (ia_skin/ia_nombre/ia_tema_extra/
+    // comodines_perdon_disponibles) para que barraSuperiorDeUsuario pueda
+    // pasarle esta fila y no dispare una segunda consulta a `usuarios`.
     const { rows } = await pool.query(
-      'SELECT tema, ia_especie, saldo_moneda, nombre_usuario FROM usuarios WHERE id = $1',
+      `SELECT tema, ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda,
+              comodines_perdon_disponibles, nombre_usuario
+       FROM usuarios WHERE id = $1`,
       [req.usuarioId]
     );
     const usuario = rows[0];
@@ -246,26 +252,20 @@ app.use(async (req, res, next) => {
 // que hacen res.render tiene que pasarlo a mano. `usuarioFila` es el
 // resultado de la consulta que ya hizo el middleware de arriba (evita
 // repetirla); si no se pasa (llamadas fuera de ese middleware), la trae acá.
-// 2 consultas más (moneda de vida para la etapa de la planta, y la racha) --
-// mismo trade-off que ya aceptó rama-tema-jungla con la de `tema`.
+// rama-perfil-juego (tarea O): delega en perfilJuegoDeUsuario en vez de
+// tener su propia lógica de etapa/racha -- mismo trade-off de consultas
+// que ya aceptó rama-tema-jungla con la de `tema`, no se sumó ninguna
+// query nueva (usuarioFila ya trae hoy todas las columnas que
+// perfilJuegoDeUsuario necesita, ver el middleware global más arriba).
 async function barraSuperiorDeUsuario(usuarioId, usuarioFila) {
-  let fila = usuarioFila;
-  if (!fila) {
-    const { rows } = await pool.query('SELECT ia_especie, saldo_moneda FROM usuarios WHERE id = $1', [usuarioId]);
-    fila = rows[0];
-  }
-  if (!fila) return null;
-  const [totalDeVida, rachas] = await Promise.all([
-    monedaAcumuladaDeVida(usuarioId),
-    rachasDeUsuarios([usuarioId]),
-  ]);
-  const etapa = etapaPorMoneda(totalDeVida);
+  const perfil = await perfilJuegoDeUsuario(usuarioId, { usuarioFila });
+  if (!perfil) return null;
   return {
     usuarioId,
-    especie: fila.ia_especie || 'monstera',
-    etapa: etapa.indice,
-    semillas: fila.saldo_moneda,
-    racha: rachas.get(usuarioId) || 0,
+    especie: perfil.especie,
+    etapa: perfil.etapa.indice,
+    semillas: perfil.saldoMoneda,
+    racha: perfil.rachaGeneral,
   };
 }
 
@@ -1674,6 +1674,60 @@ async function monedaAcumuladaDeVida(usuarioId) {
     [usuarioId]
   );
   return rows[0].total;
+}
+
+// Tarea O del backlog (modelo de datos unificado para el "juego"): NO se
+// creó ninguna tabla/columna nueva -- el hallazgo real fue que
+// barraSuperiorDeUsuario, GET /ia y GET /trazabilidad repetían cada una su
+// propia mini-consulta de las mismas columnas/tablas (usuarios, moneda de
+// vida, etapa, racha). Esta función es el único punto de lectura para el
+// estado del "juego" de un usuario; cualquier pantalla futura (incluida la
+// tarea 11 cuando se diseñe) debería llamar acá en vez de repetir el
+// patrón disperso otra vez. `incluirPerfilIa` es opt-in porque
+// barraSuperiorDeUsuario corre en CADA request logueado (vía el middleware
+// global) y no debe sumar una query más de la que ya acepta hoy.
+// `usuarioFila` es opcional (mismo criterio que ya usaba
+// barraSuperiorDeUsuario): si el caller ya trae la fila de `usuarios`
+// (ej. el middleware global, que la extiende con las columnas de acá para
+// no repetir el SELECT), se reusa en vez de volver a consultar.
+// Deliberadamente NO incluye rachaTareasAsignadas (la racha de tarea 7,
+// usada para el bonus de moneda en pagarMoneda) -- esa es lógica de
+// negocio/gating, no una lectura de resumen, y es un concepto de racha
+// distinto a propósito del que sí devuelve esta función (ver su propio
+// comentario en rachasDeUsuarios más abajo).
+async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = false } = {}) {
+  const consultas = [
+    usuarioFila
+      ? Promise.resolve(usuarioFila)
+      : pool
+          .query(
+            `SELECT ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda,
+                    comodines_perdon_disponibles
+             FROM usuarios WHERE id = $1`,
+            [usuarioId]
+          )
+          .then((r) => r.rows[0]),
+    monedaAcumuladaDeVida(usuarioId),
+    rachasDeUsuarios([usuarioId]),
+  ];
+  if (incluirPerfilIa) {
+    consultas.push(pool.query('SELECT resumen FROM perfil_ia WHERE usuario_id = $1', [usuarioId]));
+  }
+  const [fila, totalDeVida, rachas, perfilIaRows] = await Promise.all(consultas);
+  if (!fila) return null;
+  const etapa = etapaPorMoneda(totalDeVida);
+  return {
+    especie: fila.ia_especie || 'monstera',
+    etapa,
+    totalDeVida,
+    saldoMoneda: fila.saldo_moneda,
+    iaNombre: fila.ia_nombre,
+    iaSkin: fila.ia_skin || 'clasico',
+    iaTemaExtra: fila.ia_tema_extra,
+    comodinesDisponibles: fila.comodines_perdon_disponibles,
+    rachaGeneral: rachas.get(usuarioId) || 0,
+    ...(incluirPerfilIa ? { perfilIaResumen: perfilIaRows.rows[0] ? perfilIaRows.rows[0].resumen : '' } : {}),
+  };
 }
 
 // Origen 'gastada' es una extensión chica sobre el enum de la tarea 7
@@ -3787,8 +3841,11 @@ app.get('/trazabilidad', async (req, res) => {
     // rama-moneda-virtual: saldo propio, para verificar que el sistema de
     // moneda está pagando de verdad (la vista real del saldo/planta la
     // arma la tarea 8, esto es solo un número de referencia por ahora).
-    const { rows: saldoRows } = await pool.query('SELECT saldo_moneda FROM usuarios WHERE id = $1', [req.usuarioId]);
-    const saldoMoneda = saldoRows[0] ? saldoRows[0].saldo_moneda : 0;
+    // rama-perfil-juego (tarea O): reusa perfilJuegoDeUsuario en vez de su
+    // propia consulta aislada a `usuarios` (era la tercera copia del mismo
+    // patrón, junto con barraSuperiorDeUsuario y GET /ia).
+    const perfilJuego = await perfilJuegoDeUsuario(req.usuarioId);
+    const saldoMoneda = perfilJuego ? perfilJuego.saldoMoneda : 0;
 
     res.render('trazabilidad', { eventos, conteoSemana, amistadId, pagina, paginaTamano: TRAZABILIDAD_PAGINA_TAMANO, saldoMoneda, error: null });
   } catch (err) {
@@ -3807,7 +3864,7 @@ app.get('/ia', async (req, res) => {
       'SELECT ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda, comodines_perdon_disponibles FROM usuarios WHERE id = $1',
       [req.usuarioId]
     );
-    const usuario = rows[0];
+    let usuario = rows[0];
     if (!usuario || !usuario.ia_especie) {
       // Cuentas creadas antes de esta rama no tienen especie elegida —
       // se les asigna monstera por defecto (la especie insignia de la app)
@@ -3816,21 +3873,23 @@ app.get('/ia', async (req, res) => {
         "UPDATE usuarios SET ia_especie = 'monstera', ia_nombre = COALESCE(ia_nombre, 'Monstera') WHERE id = $1",
         [req.usuarioId]
       );
+      usuario = { ...usuario, ia_especie: 'monstera', ia_nombre: (usuario && usuario.ia_nombre) || 'Monstera' };
     }
-    const especie = usuario && usuario.ia_especie ? usuario.ia_especie : 'monstera';
-    const totalDeVida = await monedaAcumuladaDeVida(req.usuarioId);
-    const etapa = etapaPorMoneda(totalDeVida);
+    // rama-perfil-juego (tarea O): se le pasa `usuarioFila` (ya la trajo la
+    // consulta de arriba, con el ajuste de especie por defecto si aplicó)
+    // para que perfilJuegoDeUsuario no dispare una segunda consulta.
+    const perfil = await perfilJuegoDeUsuario(req.usuarioId, { usuarioFila: usuario });
     const observaciones = await observacionesIA(req.usuarioId);
 
     res.render('ia', {
-      especie,
-      etapa,
-      totalDeVida,
-      nombreIa: (usuario && usuario.ia_nombre) || especie,
-      skinActual: (usuario && usuario.ia_skin) || 'clasico',
-      temaExtraActual: usuario ? usuario.ia_tema_extra : null,
-      saldoMoneda: usuario ? usuario.saldo_moneda : 0,
-      comodinesDisponibles: usuario ? usuario.comodines_perdon_disponibles : 0,
+      especie: perfil.especie,
+      etapa: perfil.etapa,
+      totalDeVida: perfil.totalDeVida,
+      nombreIa: perfil.iaNombre || perfil.especie,
+      skinActual: perfil.iaSkin,
+      temaExtraActual: perfil.iaTemaExtra,
+      saldoMoneda: perfil.saldoMoneda,
+      comodinesDisponibles: perfil.comodinesDisponibles,
       observaciones,
       skinsDisponibles: IA_SKINS_DISPONIBLES,
       temasExtraDisponibles: IA_TEMAS_EXTRA_DISPONIBLES,

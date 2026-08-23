@@ -3491,6 +3491,55 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   style.css` (`.ia-chat-acceso`).
 - Último commit: `3a7fac3`.
 
+### rama-perfil-juego
+- Estado: mergeada a main.
+- Tarea: tarea O del backlog — modelo de datos unificado para el "juego".
+  **No se creó ninguna tabla/columna nueva.** El código ya calculaba todo
+  en vivo (moneda, etapa de planta, racha) sin duplicar estado — hay
+  comentarios explícitos en `server.js` documentando esa decisión desde
+  antes ("se calcula en vivo... para que nunca pueda desincronizarse").
+  El problema real que describe la tarea O era que 3 lugares repetían su
+  propia mini-consulta de las mismas columnas/tablas:
+  `barraSuperiorDeUsuario()` (corre en cada request logueado, vía el
+  middleware global), `GET /ia`, y `GET /trazabilidad`.
+- Diseño: nueva función `perfilJuegoDeUsuario(usuarioId, { usuarioFila,
+  incluirPerfilIa })` (junto a `monedaAcumuladaDeVida`/`etapaPorMoneda`),
+  único punto de lectura para el estado del "juego" de un usuario —
+  especie, etapa (con `siguienteUmbral`), moneda de vida, saldo gastable,
+  skin/nombre/tema-extra de la IA, comodines disponibles, y la racha
+  general (`rachasDeUsuarios`). Acepta una fila de `usuarios` ya
+  prefetcheada (`usuarioFila`) para no sumar una consulta nueva al
+  middleware global, que ya extiende su SELECT existente con las columnas
+  que hacían falta (mismo patrón "aprovechar la consulta que ya se hacía"
+  que usa `tema`/`nombreUsuario`). `incluirPerfilIa` queda opt-in (nadie
+  lo usa todavía) para cuando una pantalla futura necesite el resumen
+  acumulado de la tarea 9 sin forzarlo en el hot path. Deliberadamente NO
+  incluye `rachaTareasAsignadas` (la racha de tarea 7, usada solo para el
+  bonus de moneda en `pagarMoneda`) — es lógica de negocio/gating, no una
+  lectura de resumen, y es un concepto de racha distinto a propósito de la
+  racha general (los 3 conceptos de racha del código — general,
+  entre-amigos, y de-tareas-asignadas — se mantienen separados, tal como
+  ya estaban).
+  `barraSuperiorDeUsuario`, `GET /ia` y `GET /trazabilidad` ahora delegan
+  en esta función en vez de repetir su propia consulta. La tarea 11
+  (segunda fuente de moneda) queda fuera de esta ronda — sigue sin fórmula
+  definida — pero el modelo queda preparado para sumarla sin rehacerlo.
+- Qué se verificó: refactor puro de lectura, sin tabla/columna nueva —
+  verificado contra la DB real con una cuenta de prueba desechable con
+  moneda insertada directamente (120 de por vida): `/ia` mostró etapa
+  "brote" y "120 / 200 moneda ganada de por vida" (umbral correcto para
+  `IA_UMBRAL_ETAPA`), `/trazabilidad` mostró "Tu saldo: 120 monedas", y la
+  barra superior (visible en `/captura`) mostró `semillas=120, racha=0` —
+  los 3 coinciden exactamente, calculados ahora por la misma función.
+  Cuenta de prueba y su amistad de prueba (necesaria para probar
+  `/trazabilidad`, que exige un `amistad_id` válido) eliminadas después.
+  `npm run ci` (37 vistas + `server.js`) en verde.
+- Archivos tocados: `server.js` (`perfilJuegoDeUsuario` nueva,
+  `barraSuperiorDeUsuario`/`GET /ia`/`GET /trazabilidad` refactorizadas
+  para usarla, el SELECT del middleware global extendido con las columnas
+  que la función necesita).
+- Último commit: ver Historial de merges.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -4943,24 +4992,35 @@ actualmente en curso (Fase 1):**
   urgente cuantos más usuarios reales usen las features de IA (tareas 9 y
   11) al mismo tiempo.
 
-- [ ] **O. Modelo de datos unificado para el "juego".** Hoy la parte
-  tipo-juego está repartida en piezas separadas construidas en momentos
-  distintos: moneda (tarea 7), evolución de la planta por moneda (tarea
-  8), racha (`/estadisticas`, y la nueva racha diaria entre amigos de la
-  Fase 3 de v0.2), perfil acumulado de la IA (tarea 9), reflexión +
-  segunda fuente de moneda (tarea 11). Cada una define sus propias tablas
-  y columnas de forma aislada. Antes de que esto crezca hasta parecerse a
-  un juego real tipo Happy Pets (con más mecánicas: logros, cosméticos,
-  eventos, quizás intercambio entre amigos), vale la pena decidir un
-  "perfil de juego" central por usuario (ej. tabla `perfil_juego` o
-  similar) que consolide moneda total, nivel/etapa de evolución, rachas
-  activas — en vez de que cada mecánica nueva agregue su propia tabla
-  desconectada de las demás, lo que hace cada vez más difícil mostrar un
-  estado consistente del "juego" en un solo lugar (ej. un dashboard
-  resumen). Decidir el esquema exacto es trabajo de diseño, no algo para
-  asumir en este archivo. — asignada a: sin asignar — Depende de: tareas
-  7, 8, 9 y 11 (para saber qué datos reales existen antes de diseñar el
-  modelo consolidado).
+- [x] **O. ✅ RESUELTA (2026-08-22, `rama-perfil-juego`) — Modelo de datos
+  unificado para el "juego".** Hoy la parte tipo-juego está repartida en
+  piezas separadas construidas en momentos distintos: moneda (tarea 7),
+  evolución de la planta por moneda (tarea 8), racha (`/estadisticas`, y
+  la nueva racha diaria entre amigos de la Fase 3 de v0.2), perfil
+  acumulado de la IA (tarea 9), reflexión + segunda fuente de moneda
+  (tarea 11). Cada una define sus propias tablas y columnas de forma
+  aislada. Antes de que esto crezca hasta parecerse a un juego real tipo
+  Happy Pets (con más mecánicas: logros, cosméticos, eventos, quizás
+  intercambio entre amigos), vale la pena decidir un "perfil de juego"
+  central por usuario (ej. tabla `perfil_juego` o similar) que consolide
+  moneda total, nivel/etapa de evolución, rachas activas — en vez de que
+  cada mecánica nueva agregue su propia tabla desconectada de las demás,
+  lo que hace cada vez más difícil mostrar un estado consistente del
+  "juego" en un solo lugar (ej. un dashboard resumen). Decidir el esquema
+  exacto es trabajo de diseño, no algo para asumir en este archivo. —
+  Depende de: tareas 7, 8, 9 y 11 (para saber qué datos reales existen
+  antes de diseñar el modelo consolidado).
+
+  **Resuelto (ver sección `rama-perfil-juego` en "Estado de ramas"):**
+  la tarea 11 seguía sin diseño propio (ni la fórmula de moneda está
+  decidida) — se resolvió esta tarea cubriendo las tareas 7, 8 y 9 (ya
+  mergeadas), dejando el modelo preparado para sumar la 11 después. **No
+  se creó ninguna tabla nueva** — el código ya calculaba todo en vivo sin
+  duplicar estado (documentado explícitamente en varios comentarios del
+  propio `server.js`); el problema real era que 3 lugares repetían su
+  propia mini-consulta de las mismas columnas/tablas. Se resolvió con una
+  única función de lectura, `perfilJuegoDeUsuario()`, que barra superior/
+  `/ia`/`/trazabilidad` ahora comparten.
 
 - [ ] **P. Revisar el límite de registro público — tensión con crecer
   exponencialmente.** `rama-limite-registro` fijó `LIMITE_REGISTROS_

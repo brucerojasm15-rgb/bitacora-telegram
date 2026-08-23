@@ -12,6 +12,12 @@
       <p class="error"><%= error %></p>
     <% } else { %>
 
+      <% if (typeof alertaLlamadasIa !== 'undefined' && alertaLlamadasIa) { %>
+        <div class="aviso-asignacion">
+          <p>⚠️ Llamadas a la IA hoy: <%= llamadasIaHoy %> (umbral de aviso: <%= umbralAlertaLlamadasIa %> de las 14,400 diarias del tier gratis de Groq) — revisá <code>ia_llamadas</code> si esperabas menos uso.</p>
+        </div>
+      <% } %>
+
       <% if (typeof guardado !== 'undefined' && guardado === 'nombre') { %>
         <p class="notificacion">Nombre de usuario actualizado.</p>
       <% } else if (typeof guardado !== 'undefined' && guardado === 'especie') { %>
@@ -111,10 +117,10 @@
         <h2><%- include('partials/icono', { nombre: 'papelera' }) %> Eliminar cuenta</h2>
         <p class="ajustes-nota">
           Esto borra tu cuenta y todos tus datos de verdad — pendientes, ideas, recordatorios,
-          hechos, mensajes (los tuyos y los de tus conversaciones activas), amistades, tu planta
-          y tu moneda. No se puede deshacer. Los pendientes que le hayas asignado a un amigo
-          quedan libres para él (se desasignan, no se borran). Más detalle en
-          <a href="/terminos">Términos y privacidad</a>.
+          hechos, mensajes (los tuyos y los de tus conversaciones activas), tu conversación con
+          tu planta y su perfil acumulado, amistades, tu planta y tu moneda. No se puede deshacer.
+          Los pendientes que le hayas asignado a un amigo quedan libres para él (se desasignan, no
+          se borran). Más detalle en <a href="/terminos">Términos y privacidad</a>.
         </p>
         <form method="POST" action="/ajustes/eliminar-cuenta" class="ajustes-form" id="form-eliminar-cuenta">
           <% if (tienePin) { %>

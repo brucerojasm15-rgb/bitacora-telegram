@@ -1661,7 +1661,8 @@ tr.fila-saliendo {
 }
 
 .ia-construccion,
-.ia-tienda {
+.ia-tienda,
+.ia-chat-acceso {
   background: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
@@ -1669,6 +1670,13 @@ tr.fila-saliendo {
   border-radius: var(--radius);
   padding: 1rem 1.2rem;
   margin-top: 1rem;
+}
+
+/* rama-ia-companera-fase2-v2 (tarea 9 del roadmap): acceso al chat real
+   desde /ia -- mismo estilo de tarjeta que .ia-construccion/.ia-tienda. */
+.ia-chat-acceso p {
+  margin: 0.4rem 0 0.8rem;
+  color: var(--text-muted);
 }
 
 .ia-observaciones {

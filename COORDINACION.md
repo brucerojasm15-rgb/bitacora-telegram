@@ -3540,6 +3540,95 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   que la función necesita).
 - Último commit: `eb68014`.
 
+### rama-recapitulacion-diaria
+- Estado: mergeada a main.
+- Tarea: tarea 11 del roadmap — recapitulación periódica (moneda
+  determinística + reflexión narrativa). El backlog dejaba explícitamente
+  sin decidir la fórmula, la hora, el anti-doble-pago, si el tope diario
+  es compartido con tarea 7, y el versionado del protocolo — ese es el
+  trabajo real de esta rama.
+- Diseño:
+  - **Qué paga y cuánto** (cubre el hueco real que deja tarea 7, que solo
+    paga por tareas *asignadas* completadas — `POST
+    /pendientes/:id/completar` solo inserta en `eventos_completado`
+    cuando `asignado_a` está seteado): `MONEDA_POR_PENDIENTE_PROPIO=3`
+    por cada pendiente propio completado ese día (`asignado_a IS NULL`,
+    para nunca solapar con lo que ya pagó tarea 7 del mismo evento),
+    `MONEDA_POR_IDEA_CAPTURADA=2` por idea capturada (no exige
+    `etiqueta` — la segmentación es async y no debe bloquear el pago),
+    `MONEDA_BONUS_RACHA_DIARIA=5` si la racha general
+    (`rachasDeUsuarios`) es de `UMBRAL_RACHA_BONUS_DIAS=3` días o más ese
+    día — una sola vez, no escalado.
+  - **Tope diario: COMPARTIDO** con `LIMITE_MONEDA_DIARIA=100` de tarea 7
+    (sin constante nueva) — `pagarMoneda()` ya sumaba todo lo `ganada` sin
+    filtrar por `motivo`, así que reusarla tal cual aplica el tope
+    compartido gratis; mismo criterio que ya usaba el tutorial
+    (`POST /tutorial/capitulo/:capitulo/completar`) antes de esta rama.
+  - **Anti-doble-pago:** tabla nueva `recapitulacion_diaria (usuario_id,
+    fecha, ejecutado_en, PRIMARY KEY (usuario_id, fecha))` — el cron
+    intenta `INSERT ... ON CONFLICT DO NOTHING` ANTES de calcular o pagar
+    nada; si ya existe fila para ese usuario+día, se salta. Probado de
+    verdad corriendo el cron cada minuto durante varios minutos seguidos
+    sobre la misma cuenta: pagó una sola vez.
+  - **Versionado:** columna `protocolo_version` en `moneda_transacciones`
+    (NULL para cualquier motivo que no sea `recapitulacion_diaria` — no
+    es retroactivo a tarea 7/8/9), constante `PROTOCOLO_MONEDA_DIARIA_
+    VERSION=1`.
+  - **Hora:** cron `'30 8 * * *'` (`America/Lima`), calcula sobre el día
+    calendario Lima ANTERIOR completo (nunca el día en curso). Hora
+    distinta a las 9:00 de estancados y las 20:00 de
+    `HORA_NOTIFICACION`, para no concentrar los 4 cron jobs de la app.
+  - **Reflexión narrativa:** función nueva `generarReflexionDiaria`, solo
+    se llama si hubo actividad real ese día (mismo criterio que el
+    pago) — un día inactivo no gasta cupo de Groq ni genera un mensaje
+    de "no hiciste nada" (evita el riesgo de tono negativo por diseño,
+    no por prompt). Usa `perfil_ia.resumen` + SOLO el delta del día
+    (nunca el historial crudo completo, decisión ya tomada el
+    2026-08-16). Se inserta como fila nueva en `mensajes_ia`
+    (`rol='ia'`) — aparece como el próximo mensaje del chat de la tarea
+    9, sin UI nueva. `ia_llamadas.motivo` CHECK ampliado a incluir
+    `'reflexion'` (drop+add del constraint, idempotente).
+  - **Indicador "no leído":** columna `usuarios.ia_chat_visto_hasta`
+    (mismo patrón exacto que `chat_general_visto_hasta`), actualizada en
+    `GET /ia/chat`. El tile "Hablar con tu planta" del menú
+    (`partials/nav.ejs`) suma un badge `.no-leido` (mismo patrón visual
+    que el badge de Tutorial) calculado en el middleware global.
+  - **Opt-out:** columna `usuarios.reflexion_ia_activa BOOLEAN DEFAULT
+    TRUE`, toggle nuevo en `/ajustes` (`POST /ajustes/reflexion`).
+    Afecta SOLO la reflexión — el pago de moneda sigue igual esté
+    activada o no.
+  - **Dónde se muestra el pago:** en ningún lado nuevo — el saldo ya es
+    visible en `/ia` y la barra superior (vía `perfilJuegoDeUsuario` de
+    la tarea O), igual que tarea 7 tampoco tiene notificación de pago
+    dedicada.
+- Qué se verificó: `npm run ci` en verde. Contra la DB real, con el cron
+  temporalmente en `'* * * * *'` (revertido a `'30 8 * * *'` antes de
+  commitear) y 4 cuentas de prueba desechables con datos sembrados
+  directamente para simular "ayer": (1) cuenta con 3 días de racha + 1
+  pendiente propio + 1 idea completados ayer → pagó exactamente
+  `3+2+5=10`, con `protocolo_version=1`, generó una reflexión real de
+  Groq con tono cálido/positivo, badge `no-leido` visible en el nav y
+  desaparece al abrir `/ia/chat`; correr el cron varias veces más sobre
+  la misma cuenta NO volvió a pagar ni a escribir nada. (2) cuenta sin
+  actividad ayer → 0 pago, 0 llamadas a Groq (confirmado por ausencia de
+  fila en `ia_llamadas` con `motivo='reflexion'`), pero SÍ quedó
+  reservado en `recapitulacion_diaria` (no reintenta indefinidamente).
+  (3) cuenta con actividad real pero `reflexion_ia_activa=FALSE` → pagó
+  igual, cero reflexión. (4) cuenta con 98 moneda ya ganada HOY (simulando
+  tarea 7) + actividad ayer que hubiera valido 5 → pagó solo 2 (el
+  margen real hasta el tope de 100), saldo final exactamente 100.
+  Las 4 cuentas y sus datos, eliminados después.
+- Archivos tocados: `server.js` (schema nuevo en `ensureSchema`,
+  constantes, `pagarMoneda` extendida con `protocoloVersion` opcional,
+  `generarReflexionDiaria`/`recapitularUsuario`/`recapitularActividadDiaria`
+  nuevas, cron nuevo, `GET /ia/chat` actualiza `ia_chat_visto_hasta`,
+  middleware global calcula `iaChatSinLeer`, `GET /ajustes` +
+  `POST /ajustes/reflexion` nuevos, `POST /ajustes/eliminar-cuenta`
+  ampliada con el borrado de `recapitulacion_diaria`), `views/ajustes.ejs`
+  (sección nueva del toggle), `views/partials/nav.ejs` (badge en el tile
+  del chat).
+- Último commit: ver Historial de merges.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -4666,7 +4755,7 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   correr en paralelo con las tareas 6/7/8 (cadena de trazabilidad social),
   no depende de ellas.
 
-- [ ] **11. Recapitulación periódica del usuario — moneda determinística +
+- [x] **11. ✅ MERGEADA (2026-08-22, `rama-recapitulacion-diaria`) — Recapitulación periódica del usuario — moneda determinística +
   reflexión narrativa por IA (no en tiempo real).** Extiende la tarea 7
   (moneda virtual) — hoy ligada solo a completar tareas *asignadas* por un
   amigo. Esta pieza es sobre la actividad propia del usuario, analizada a
@@ -4733,10 +4822,14 @@ el tiempo total sin generar conflictos de archivo entre ellas.
     histórico (ej. columna `protocolo_version` en la tabla de movimientos
     de moneda) — si la fórmula cambia más adelante, sin esto no hay forma
     de distinguir qué monedas se ganaron con qué criterio.
-  — asignada a: sin asignar — Depende de: tarea 7 (moneda virtual), tarea 9
+  — Depende de: tarea 7 (moneda virtual), tarea 9
   (IA compañera, perfil acumulado) y de la Fase 1 de v0.2
   (segmentación/etiquetado de ideas, ver sección `rama-segmentacion-ideas`
   en "Estado de ramas"). Pedido por el usuario el 2026-08-16.
+
+  **Resuelto — ver sección `rama-recapitulacion-diaria` en "Estado de
+  ramas"** para la fórmula exacta, la hora del cron, y todas las
+  decisiones que este enunciado dejaba explícitamente pendientes.
 
 - [ ] **12. Helper compartido para pruebas contra la DB real.** Deuda
   técnica identificada 2026-08-16, no un pedido de producto: casi cada

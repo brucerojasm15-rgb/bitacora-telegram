@@ -105,6 +105,28 @@
       </section>
 
       <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'planta' }) %> Reflexión de tu planta</h2>
+        <p class="ajustes-nota">
+          Cada día, si tuviste actividad, tu planta te deja un mensaje corto en el chat sobre
+          cómo te fue — nunca de reproche, solo para acompañar. El pago de moneda diario sigue
+          igual esté activa o no esta opción.
+        </p>
+        <% if (reflexionActiva) { %>
+          <p class="ajustes-estado">Activa.</p>
+          <form method="POST" action="/ajustes/reflexion" class="ajustes-form">
+            <input type="hidden" name="activar" value="false">
+            <button type="submit">Desactivar</button>
+          </form>
+        <% } else { %>
+          <p class="ajustes-estado">Desactivada.</p>
+          <form method="POST" action="/ajustes/reflexion" class="ajustes-form">
+            <input type="hidden" name="activar" value="true">
+            <button type="submit">Activar</button>
+          </form>
+        <% } %>
+      </section>
+
+      <section class="ajustes-grupo">
         <h2>Tema</h2>
         <div class="ajustes-tema-opciones" id="ajustes-tema-opciones">
           <button type="button" data-tema="claro">Claro</button>

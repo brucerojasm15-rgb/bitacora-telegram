@@ -79,7 +79,7 @@
            planta -- mismo patrón de item que el resto de esta grilla. -->
       <a href="/ia/chat" class="menu-pantalla-item" role="menuitem">
         <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'chat' }) %></span>
-        <span>Hablar con tu planta</span>
+        <span>Hablar con tu planta<% if (typeof iaChatSinLeer !== 'undefined' && iaChatSinLeer) { %> <span class="no-leido" title="Mensaje nuevo">●</span><% } %></span>
       </a>
       <a href="/ia#tienda" class="menu-pantalla-item" role="menuitem">
         <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'moneda' }) %></span>

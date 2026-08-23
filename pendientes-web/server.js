@@ -198,6 +198,7 @@ app.use(async (req, res, next) => {
     res.locals.nombreUsuario = null;
     res.locals.tutorialCapitulosCompletados = [];
     res.locals.tutorialCapitulosPendientes = 0;
+    res.locals.iaChatSinLeer = false;
     return next();
   }
   try {
@@ -212,9 +213,11 @@ app.use(async (req, res, next) => {
     // que perfilJuegoDeUsuario necesita (ia_skin/ia_nombre/ia_tema_extra/
     // comodines_perdon_disponibles) para que barraSuperiorDeUsuario pueda
     // pasarle esta fila y no dispare una segunda consulta a `usuarios`.
+    // rama-recapitulacion-diaria: se suma ia_chat_visto_hasta, la usa la
+    // consulta de abajo para el badge "no leído" del chat de la planta.
     const { rows } = await pool.query(
       `SELECT tema, ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda,
-              comodines_perdon_disponibles, nombre_usuario
+              comodines_perdon_disponibles, nombre_usuario, ia_chat_visto_hasta
        FROM usuarios WHERE id = $1`,
       [req.usuarioId]
     );
@@ -236,12 +239,25 @@ app.use(async (req, res, next) => {
     res.locals.tutorialCapitulosPendientes = Object.keys(TUTORIAL_CAPITULOS).filter(
       (id) => !completados.includes(id)
     ).length;
+    // rama-recapitulacion-diaria: mismo criterio que noLeidosGeneral de
+    // chat_general_visto_hasta (ver GET /chat-general/no-leidos) -- EXISTS
+    // en vez de COUNT porque solo hace falta saber si hay algo, no cuánto.
+    const { rows: sinLeerRows } = await pool.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM mensajes_ia
+         WHERE usuario_id = $1 AND rol = 'ia'
+           AND fecha > COALESCE($2::timestamp, to_timestamp(0))
+       ) AS hay`,
+      [req.usuarioId, usuario ? usuario.ia_chat_visto_hasta : null]
+    );
+    res.locals.iaChatSinLeer = sinLeerRows[0].hay;
   } catch (err) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
     res.locals.nombreUsuario = null;
     res.locals.tutorialCapitulosCompletados = [];
     res.locals.tutorialCapitulosPendientes = 0;
+    res.locals.iaChatSinLeer = false;
   }
   next();
 });
@@ -1385,6 +1401,43 @@ async function ensureSchema() {
       fecha TIMESTAMPTZ DEFAULT now()
     )
   `);
+  // rama-recapitulacion-diaria (tarea 11 del roadmap): decisiones
+  // documentadas en COORDINACION.md. 'reflexion' se suma al CHECK de
+  // motivo (drop+add del constraint autogenerado -- idempotente, corre en
+  // cada boot igual que el resto de ensureSchema).
+  await pool.query(`
+    ALTER TABLE ia_llamadas DROP CONSTRAINT IF EXISTS ia_llamadas_motivo_check
+  `);
+  await pool.query(`
+    ALTER TABLE ia_llamadas ADD CONSTRAINT ia_llamadas_motivo_check
+      CHECK (motivo IN ('chat', 'perfil', 'reflexion'))
+  `);
+  // recapitulacion_diaria: PK compuesta (usuario_id, fecha) es el propio
+  // mecanismo anti-doble-pago -- el cron intenta un INSERT antes de pagar
+  // nada; si ya existe fila para ese usuario+fecha, se salta (ON CONFLICT
+  // DO NOTHING). protocolo_version en moneda_transacciones queda NULL
+  // para cualquier motivo que no sea 'recapitulacion_diaria' -- el
+  // versionado es solo de ESTA fórmula, no retroactivo a tarea 7/8/9.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recapitulacion_diaria (
+      usuario_id INT REFERENCES usuarios(id),
+      fecha DATE NOT NULL,
+      ejecutado_en TIMESTAMPTZ DEFAULT now(),
+      PRIMARY KEY (usuario_id, fecha)
+    )
+  `);
+  await pool.query(`
+    ALTER TABLE moneda_transacciones ADD COLUMN IF NOT EXISTS protocolo_version INT
+  `);
+  // ia_chat_visto_hasta: mismo patrón que chat_general_visto_hasta, para
+  // el badge "no leído" del tile "Hablar con tu planta". reflexion_ia_activa:
+  // opt-out exigido por la restricción de diseño del 2026-08-16 -- afecta
+  // SOLO la reflexión narrativa, el pago de moneda sigue corriendo igual.
+  await pool.query(`
+    ALTER TABLE usuarios
+      ADD COLUMN IF NOT EXISTS ia_chat_visto_hasta TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS reflexion_ia_activa BOOLEAN NOT NULL DEFAULT TRUE
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -1573,6 +1626,20 @@ const BONUS_MONEDA_POR_DIA_RACHA = 2;
 const LIMITE_MONEDA_DIARIA = 100;
 const UMBRAL_ANTI_GRANJEO_MINUTOS = 10;
 
+// rama-recapitulacion-diaria (tarea 11 del roadmap): decisiones numéricas
+// documentadas en COORDINACION.md. Cubre el hueco real que deja tarea 7
+// (que solo paga por tareas ASIGNADAS completadas) -- actividad propia
+// (pendientes sin asignar, ideas capturadas, racha general) no pagaba
+// nada hasta esta rama. Comparte LIMITE_MONEDA_DIARIA de arriba a
+// propósito (mismo criterio que ya usa el tutorial, ver comentario en
+// POST /tutorial/capitulo/:capitulo/completar) -- un solo tope, sin
+// importar la fuente.
+const MONEDA_POR_PENDIENTE_PROPIO = 3;
+const MONEDA_POR_IDEA_CAPTURADA = 2;
+const MONEDA_BONUS_RACHA_DIARIA = 5;
+const UMBRAL_RACHA_BONUS_DIAS = 3;
+const PROTOCOLO_MONEDA_DIARIA_VERSION = 1;
+
 async function rachaTareasAsignadas(client, usuarioId) {
   const { rows } = await client.query(
     'SELECT fecha FROM eventos_completado WHERE completado_por = $1 AND cuenta_para_racha = TRUE',
@@ -1594,14 +1661,18 @@ async function monedaGanadaHoy(client, usuarioId) {
 
 // Devuelve cuánto se pagó realmente (puede ser menos que `cantidad` si el
 // límite diario ya estaba parcialmente consumido, o 0 si ya se alcanzó).
-async function pagarMoneda(client, usuarioId, cantidad, motivo, eventoCompletadoId) {
+// `protocoloVersion` (rama-recapitulacion-diaria, tarea 11) es opcional y
+// queda NULL para cualquier caller que no lo pase (tarea 7, tutorial) --
+// el versionado es solo de la fórmula de recapitulación diaria, no
+// retroactivo a las demás fuentes de moneda.
+async function pagarMoneda(client, usuarioId, cantidad, motivo, eventoCompletadoId, protocoloVersion = null) {
   if (cantidad <= 0) return 0;
   const yaGanadaHoy = await monedaGanadaHoy(client, usuarioId);
   const aPagar = Math.min(cantidad, Math.max(0, LIMITE_MONEDA_DIARIA - yaGanadaHoy));
   if (aPagar <= 0) return 0;
   await client.query(
-    "INSERT INTO moneda_transacciones (usuario_id, cantidad, origen, motivo, evento_completado_id) VALUES ($1, $2, 'ganada', $3, $4)",
-    [usuarioId, aPagar, motivo, eventoCompletadoId]
+    "INSERT INTO moneda_transacciones (usuario_id, cantidad, origen, motivo, evento_completado_id, protocolo_version) VALUES ($1, $2, 'ganada', $3, $4, $5)",
+    [usuarioId, aPagar, motivo, eventoCompletadoId, protocoloVersion]
   );
   await client.query('UPDATE usuarios SET saldo_moneda = saldo_moneda + $1 WHERE id = $2', [aPagar, usuarioId]);
   return aPagar;
@@ -1980,6 +2051,157 @@ async function actualizarPerfilIaSiCorresponde(usuarioId) {
   }
 }
 
+// rama-recapitulacion-diaria (tarea 11 del roadmap): reflexión narrativa
+// del cron diario -- usa perfil_ia.resumen + SOLO el delta del día (nunca
+// el historial crudo completo, decisión de diseño del 2026-08-16
+// documentada en COORDINACION.md). El caller (recapitularUsuario) solo
+// llama a esta función cuando hubo actividad real ese día -- nunca genera
+// un mensaje de "no hiciste nada". No debe romper el cron si falla --
+// mismo contrato que actualizarPerfilIaSiCorresponde (nunca lanza).
+async function generarReflexionDiaria(usuarioId, delta) {
+  const { rows: perfilRows } = await pool.query('SELECT resumen FROM perfil_ia WHERE usuario_id = $1', [usuarioId]);
+  const resumenPrevio = perfilRows[0] && perfilRows[0].resumen ? perfilRows[0].resumen.trim() : '';
+
+  const lineasDelta = [];
+  if (delta.pendientesPropios.length) {
+    lineasDelta.push(
+      'Pendientes propios completados hoy:\n' + delta.pendientesPropios.map((t) => `- ${t}`).join('\n')
+    );
+  }
+  if (delta.ideas.length) {
+    lineasDelta.push(
+      'Ideas capturadas hoy:\n' +
+        delta.ideas.map((i) => `- ${i.idea}${i.etiqueta ? ` [${i.etiqueta}]` : ''}`).join('\n')
+    );
+  }
+  if (delta.rachaDias >= UMBRAL_RACHA_BONUS_DIAS) {
+    lineasDelta.push(`Lleva una racha activa de ${delta.rachaDias} día(s) seguidos.`);
+  }
+
+  const system =
+    'Sos la IA compañera de una app de organización personal, hablando como ' +
+    'si fueras la planta del usuario. Tu tarea es escribir UN mensaje corto ' +
+    '(2-3 oraciones) de reflexión sobre la actividad de HOY del usuario, en ' +
+    'español, tono cercano ("vos"). Reglas estrictas: (1) SIEMPRE tono ' +
+    'neutral o positivo -- nunca frasees como reproche ("no cumpliste", ' +
+    '"bajaste tu ritmo"), aunque la actividad haya sido poca. (2) Basate ' +
+    'SOLO en los datos de hoy listados abajo, más lo que ya sabés del ' +
+    'usuario -- nunca inventes datos. (3) No repitas la lista textual, ' +
+    'convertila en una observación natural, como lo diría una planta que ' +
+    'nota a su compañero humano.' +
+    (resumenPrevio ? `\n\nLo que ya sabés de este usuario: ${resumenPrevio}` : '');
+
+  const inicio = Date.now();
+  try {
+    const respuestaGroq = await llamarGroqConReintento(system, lineasDelta.join('\n\n'), {
+      maxTokens: 200,
+      responseFormat: 'text',
+    });
+    const { texto: reflexion, tokensEntrada, tokensSalida } = await extraerTextoYTokensGroq(respuestaGroq);
+    const latenciaMs = Date.now() - inicio;
+    await pool.query(
+      `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms)
+       VALUES ($1, $2, 'reflexion', $3, $4, $5, $6)`,
+      [usuarioId, MODELO_IA_SEGMENTACION, tokensEntrada, tokensSalida, COSTO_IA_USD, latenciaMs]
+    );
+    await avisarSiLlamadasIaSeAcercanAlLimite();
+    await pool.query("INSERT INTO mensajes_ia (usuario_id, rol, texto) VALUES ($1, 'ia', $2)", [
+      usuarioId,
+      reflexion.trim(),
+    ]);
+  } catch (err) {
+    const latenciaMs = Date.now() - inicio;
+    console.error(`Error generando reflexión diaria para usuario ${usuarioId}:`, err.message);
+    await pool.query(
+      `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms, error)
+       VALUES ($1, $2, 'reflexion', 0, 0, 0, $3, $4)`,
+      [usuarioId, MODELO_IA_SEGMENTACION, latenciaMs, String((err && err.message) || err).slice(0, 500)]
+    );
+  }
+}
+
+// Cron diario -- calcula la actividad del día calendario Lima ANTERIOR
+// completo (nunca el día en curso, evita el caso borde de correr a
+// medianoche sin el día completo todavía). Por usuario: reserva el día en
+// recapitulacion_diaria ANTES de pagar nada (evita doble pago si el cron
+// corre dos veces), paga con pagarMoneda (mismo LIMITE_MONEDA_DIARIA
+// compartido con tarea 7 y el tutorial), y si hubo actividad real +
+// reflexion_ia_activa, genera la reflexión narrativa DESPUÉS del commit
+// (la llamada a Groq no debe mantener la conexión pooled ocupada).
+async function recapitularUsuario(usuarioId, reflexionActiva, diaObjetivo, inicio, fin) {
+  const client = await pool.connect();
+  let huboActividad = false;
+  let delta = null;
+  try {
+    await client.query('BEGIN');
+    const reserva = await client.query(
+      'INSERT INTO recapitulacion_diaria (usuario_id, fecha) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING usuario_id',
+      [usuarioId, diaObjetivo]
+    );
+    if (reserva.rows.length > 0) {
+      // asignado_a IS NULL: nunca cuenta un pendiente que tarea 7 ya pagó
+      // (esa paga en tiempo real, solo para completados de tareas
+      // ASIGNADAS -- ver POST /pendientes/:id/completar).
+      const [pendientesRows, ideasRows, rachas] = await Promise.all([
+        client.query(
+          `SELECT texto FROM pendientes
+           WHERE usuario_id = $1 AND hecho = TRUE AND eliminado = FALSE AND asignado_a IS NULL
+             AND creado >= $2 AND creado < $3`,
+          [usuarioId, inicio, fin]
+        ),
+        client.query('SELECT idea, etiqueta FROM ideas WHERE usuario_id = $1 AND fecha >= $2 AND fecha < $3', [
+          usuarioId,
+          inicio,
+          fin,
+        ]),
+        rachasDeUsuarios([usuarioId]),
+      ]);
+      const rachaDias = rachas.get(usuarioId) || 0;
+      huboActividad = pendientesRows.rows.length > 0 || ideasRows.rows.length > 0 || rachaDias >= UMBRAL_RACHA_BONUS_DIAS;
+      if (huboActividad) {
+        const total =
+          pendientesRows.rows.length * MONEDA_POR_PENDIENTE_PROPIO +
+          ideasRows.rows.length * MONEDA_POR_IDEA_CAPTURADA +
+          (rachaDias >= UMBRAL_RACHA_BONUS_DIAS ? MONEDA_BONUS_RACHA_DIARIA : 0);
+        await pagarMoneda(client, usuarioId, total, 'recapitulacion_diaria', null, PROTOCOLO_MONEDA_DIARIA_VERSION);
+        delta = {
+          pendientesPropios: pendientesRows.rows.map((r) => r.texto),
+          ideas: ideasRows.rows,
+          rachaDias,
+        };
+      }
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  if (huboActividad && reflexionActiva && groqClient) {
+    await generarReflexionDiaria(usuarioId, delta);
+  }
+}
+
+async function recapitularActividadDiaria() {
+  const diaObjetivo = diaAnterior(formatearDiaLima(new Date()));
+  const { inicio, fin } = limitesDiaLima(diaObjetivo);
+  try {
+    const { rows: usuarios } = await pool.query('SELECT id, reflexion_ia_activa FROM usuarios');
+    for (const usuario of usuarios) {
+      try {
+        await recapitularUsuario(usuario.id, usuario.reflexion_ia_activa, diaObjetivo, inicio, fin);
+      } catch (err) {
+        console.error(`[cron] Error en recapitulación diaria del usuario ${usuario.id}:`, err.message);
+      }
+    }
+    console.log(`[cron] Recapitulación diaria (${diaObjetivo}) procesada para ${usuarios.length} usuario(s).`);
+  } catch (err) {
+    console.error('[cron] Error en el job de recapitulación diaria:', err.message);
+  }
+}
+
 app.get('/ia/chat', async (req, res) => {
   try {
     const [{ rows: mensajes }, mensajesEsteMes, { rows: usuarioRows }] = await Promise.all([
@@ -1992,6 +2214,11 @@ app.get('/ia/chat', async (req, res) => {
     ]);
     const usuario = usuarioRows[0];
     const nombreIa = (usuario && (usuario.ia_nombre || usuario.ia_especie)) || 'tu planta';
+    // rama-recapitulacion-diaria: mismo patrón que GET /chat-general con
+    // chat_general_visto_hasta -- marca como leído recién DESPUÉS de traer
+    // los mensajes, así el badge "no leído" del nav refleja lo que había
+    // sin ver hasta este request.
+    await pool.query('UPDATE usuarios SET ia_chat_visto_hasta = now() WHERE id = $1', [req.usuarioId]);
     res.render('ia-chat', {
       mensajes,
       nombreIa,
@@ -2470,6 +2697,17 @@ function diaAnterior(diaStr) {
   return d.toISOString().slice(0, 10);
 }
 
+// rama-recapitulacion-diaria (tarea 11): límites absolutos [00:00, 24:00)
+// de un día calendario America/Lima, para filtrar columnas TIMESTAMP(TZ)
+// por rango sin depender de aritmética de fechas en SQL. Lima no observa
+// horario de verano (UTC-5 fijo todo el año), por eso el offset fijo es
+// seguro acá (a diferencia de zonas con DST).
+function limitesDiaLima(diaStr) {
+  const inicio = new Date(`${diaStr}T00:00:00-05:00`);
+  const fin = new Date(inicio.getTime() + 24 * 60 * 60 * 1000);
+  return { inicio, fin };
+}
+
 // Cuenta días consecutivos (calendario America/Lima) con al menos un
 // pendiente completado, contando hacia atrás desde hoy. Si hoy todavía no
 // se completó nada, la racha no se rompe por eso (el día actual no terminó
@@ -2794,6 +3032,13 @@ async function revisarYSugerirPendientesEstancados() {
 }
 
 cron.schedule('0 9 * * *', revisarYSugerirPendientesEstancados, {
+  timezone: 'America/Lima',
+});
+
+// rama-recapitulacion-diaria (tarea 11): hora distinta a las 9:00 de
+// arriba y las 20:00 de HORA_NOTIFICACION, para no concentrar los cron
+// jobs en el mismo minuto.
+cron.schedule('30 8 * * *', recapitularActividadDiaria, {
   timezone: 'America/Lima',
 });
 
@@ -4020,7 +4265,7 @@ app.post('/ia/usar-comodin', async (req, res) => {
 app.get('/ajustes', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT nombre_usuario, ia_especie, email, pin_hash, password_hash FROM usuarios WHERE id = $1',
+      'SELECT nombre_usuario, ia_especie, email, pin_hash, password_hash, reflexion_ia_activa FROM usuarios WHERE id = $1',
       [req.usuarioId]
     );
     const usuario = rows[0];
@@ -4049,6 +4294,7 @@ app.get('/ajustes', async (req, res) => {
       emailActual: usuario ? usuario.email : null,
       tienePin: !!(usuario && usuario.pin_hash),
       tieneEmailPassword: !!(usuario && usuario.password_hash),
+      reflexionActiva: usuario ? usuario.reflexion_ia_activa : true,
       error: null,
       errorVincular: null,
       guardado: null,
@@ -4061,10 +4307,24 @@ app.get('/ajustes', async (req, res) => {
     res.status(500).render('ajustes', {
       nombreUsuario: '', especieActual: 'monstera', especies: IA_ESPECIES,
       notificacionesActivas: false, vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
-      emailActual: null, tienePin: true, tieneEmailPassword: false,
+      emailActual: null, tienePin: true, tieneEmailPassword: false, reflexionActiva: true,
       error: 'No se pudo leer la base de datos.', errorVincular: null, guardado: null,
       llamadasIaHoy: null, alertaLlamadasIa: false, umbralAlertaLlamadasIa: UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA,
     });
+  }
+});
+
+// rama-recapitulacion-diaria (tarea 11): opt-out exigido por la
+// restricción de diseño del 2026-08-16 -- afecta SOLO la reflexión
+// narrativa, el pago de moneda diario sigue corriendo igual.
+app.post('/ajustes/reflexion', async (req, res) => {
+  const activar = req.body.activar === 'true';
+  try {
+    await pool.query('UPDATE usuarios SET reflexion_ia_activa = $1 WHERE id = $2', [activar, req.usuarioId]);
+    res.redirect('/ajustes');
+  } catch (err) {
+    console.error('Error actualizando reflexion_ia_activa:', err.message);
+    res.redirect('/ajustes');
   }
 });
 
@@ -4341,6 +4601,10 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     await client.query('DELETE FROM mensajes_ia WHERE usuario_id = $1', [usuarioId]);
     await client.query('DELETE FROM perfil_ia WHERE usuario_id = $1', [usuarioId]);
     await client.query('DELETE FROM ia_llamadas WHERE usuario_id = $1', [usuarioId]);
+
+    // rama-recapitulacion-diaria (tarea 11): mismo motivo que arriba --
+    // recapitulacion_diaria.usuario_id tampoco tiene ON DELETE CASCADE.
+    await client.query('DELETE FROM recapitulacion_diaria WHERE usuario_id = $1', [usuarioId]);
 
     // 16. rama-login-email: tokens de reseteo de contraseña propios --
     // `reseteos_password.usuario_id` no tenía ON DELETE CASCADE, así que

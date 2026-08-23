@@ -1014,6 +1014,62 @@ svg[viewBox="0 0 24 24"] {
   color: white;
 }
 
+/* rama-logros: a diferencia de .toast-meta (inline en /captura, con un
+   "Deshacer"), esto celebra un desbloqueo que puede pasar en CUALQUIER
+   página -- por eso #toasts-logro es position:fixed (se renderiza en
+   partials/nav.ejs, que está en todas las vistas autenticadas) y cada
+   .toast-logro se auto-cierra solo (nada que deshacer). El contenedor
+   fijo + tarjetas en flujo normal adentro permite apilar más de uno sin
+   que se superpongan. z-index 90: por encima de .barra-superior (40) y
+   .menu-pantalla (60), por debajo de los modales del tutorial (200+). */
+#toasts-logro {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  width: min(90vw, 22rem);
+}
+
+.toast-logro {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  color: var(--accent);
+  background: var(--glass-bg-fuerte);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.toast-logro.toast-logro-visible {
+  opacity: 1;
+}
+
+.toast-logro strong {
+  display: block;
+}
+
+.toast-logro small {
+  opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-logro {
+    transition: none;
+  }
+}
+
 /* rama-asignacion-texto: banner de asignación por texto en /captura —
    tanto el paso de confirmación ("Se asignará a @fulano") como el aviso de
    "no se pudo asignar" tras guardar. Mismo patrón visual que .error (fondo
@@ -2041,6 +2097,13 @@ tr.fila-saliendo {
 .estancado-texto {
   margin: 0 0 0.3rem;
   font-weight: 600;
+}
+
+/* rama-logros: reusa .estancado-card tal cual para logros desbloqueados
+   (mismo look que una sugerencia); esta clase adicional solo atenúa los
+   todavía bloqueados, sin duplicar el resto del estilo de la tarjeta. */
+.logro-bloqueado {
+  opacity: 0.55;
 }
 
 .estancado-texto code {

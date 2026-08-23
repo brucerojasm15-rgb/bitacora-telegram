@@ -3629,6 +3629,83 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   del chat).
 - Último commit: `d9829d5`.
 
+### rama-logros
+- Estado: mergeada a main.
+- Tarea: primera mecánica nueva del "juego" (de las 4 candidatas que
+  mencionaba la tarea O: logros, cosméticos, eventos, intercambio entre
+  amigos). Antes de arrancar se verificó un riesgo real: la sección
+  "Fundación técnica para crecer exponencialmente" (2026-08-16) dejaba
+  escrito que J-P y la tarea 11 completa esperaban a que el usuario
+  decidiera crecer más allá del círculo chico — confirmado con el
+  usuario que esta ronda es PARA el círculo actual, no activa L/M/N/P.
+  Dentro de eso, eligió logros: "cero riesgo de economía, puramente
+  celebratorio" — sin pago de moneda al desbloquear, a diferencia de
+  tareas 7/11.
+- Diseño:
+  - **Catálogo `LOGROS`** (mismo espíritu que `TUTORIAL_CAPITULOS`), 9
+    insignias, todas derivadas de datos que YA existían (cero tracking
+    nuevo aparte de la tabla de desbloqueo): `primeros_pasos` (1er
+    pendiente completado), `racha_semana`/`racha_mes` (racha general ≥7
+    /≥30 días), `planta_adulta` (etapa = última), `cien_tareas` (100
+    pendientes completados), `coleccionista_ideas` (50 ideas),
+    `mejor_en_equipo` (10 tareas asignadas por un amigo, completadas),
+    `graduado` (3 capítulos de tutorial), `primer_amigo` (1ra amistad
+    aceptada).
+  - Tabla `logros_desbloqueados (usuario_id, logro, desbloqueado_en,
+    mostrado)` — mismo patrón que `tutorial_capitulos_completados`.
+  - `revisarYOtorgarLogros(usuarioId)` reusa `perfilJuegoDeUsuario`
+    (tarea O) para etapa/racha en vez de recalcularlas, más 4 counts
+    baratos. Se llama desde los 5 puntos donde puede cambiar algún stat:
+    `POST /pendientes/:id/completar`, `POST /captura` (rama idea),
+    `POST /amigos/:id/aceptar`, `POST /tutorial/capitulo/:capitulo/
+    completar`, y `recapitularUsuario` (cron de tarea 11).
+  - **Celebración vía el middleware global**, mismo patrón que `tema`/
+    `iaChatSinLeer`: expone `res.locals.logrosNuevos`, y
+    `partials/nav.ejs` (incluido en toda página autenticada) renderiza
+    un toast nuevo (`.toast-logro`, `position:fixed`, auto-dismiss) por
+    cada uno — cubre los 5 puntos de desbloqueo sin necesitar query
+    params por ruta.
+  - **Bug real encontrado y arreglado durante las pruebas, antes de
+    mergear**: el diseño original marcaba `mostrado=TRUE` DENTRO del
+    mismo middleware que lo lee — pero ese middleware corre en TODA
+    request logueada, incluidas las que redirigen sin renderizar nunca
+    `partials/nav.ejs` (ej. `POST /captura`). Reproducido de verdad: un
+    POST disparado justo después de un desbloqueo lo marcaba visto sin
+    que ningún navegador hubiera mostrado el toast todavía — el logro
+    quedaba silenciosamente "gastado". Arreglado separando lectura de
+    marcado: el middleware ahora SOLO lee (`SELECT`); el marcado real lo
+    confirma el cliente (`POST /logros/marcar-visto`, disparado por JS
+    justo después de mostrar el toast en el navegador, ver
+    `partials/scripts.ejs`).
+  - `GET /logros`: lista las 9, desbloqueadas destacadas (con fecha) y
+    bloqueadas atenuadas (`.logro-bloqueado`, reusa `.estancado-card`).
+    Tile nuevo en `.menu-pantalla` — sin badge de no-leído (el toast ya
+    cumple ese rol).
+  - `POST /ajustes/eliminar-cuenta` ampliada con el borrado de
+    `logros_desbloqueados` (3ra vez esta sesión que una tabla nueva
+    necesita este paso — esta vez agregado proactivamente desde el
+    primer commit, no encontrado después).
+- Qué se verificó: `npm run ci` en verde. Contra la DB real, cuenta de
+  prueba desechable: completar un pendiente real desbloqueó
+  `primeros_pasos`, toast visible en el siguiente render y NO repetido
+  después. Sembrado directo de 100 pendientes completados confirmó
+  `cien_tareas` sin duplicar fila en una segunda revisión. Sembrado de
+  500 moneda de vida + un trigger real confirmó `planta_adulta`.
+  **Reproducida la race de arriba en vivo** (POST inmediatamente después
+  de un desbloqueo) y confirmado que, con el fix, el toast sigue
+  apareciendo en el siguiente render real pese al POST intermedio.
+  Cuenta eliminada con `POST /ajustes/eliminar-cuenta` (no `DELETE`
+  manual) — confirmado sin violación de FK.
+- Archivos tocados: `server.js` (tabla nueva en `ensureSchema`, catálogo
+  `LOGROS`, `revisarYOtorgarLogros`, 5 call sites, middleware global,
+  `GET /logros`, `POST /logros/marcar-visto`, `POST /ajustes/
+  eliminar-cuenta` ampliada), `views/logros.ejs` (nueva),
+  `views/partials/nav.ejs` (tile + toasts), `views/partials/scripts.ejs`
+  (fade-in/dismiss + confirmación al servidor), `views/partials/
+  icono.ejs` (ícono `trofeo`), `public/style.css` (`.toast-logro`,
+  `.logro-bloqueado`).
+- Último commit: ver Historial de merges.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -5132,6 +5209,13 @@ actualmente en curso (Fase 1):**
   propia mini-consulta de las mismas columnas/tablas. Se resolvió con una
   única función de lectura, `perfilJuegoDeUsuario()`, que barra superior/
   `/ia`/`/trazabilidad` ahora comparten.
+
+  **Primera mecánica nueva construida (2026-08-22):** de las 4
+  candidatas que este enunciado mencionaba (logros, cosméticos, eventos,
+  intercambio entre amigos), **logros** ya está — ver sección
+  `rama-logros` en "Estado de ramas". Confirmado con el usuario que esta
+  ronda es para el círculo chico actual, no activa la Fundación técnica
+  (L/M/N/P) de más abajo.
 
 - [ ] **P. Revisar el límite de registro público — tensión con crecer
   exponencialmente.** `rama-limite-registro` fijó `LIMITE_REGISTROS_

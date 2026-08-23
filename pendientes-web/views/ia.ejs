@@ -34,9 +34,14 @@
         </div>
       </section>
 
+      <section class="ia-chat-acceso">
+        <h2><%- include('partials/icono', { nombre: 'chat' }) %> Hablá con <%= nombreIa %></h2>
+        <p><%= nombreIa %> ya conversa de verdad, basándose en tus pendientes, ideas y recordatorios reales.</p>
+        <a href="/ia/chat" class="btn-link">Hablar con <%= nombreIa %></a>
+      </section>
+
       <section class="ia-construccion">
-        <h2><%- include('partials/icono', { nombre: 'bombilla' }) %> IA en construcción</h2>
-        <p>Todavía no conversa de verdad — eso es una fase futura. Por ahora, esto es lo que nota mirando tus propios datos:</p>
+        <h2><%- include('partials/icono', { nombre: 'bombilla' }) %> Lo que notamos de tus datos</h2>
         <ul class="ia-observaciones">
           <% observaciones.forEach((obs) => { %>
             <li><%= obs %></li>

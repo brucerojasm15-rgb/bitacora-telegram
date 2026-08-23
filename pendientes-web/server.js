@@ -1335,6 +1335,56 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS sugerencia_ia_generada_en TIMESTAMP,
       ADD COLUMN IF NOT EXISTS sugerencia_ia_descartada BOOLEAN NOT NULL DEFAULT FALSE
   `);
+  // rama-ia-companera-fase2-v2 (tarea 9 del roadmap, reconstruida sobre main
+  // actualizado -- ver COORDINACION.md): mensajes_ia es una tabla propia (no
+  // reusar mensajes/mensajes_generales, que exigen amistad_id o un autor_id
+  // real en usuarios -- la IA no es una fila de usuarios). TIMESTAMPTZ desde
+  // el día 1 (a diferencia de otras tablas viejas del proyecto que usan
+  // TIMESTAMP naive -- hallazgo documentado en la rama original, ya
+  // corregido acá).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mensajes_ia (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      rol TEXT NOT NULL CHECK (rol IN ('usuario', 'ia')),
+      texto TEXT NOT NULL,
+      fecha TIMESTAMPTZ DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_mensajes_ia_usuario_fecha ON mensajes_ia (usuario_id, fecha)
+  `);
+  // perfil_ia: perfil acumulado, una fila por usuario (usuario_id como PK --
+  // relación 1:1, simplifica el upsert). resumen arranca vacío ('') hasta
+  // que se acumulan UMBRAL_ACTUALIZAR_PERFIL mensajes nuevos del usuario
+  // (ver actualizarPerfilIaSiCorresponde más abajo).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS perfil_ia (
+      usuario_id INT PRIMARY KEY REFERENCES usuarios(id),
+      resumen TEXT NOT NULL DEFAULT '',
+      mensajes_en_resumen INT NOT NULL DEFAULT 0,
+      actualizado TIMESTAMPTZ DEFAULT now()
+    )
+  `);
+  // ia_llamadas: instrumentación de costo/latencia desde el día 1 (LLM Ops
+  // básico, ver COORDINACION.md) -- costo_usd queda en 0 con Groq (tier
+  // gratis) pero se sigue registrando modelo/tokens/latencia como log de uso
+  // real. motivo distingue llamadas de chat de las de actualización de
+  // perfil, mismo criterio de nomenclatura que moneda_transacciones.origen.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ia_llamadas (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      modelo TEXT NOT NULL,
+      motivo TEXT NOT NULL CHECK (motivo IN ('chat', 'perfil')),
+      tokens_entrada INT NOT NULL DEFAULT 0,
+      tokens_salida INT NOT NULL DEFAULT 0,
+      costo_usd NUMERIC(10,6) NOT NULL DEFAULT 0,
+      latencia_ms INT NOT NULL,
+      error TEXT,
+      fecha TIMESTAMPTZ DEFAULT now()
+    )
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -1579,6 +1629,32 @@ const IA_COSTO_TEMA_EXTRA = 60;
 const IA_SKINS_DISPONIBLES = ['clasico', 'alegre', 'zen', 'nocturno'];
 const IA_TEMAS_EXTRA_DISPONIBLES = ['atardecer', 'lluvia'];
 
+// rama-ia-companera-fase2-v2 (tarea 9 del roadmap): IA conversacional real
+// -- decisiones documentadas en COORDINACION.md. Gratis para todos los
+// usuarios logueados (sin gating de premium); 40 mensajes/usuario/MES (no
+// por día, dentro del rango 30-50 pedido) es el tope de seguridad de uso,
+// no una restricción de negocio. Proveedor Groq (mismo groqClient/
+// GROQ_API_URL/llamarGroqConReintento ya usados por rama-segmentacion-ideas
+// más arriba -- reconstruida sobre main para consolidar en un solo cliente
+// en vez de duplicarlo, ver tarea J del backlog en COORDINACION.md).
+const LIMITE_MENSAJES_IA_POR_MES = 40;
+// Cada 15 mensajes nuevos del usuario dispara una actualización del perfil
+// acumulado (ver actualizarPerfilIaSiCorresponde) -- con el tope de 40/mes,
+// un usuario que agota el límite dispara ~2-3 actualizaciones al mes,
+// suficiente para no quedar desactualizado sin ser una llamada extra por
+// cada mensaje.
+const UMBRAL_ACTUALIZAR_PERFIL = 15;
+// Groq es gratis en el tier usado -- costo_usd queda en 0, pero se sigue
+// registrando en ia_llamadas (modelo, tokens, latencia) como log de uso
+// real por si en el futuro se vuelve a evaluar un modelo pago.
+const COSTO_IA_USD = 0;
+// Alerta de USO diario -- puramente informativa, nunca bloquea el servicio.
+// Lo que puede fallar no es el costo (Groq es gratis), sino el límite de
+// 14,400 llamadas/día de la cuenta gratuita compartida con
+// rama-segmentacion-ideas/rama-sugerencia-estancados; 10,000 da margen para
+// avisar antes de llegar al tope real.
+const UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA = 10000;
+
 function etapaPorMoneda(totalDeVida) {
   let indice = 0;
   for (let i = IA_UMBRAL_ETAPA.length - 1; i >= 0; i--) {
@@ -1651,6 +1727,313 @@ async function observacionesIA(usuarioId) {
   observaciones.push(`Completaste ${completados.rows.length} pendiente(s) en total desde que empezaste.`);
   return observaciones;
 }
+
+// rama-ia-companera-fase2-v2 (tarea 9 del roadmap): IA conversacional real
+// -- decisiones documentadas en COORDINACION.md. Reusa groqClient/
+// GROQ_API_URL/llamarGroqConReintento (definidos más abajo, function
+// declaration -- hoisting normal de JS, no hace falta reordenar) en vez de
+// un cliente propio.
+
+// Reseteo por MES calendario America/Lima (no por día). Solo cuenta
+// mensajes rol='usuario' (no las respuestas de la IA).
+async function contarMensajesIaEsteMes(usuarioId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS cantidad FROM mensajes_ia
+     WHERE usuario_id = $1 AND rol = 'usuario'
+       AND date_trunc('month', fecha AT TIME ZONE 'America/Lima')
+         = date_trunc('month', now() AT TIME ZONE 'America/Lima')`,
+    [usuarioId]
+  );
+  return rows[0].cantidad;
+}
+
+// Alerta de uso diario (ver UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA): total
+// global (sin usuario_id) de llamadas a Groq (chat + perfil, todos los
+// usuarios, éxito o error) del día calendario America/Lima actual. Nunca
+// bloquea el servicio -- es puramente informativa.
+async function contarLlamadasIaHoy() {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM ia_llamadas
+     WHERE date_trunc('day', fecha AT TIME ZONE 'America/Lima')
+       = date_trunc('day', now() AT TIME ZONE 'America/Lima')`
+  );
+  return rows[0].total;
+}
+
+// Se llama después de cada INSERT exitoso en ia_llamadas (chat o perfil).
+// Se chequea en cada request que agrega una llamada, sin deduplicar -- es
+// una sola query de agregación barata, y en una app de este tamaño no
+// genera spam de log real.
+async function avisarSiLlamadasIaSeAcercanAlLimite() {
+  const total = await contarLlamadasIaHoy();
+  if (total >= UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA) {
+    console.warn(
+      `⚠️ Llamadas a Groq hoy: ${total} (umbral de aviso: ${UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA} de las 14,400 diarias del tier gratis)`
+    );
+  }
+}
+
+// RAG: recupera del Postgres existente lo que el usuario realmente escribió
+// (mismas tablas/patrón que /exportar y /estadisticas, Promise.all en
+// paralelo) y arma el prompt con eso como contexto explícito, más el perfil
+// acumulado si existe. Historial de conversación: últimos ~10 turnos (20
+// mensajes usuario+ia intercalados) de mensajes_ia.
+async function construirContextoIA(usuarioId) {
+  const [pendientes, completados, ideas, recordatorios, hechos, reflexiones, perfil, historialRows] = await Promise.all([
+    pool.query(
+      'SELECT texto, categoria FROM pendientes WHERE usuario_id = $1 AND hecho = FALSE AND eliminado = FALSE ORDER BY creado DESC LIMIT 20',
+      [usuarioId]
+    ),
+    pool.query(
+      'SELECT texto FROM pendientes WHERE usuario_id = $1 AND hecho = TRUE AND eliminado = FALSE ORDER BY creado DESC LIMIT 10',
+      [usuarioId]
+    ),
+    pool.query('SELECT idea, etiqueta FROM ideas WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 10', [usuarioId]),
+    pool.query('SELECT texto FROM recordatorios WHERE usuario_id = $1 ORDER BY cuando DESC LIMIT 10', [usuarioId]),
+    pool.query('SELECT texto FROM hechos WHERE usuario_id = $1 ORDER BY cuando DESC LIMIT 10', [usuarioId]),
+    pool.query(
+      'SELECT pregunta, respuesta FROM reflexiones WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 5',
+      [usuarioId]
+    ),
+    pool.query('SELECT resumen FROM perfil_ia WHERE usuario_id = $1', [usuarioId]),
+    pool.query(
+      'SELECT rol, texto FROM mensajes_ia WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 20',
+      [usuarioId]
+    ),
+  ]);
+  const observaciones = await observacionesIA(usuarioId);
+
+  const lineas = [];
+  lineas.push(
+    'Sos la IA compañera de un usuario en una app de organización personal ' +
+    '(pendientes, ideas, recordatorios, hechos, reflexiones). Respondé en ' +
+    'español, con un tono cercano e informal ("vos"), y basate SOLO en los ' +
+    'datos reales listados abajo -- nunca inventes pendientes, ideas ni ' +
+    'hechos que no estén ahí.'
+  );
+
+  const resumenPerfil = perfil.rows[0] && perfil.rows[0].resumen ? perfil.rows[0].resumen.trim() : '';
+  if (resumenPerfil) {
+    lineas.push('\n## Lo que ya sabemos de vos\n' + resumenPerfil);
+  }
+
+  lineas.push('\n## Pendientes activos');
+  lineas.push(
+    pendientes.rows.length
+      ? pendientes.rows.map((p) => `- ${p.texto}${p.categoria ? ` [${p.categoria}]` : ''}`).join('\n')
+      : '(sin pendientes activos)'
+  );
+
+  lineas.push('\n## Completados recientes');
+  lineas.push(completados.rows.length ? completados.rows.map((p) => `- ${p.texto}`).join('\n') : '(sin completados recientes)');
+
+  lineas.push('\n## Ideas');
+  lineas.push(
+    ideas.rows.length
+      ? ideas.rows.map((i) => `- ${i.idea}${i.etiqueta ? ` [${i.etiqueta}]` : ''}`).join('\n')
+      : '(sin ideas anotadas)'
+  );
+
+  lineas.push('\n## Recordatorios');
+  lineas.push(recordatorios.rows.length ? recordatorios.rows.map((r) => `- ${r.texto}`).join('\n') : '(sin recordatorios)');
+
+  lineas.push('\n## Hechos');
+  lineas.push(hechos.rows.length ? hechos.rows.map((h) => `- ${h.texto}`).join('\n') : '(sin hechos registrados)');
+
+  lineas.push('\n## Reflexiones');
+  lineas.push(
+    reflexiones.rows.length
+      ? reflexiones.rows.map((r) => `- ${r.pregunta}: ${r.respuesta}`).join('\n')
+      : '(sin reflexiones)'
+  );
+
+  lineas.push('\n## Observaciones');
+  lineas.push(observaciones.map((o) => `- ${o}`).join('\n'));
+
+  const historial = historialRows.rows.slice().reverse();
+
+  return { system: lineas.join('\n'), historial };
+}
+
+// Disparador: contador de mensajes nuevos, no cron (ver UMBRAL_ACTUALIZAR_PERFIL
+// más arriba). No debe romper el chat normal si falla -- el call site la
+// envuelve en su propio try/catch.
+async function actualizarPerfilIaSiCorresponde(usuarioId) {
+  const { rows: totalRows } = await pool.query(
+    "SELECT COUNT(*)::int AS total FROM mensajes_ia WHERE usuario_id = $1 AND rol = 'usuario'",
+    [usuarioId]
+  );
+  const totalMensajes = totalRows[0].total;
+
+  const { rows: perfilRows } = await pool.query(
+    'SELECT resumen, mensajes_en_resumen FROM perfil_ia WHERE usuario_id = $1',
+    [usuarioId]
+  );
+  const mensajesEnResumen = perfilRows[0] ? perfilRows[0].mensajes_en_resumen : 0;
+
+  if (totalMensajes - mensajesEnResumen < UMBRAL_ACTUALIZAR_PERFIL) {
+    return;
+  }
+
+  const { rows: recientes } = await pool.query(
+    'SELECT rol, texto FROM mensajes_ia WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 30',
+    [usuarioId]
+  );
+  const conversacion = recientes
+    .slice()
+    .reverse()
+    .map((m) => `${m.rol === 'usuario' ? 'Usuario' : 'IA'}: ${m.texto}`)
+    .join('\n');
+
+  // El perfil no solo acumula, también revisa: se le pide explícitamente al
+  // modelo que compare contra el resumen anterior y decida qué sigue
+  // vigente, para evitar que datos viejos ("usa Make") convivan como verdad
+  // simultánea con datos nuevos que los reemplazan ("migró a Python").
+  const resumenPrevioTexto = perfilRows[0] && perfilRows[0].resumen ? perfilRows[0].resumen.trim() : '';
+  const systemResumen = resumenPrevioTexto
+    ? `Resumen anterior de este usuario: "${resumenPrevioTexto}"\n\nA partir de la conversación nueva de abajo, actualizá ese resumen en 2-3 oraciones: mantené lo que sigue vigente, reemplazá lo que quedó obsoleto (ej. si antes decía que usaba una herramienta y ahora usa otra, quedate con la nueva), y sumá patrones nuevos si los hay. Sé concreto y breve, en español.`
+    : 'Resumí en 2-3 oraciones los patrones de comportamiento que notás en esta conversación -- hábitos, horarios, temas recurrentes. Sé concreto y breve, en español.';
+
+  const inicio = Date.now();
+  try {
+    const respuestaGroq = await llamarGroqConReintento(systemResumen, conversacion, {
+      maxTokens: 200,
+      responseFormat: 'text',
+    });
+    const { texto: resumen, tokensEntrada, tokensSalida } = await extraerTextoYTokensGroq(respuestaGroq);
+    const latenciaMs = Date.now() - inicio;
+
+    await pool.query(
+      `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms)
+       VALUES ($1, $2, 'perfil', $3, $4, $5, $6)`,
+      [usuarioId, MODELO_IA_SEGMENTACION, tokensEntrada, tokensSalida, COSTO_IA_USD, latenciaMs]
+    );
+    await avisarSiLlamadasIaSeAcercanAlLimite();
+    await pool.query(
+      `INSERT INTO perfil_ia (usuario_id, resumen, mensajes_en_resumen)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (usuario_id) DO UPDATE SET resumen = $2, mensajes_en_resumen = $3, actualizado = now()`,
+      [usuarioId, resumen, totalMensajes]
+    );
+  } catch (err) {
+    const latenciaMs = Date.now() - inicio;
+    console.error('Error actualizando perfil_ia:', err.message);
+    await pool.query(
+      `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms, error)
+       VALUES ($1, $2, 'perfil', 0, 0, 0, $3, $4)`,
+      [usuarioId, MODELO_IA_SEGMENTACION, latenciaMs, String((err && err.message) || err).slice(0, 500)]
+    );
+  }
+}
+
+app.get('/ia/chat', async (req, res) => {
+  try {
+    const [{ rows: mensajes }, mensajesEsteMes, { rows: usuarioRows }] = await Promise.all([
+      pool.query(
+        'SELECT id, rol, texto, fecha FROM mensajes_ia WHERE usuario_id = $1 ORDER BY fecha ASC LIMIT 200',
+        [req.usuarioId]
+      ),
+      contarMensajesIaEsteMes(req.usuarioId),
+      pool.query('SELECT ia_nombre, ia_especie FROM usuarios WHERE id = $1', [req.usuarioId]),
+    ]);
+    const usuario = usuarioRows[0];
+    const nombreIa = (usuario && (usuario.ia_nombre || usuario.ia_especie)) || 'tu planta';
+    res.render('ia-chat', {
+      mensajes,
+      nombreIa,
+      restantesEsteMes: Math.max(0, LIMITE_MENSAJES_IA_POR_MES - mensajesEsteMes),
+      limiteMensual: LIMITE_MENSAJES_IA_POR_MES,
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    console.error('Error consultando el chat con la IA:', err.message);
+    res.status(500).render('ia-chat', {
+      mensajes: [],
+      nombreIa: 'tu planta',
+      restantesEsteMes: 0,
+      limiteMensual: LIMITE_MENSAJES_IA_POR_MES,
+      error: 'No se pudo cargar el chat.',
+    });
+  }
+});
+
+app.post('/ia/chat', async (req, res) => {
+  const texto = (req.body.texto || '').trim().slice(0, 2000);
+  if (!texto) {
+    return res.status(400).send('El mensaje no puede estar vacío.');
+  }
+  // Cliente condicional -- mismo patrón que googleOAuthClient (ver arriba).
+  if (!groqClient) {
+    return res.status(500).send('IA conversacional no configurada (falta GROQ_API_KEY).');
+  }
+  try {
+    // Límite mensual: se chequea ANTES de llamar a la API y ANTES de
+    // guardar el mensaje del usuario (si no, el propio mensaje bloqueado se
+    // contaría la próxima vez).
+    const mensajesEsteMes = await contarMensajesIaEsteMes(req.usuarioId);
+    if (mensajesEsteMes >= LIMITE_MENSAJES_IA_POR_MES) {
+      return res.redirect('/ia/chat?error=limite_mensual');
+    }
+
+    // El mensaje del usuario se guarda SIEMPRE, incluso si la llamada a
+    // Groq falla después -- no debe perderse.
+    await pool.query(
+      "INSERT INTO mensajes_ia (usuario_id, rol, texto) VALUES ($1, 'usuario', $2)",
+      [req.usuarioId, texto]
+    );
+
+    const { system, historial } = await construirContextoIA(req.usuarioId);
+    const mensajesHistorial = historial.map((m) => ({
+      role: m.rol === 'usuario' ? 'user' : 'assistant',
+      content: m.texto,
+    }));
+
+    const inicio = Date.now();
+    try {
+      const respuestaGroq = await llamarGroqConReintento(system, texto, {
+        maxTokens: 1024,
+        responseFormat: 'text',
+        historial: mensajesHistorial,
+      });
+      const { texto: respuestaTexto, tokensEntrada, tokensSalida } = await extraerTextoYTokensGroq(respuestaGroq);
+      const latenciaMs = Date.now() - inicio;
+
+      await pool.query(
+        "INSERT INTO mensajes_ia (usuario_id, rol, texto) VALUES ($1, 'ia', $2)",
+        [req.usuarioId, respuestaTexto || '(la IA no devolvió texto)']
+      );
+      await pool.query(
+        `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms)
+         VALUES ($1, $2, 'chat', $3, $4, $5, $6)`,
+        [req.usuarioId, MODELO_IA_SEGMENTACION, tokensEntrada, tokensSalida, COSTO_IA_USD, latenciaMs]
+      );
+      await avisarSiLlamadasIaSeAcercanAlLimite();
+
+      // El disparador de perfil corre después de guardar la respuesta
+      // exitosa, y su propio try/catch evita que una falla ahí rompa la
+      // respuesta del chat normal.
+      try {
+        await actualizarPerfilIaSiCorresponde(req.usuarioId);
+      } catch (errPerfil) {
+        console.error('Error en actualizarPerfilIaSiCorresponde (no rompe el chat):', errPerfil.message);
+      }
+
+      return res.redirect('/ia/chat');
+    } catch (errIa) {
+      const latenciaMs = Date.now() - inicio;
+      console.error('Error llamando a la API de Groq (chat):', errIa.message);
+      await pool.query(
+        `INSERT INTO ia_llamadas (usuario_id, modelo, motivo, tokens_entrada, tokens_salida, costo_usd, latencia_ms, error)
+         VALUES ($1, $2, 'chat', 0, 0, 0, $3, $4)`,
+        [req.usuarioId, MODELO_IA_SEGMENTACION, latenciaMs, String((errIa && errIa.message) || errIa).slice(0, 500)]
+      );
+      return res.redirect('/ia/chat?error=ia_no_disponible');
+    }
+  } catch (err) {
+    console.error('Error en POST /ia/chat:', err.message);
+    return res.status(500).send('No se pudo procesar el mensaje.');
+  }
+});
 
 app.post('/pendientes/:id/completar', async (req, res) => {
   const id = Number(req.params.id);
@@ -2173,9 +2556,19 @@ const MAX_REINTENTOS_429_CAPTURA = 2;
 // (es una oración de texto libre) ni 4096 tokens (la respuesta es corta a
 // propósito). Los defaults reproducen el comportamiento previo exacto, así
 // que segmentarIdeaConGroq no cambia.
+// `opciones.historial` agregado en rama-ia-companera-fase2-v2 (tarea 9,
+// reconstruida sobre main -- ver COORDINACION.md, tarea J del backlog):
+// turnos previos `[{role:'user'|'assistant', content}]` insertados entre el
+// system prompt y el mensaje final, para conversación multi-turno del chat
+// de la IA compañera. Vacío por defecto -- no cambia el comportamiento de
+// segmentarIdeaConGroq ni generarSugerenciaEstancado, que no lo pasan. Este
+// es ahora el ÚNICO cliente Groq del proyecto (antes había una segunda
+// implementación casi idéntica en la rama de la IA compañera, cada una sin
+// ver el main de la otra -- consolidado acá en vez de duplicar).
 async function llamarGroqConReintento(system, texto, opciones = {}) {
   const maxTokens = opciones.maxTokens || 4096;
   const responseFormat = opciones.responseFormat || 'json_object';
+  const historial = opciones.historial || [];
   for (let intento = 0; intento <= MAX_REINTENTOS_429_CAPTURA; intento++) {
     const respuesta = await fetch(GROQ_API_URL, {
       method: 'POST',
@@ -2194,6 +2587,7 @@ async function llamarGroqConReintento(system, texto, opciones = {}) {
         response_format: { type: responseFormat },
         messages: [
           { role: 'system', content: system },
+          ...historial,
           { role: 'user', content: texto },
         ],
       }),
@@ -2208,6 +2602,25 @@ async function llamarGroqConReintento(system, texto, opciones = {}) {
     }
     return respuesta;
   }
+}
+
+// rama-ia-companera-fase2-v2 (tarea 9 del roadmap): extrae texto + tokens de
+// una respuesta de llamarGroqConReintento({responseFormat:'text'}) -- factor
+// común entre el chat y la actualización de perfil (ver más arriba), en vez
+// de repetir el mismo parseo de `datos.choices[0].message.content`/
+// `datos.usage` dos veces. segmentarIdeaConGroq/generarSugerenciaEstancado
+// no lo usan porque cada una hace su propio manejo de error particular
+// (fallback silencioso vs. propagar).
+async function extraerTextoYTokensGroq(respuesta) {
+  const datos = await respuesta.json();
+  if (!respuesta.ok) {
+    throw new Error((datos.error && datos.error.message) || `Groq respondió ${respuesta.status}`);
+  }
+  return {
+    texto: ((datos.choices[0] && datos.choices[0].message.content) || '').trim(),
+    tokensEntrada: datos.usage.prompt_tokens,
+    tokensSalida: datos.usage.completion_tokens,
+  };
 }
 
 // rama-segmentacion-ideas (Fase 1 de v0.2, ver COORDINACION.md): parte una
@@ -3556,6 +3969,18 @@ app.get('/ajustes', async (req, res) => {
       'SELECT 1 FROM push_subscriptions WHERE usuario_id = $1 LIMIT 1',
       [req.usuarioId]
     );
+    // rama-ia-companera-fase2-v2 (alerta de uso diario, ver COORDINACION.md):
+    // sin concepto de rol/admin en el esquema -- mismo criterio ya usado
+    // para restringir POST /notificar-prueba, comparación directa contra el
+    // nombre de usuario guardado en la sesión. Solo se corre la query extra
+    // para 'bruce', para no pagar el costo de la agregación en cada visita
+    // de cualquier otro usuario.
+    let llamadasIaHoy = null;
+    let alertaLlamadasIa = false;
+    if (req.session.nombre_usuario === 'bruce') {
+      llamadasIaHoy = await contarLlamadasIaHoy();
+      alertaLlamadasIa = llamadasIaHoy >= UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA;
+    }
     res.render('ajustes', {
       nombreUsuario: usuario ? usuario.nombre_usuario : '',
       especieActual: usuario && usuario.ia_especie ? usuario.ia_especie : 'monstera',
@@ -3568,6 +3993,9 @@ app.get('/ajustes', async (req, res) => {
       error: null,
       errorVincular: null,
       guardado: null,
+      llamadasIaHoy,
+      alertaLlamadasIa,
+      umbralAlertaLlamadasIa: UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA,
     });
   } catch (err) {
     console.error('Error consultando ajustes:', err.message);
@@ -3576,6 +4004,7 @@ app.get('/ajustes', async (req, res) => {
       notificacionesActivas: false, vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
       emailActual: null, tienePin: true, tieneEmailPassword: false,
       error: 'No se pudo leer la base de datos.', errorVincular: null, guardado: null,
+      llamadasIaHoy: null, alertaLlamadasIa: false, umbralAlertaLlamadasIa: UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA,
     });
   }
 });
@@ -3844,6 +4273,15 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     await client.query('DELETE FROM ideas WHERE usuario_id = $1', [usuarioId]);
     await client.query('DELETE FROM recordatorios WHERE usuario_id = $1', [usuarioId]);
     await client.query('DELETE FROM hechos WHERE usuario_id = $1', [usuarioId]);
+
+    // rama-ia-companera-fase2-v2 (tarea 9 del roadmap): conversación con la
+    // IA compañera, perfil acumulado, y log de llamadas -- las 3 tablas
+    // nuevas de la tarea 9 referencian usuario_id sin ON DELETE CASCADE,
+    // igual que el resto del esquema de este proyecto (el borrado en
+    // cascada se hace acá explícitamente, no en la DB).
+    await client.query('DELETE FROM mensajes_ia WHERE usuario_id = $1', [usuarioId]);
+    await client.query('DELETE FROM perfil_ia WHERE usuario_id = $1', [usuarioId]);
+    await client.query('DELETE FROM ia_llamadas WHERE usuario_id = $1', [usuarioId]);
 
     // 16. rama-login-email: tokens de reseteo de contraseña propios --
     // `reseteos_password.usuario_id` no tenía ON DELETE CASCADE, así que

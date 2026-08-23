@@ -3366,6 +3366,131 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   un submit nativo con recarga completa). Ambas cuentas de prueba y sus
   datos relacionados (amistad, pendiente, eventos) borrados al terminar.
 
+### rama-ia-companera-fase2-v2
+- Estado: probada de punta a punta contra la DB real de Railway y contra el
+  endpoint real de Groq (con `GROQ_API_KEY` real, provista por el usuario
+  esta sesión), lista para push/merge/PR.
+- Tarea: reconstrucción de `rama-ia-companera-fase2` (PR #53), que quedó 78
+  commits detrás de `main` (tarea K del backlog) — tarea 9 del roadmap, IA
+  compañera conversacional real. Ver la sección de diseño completa en
+  "Backlog de tareas" → tarea 9 (no repetida acá). **No se toca la
+  subsección "Gestión con umbrales de confianza" agregada el 2026-08-22 a
+  la tarea 9** — queda explícitamente para después, como dice esa misma
+  subsección.
+- **Corrección a la descripción del PR viejo (#53)**: su descripción decía
+  "Chat real contra Claude Haiku 4.5" — desactualizada. El código real de
+  esa rama (commit `613f7e9`, ya en la rama vieja) había cambiado el
+  proveedor de Claude a **Groq** antes de que el PR se abandonara por
+  quedar obsoleto — confirmado leyendo `server.js` de `origin/rama-
+  ia-companera-fase2`: usa `llamarGroq()` contra `api.groq.com`, sin
+  ninguna dependencia de Anthropic. Esta reconstrucción documenta Groq
+  desde el día 1, sin arrastrar la descripción vieja.
+- **Reconstrucción, no blind-merge**: `git checkout -b
+  rama-ia-companera-fase2-v2 origin/main`, luego se leyó el código real de
+  la rama vieja (`git show origin/rama-ia-companera-fase2:...`, diff
+  acotado a los 4 commits propios desde el punto donde main ya la había
+  absorbido parcialmente) y se reaplicó a mano sobre el `server.js`/vistas
+  actuales, entendiendo la intención de cada pieza:
+  - **Dedupe del cliente Groq (resuelve la tarea J del backlog de paso)**:
+    `main` ya tenía `groqClient`/`GROQ_API_URL`/`llamarGroqConReintento`
+    (de `rama-segmentacion-ideas`, que además ya había migrado el modelo de
+    `llama-3.3-70b-versatile` — deprecado por Groq — a
+    `openai/gpt-oss-120b`). En vez de declarar un segundo `groqClient` (lo
+    que la rama vieja hacía, sin ver el `main` de la otra rama todavía),
+    esta reconstrucción **reusa el cliente único existente**.
+    `llamarGroqConReintento` ganó un parámetro opcional `opciones.historial`
+    (array de turnos previos `{role, content}` insertado entre el system
+    prompt y el mensaje final) para soportar la conversación multi-turno
+    del chat — retrocompatible: `segmentarIdeaConGroq`/
+    `generarSugerenciaEstancado` no lo pasan y siguen exactamente igual.
+    También se agregó `extraerTextoYTokensGroq(respuesta)`, un helper chico
+    que factoriza el parseo de `datos.choices[0].message.content`/
+    `datos.usage` que el chat y la actualización de perfil repetían
+    idéntico. Con esto, el proyecto vuelve a tener un solo cliente Groq —
+    la tarea J del backlog queda resuelta como efecto colateral de esta
+    reconstrucción, no como trabajo aparte.
+  - **Nav**: el nav se reescribió más de una vez desde que se escribió la
+    rama original (`partials/nav.ejs`, `partials/scripts.ejs`, `partials/
+    barra-superior.ejs`, `public/style.css` — todos muy distintos hoy). No
+    se reintrodujo ningún markup viejo de nav; el link "Hablar con tu
+    planta" se agregó como un ítem más dentro del `.menu-pantalla` actual
+    (mismo patrón `<a class="menu-pantalla-item">` que el resto de la
+    grilla), justo al lado de "Mi planta".
+  - El resto (tablas `mensajes_ia`/`perfil_ia`/`ia_llamadas`, RAG sobre
+    pendientes/ideas/recordatorios/hechos/reflexiones/observaciones, límite
+    de 40 mensajes/usuario/mes por calendario `America/Lima`, perfil
+    acumulado disparado cada 15 mensajes nuevos con revisión explícita
+    contra el resumen anterior, alerta de uso diario en `/ajustes` gateada
+    a `nombre_usuario === 'bruce'`) se reaplicó igual que en la rama vieja,
+    sin cambios de diseño — sí se agregó el borrado de las 3 tablas nuevas
+    a `POST /ajustes/eliminar-cuenta` (la rama vieja nunca llegó a
+    reconciliarse con esa ruta, así que no lo tenía; sin este agregado,
+    borrar la cuenta de cualquier usuario que hubiera usado el chat
+    hubiera fallado por violación de FK).
+- **Prueba real de punta a punta (lo que el PR #53 había dejado sin
+  probar, explícito en su test plan)**: 2 cuentas de prueba descartables
+  registradas contra el server corriendo en un puerto propio (3457, para no
+  chocar con otro proceso ya escuchando en 3000 en la misma máquina).
+  - Cuenta 1 (`zztestiachat9v2`): conversación real de 15+ mensajes con
+    contenido real (mencionando un pendiente y una idea capturados de
+    verdad, para que el RAG tuviera contexto real). Las respuestas de Groq
+    llegaron ancladas a esos datos reales (confirmado leyendo el HTML
+    devuelto). El contador de mensajes restantes bajó correctamente en
+    cada mensaje.
+  - **Hallazgo real de esta prueba**: el tier gratis de Groq tiene, además
+    del límite diario (14,400 req/día, ya documentado y con su alerta),
+    un límite de **8,000 tokens/minuto (TPM)** que NO estaba documentado
+    en el diseño original. Con una conversación ya larga (RAG + ~20
+    mensajes de historial), una sola llamada de chat puede rondar
+    5,000-6,600 tokens de entrada — y como la actualización de perfil se
+    dispara justo después de un chat exitoso, dentro de la misma ventana
+    de un minuto, las dos llamadas juntas superan fácil los 8,000 TPM en
+    una sesión de prueba con mensajes disparados rápido y seguido. En la
+    cuenta 1 esto causó 4 fallos de `chat` y 3 fallos de `perfil` por
+    rate-limit antes de que el perfil llegara a generarse con éxito (queda
+    registrado tal cual en `ia_llamadas.error`, el manejo de error
+    funcionó exactamente como está diseñado: nunca rompe el chat, siempre
+    deja rastro). Con uso humano real (mensajes espaciados naturalmente,
+    no un script disparando en ráfaga) este límite rara vez se toca, pero
+    queda anotado acá para quien retome la tarea 11 (que también usa
+    Groq) o la tarea J si en el futuro hace falta manejarlo en código
+    (hoy solo se maneja el 429 genérico con reintento corto, ver
+    `MAX_REINTENTOS_429_CAPTURA`/`llamarGroqConReintento`).
+  - Cuenta 2 (`zztestialimite9v2`, contexto deliberadamente chico para
+    evitar el hallazgo de arriba): 15 mensajes reales cortos, **los 15
+    tuvieron éxito sin un solo error**, y el mensaje 15 disparó
+    `actualizarPerfilIaSiCorresponde` con éxito en el primer intento —
+    `perfil_ia` quedó con un resumen real generado por Groq
+    (`mensajes_en_resumen = 15`), confirmando el disparador de punta a
+    punta con datos reales (el ítem que el PR #53 había dejado sin marcar
+    por falta de key). Después, se insertaron 25 mensajes sintéticos más
+    (sin gastar llamadas a Groq) para llegar a 40 sin repetir toda la
+    conversación, y se confirmó el gating del límite mensual: `/ia/chat`
+    mostró "0 de 40" con el botón deshabilitado, y un `POST /ia/chat`
+    directo (saltándose el botón) devolvió `redirect
+    ?error=limite_mensual` **sin** insertar el mensaje 41 ni una fila
+    nueva en `ia_llamadas` (confirmado por consulta directa antes/después).
+  - Ambas cuentas eliminadas con `POST /ajustes/eliminar-cuenta` (no con
+    un `DELETE` manual) — sirvió además como prueba real de que el nuevo
+    borrado de `mensajes_ia`/`perfil_ia`/`ia_llamadas` en esa ruta no
+    rompe con violación de FK. Confirmado sin filas huérfanas en ninguna
+    de las 3 tablas nuevas después del borrado.
+  - `npm run ci` (34 vistas + `server.js`) limpio antes y después de las
+    pruebas.
+- Archivos tocados: `server.js` (constantes `LIMITE_MENSAJES_IA_POR_MES`/
+  `UMBRAL_ACTUALIZAR_PERFIL`/`COSTO_IA_USD`/`UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA`,
+  tablas nuevas en `ensureSchema`, `llamarGroqConReintento` extendido,
+  `extraerTextoYTokensGroq`, `contarMensajesIaEsteMes`,
+  `contarLlamadasIaHoy`, `avisarSiLlamadasIaSeAcercanAlLimite`,
+  `construirContextoIA`, `actualizarPerfilIaSiCorresponde`, rutas `GET`/
+  `POST /ia/chat`, `GET /ajustes` ampliada, `POST /ajustes/eliminar-cuenta`
+  ampliada), `views/ia-chat.ejs` (nuevo, reusa `.chat-mensajes`/
+  `.mensaje-propio`/`.mensaje-otro`/`.nuevo` de `chat.ejs`), `views/ia.ejs`
+  (sección de acceso al chat), `views/ajustes.ejs` (banner de alerta),
+  `views/partials/nav.ejs` (ítem nuevo en `.menu-pantalla`), `public/
+  style.css` (`.ia-chat-acceso`).
+- Último commit: `3a7fac3`.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -4338,16 +4463,22 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   trazabilidad). — asignada a: sin asignar (bloqueada hasta que la tarea 9
   esté completa) — Depende de: tarea 9 (perfil acumulado con datos reales).
 
-- [ ] **9. ✅ DESBLOQUEADA (2026-08-13) — IA compañera conversacional real —
-  Fase 2.** Integrar la API de Claude para que la planta hable de verdad con
-  el usuario. El bloqueo original ("no asignar hasta que exista un modelo de
-  ingresos") queda resuelto — **el usuario decidió el modelo de negocio
-  final: gratis para todos los usuarios**, no suscripción/premium (una
-  decisión intermedia de suscripción se había pedido y confirmado antes,
-  pero esta versión del 2026-08-13 la reemplaza — la de abajo es la
-  vigente). La API key de Claude es secreta: va en `.env`, nunca
-  hardcodeada ni comiteada. — asignada a: `rama-ia-companera-fase2`
-  (en construcción) — Depende de: nada más, lista para despachar.
+- [x] **9. ✅ DESBLOQUEADA (2026-08-13) — IA compañera conversacional real —
+  Fase 2.** Integrar Groq para que la planta hable de verdad con el usuario
+  (el diseño original decía "la API de Claude" — cambiado a Groq durante la
+  construcción, tier gratis, ver más abajo). El bloqueo original ("no
+  asignar hasta que exista un modelo de ingresos") queda resuelto — **el
+  usuario decidió el modelo de negocio final: gratis para todos los
+  usuarios**, no suscripción/premium (una decisión intermedia de
+  suscripción se había pedido y confirmado antes, pero esta versión del
+  2026-08-13 la reemplaza — la de abajo es la vigente). `GROQ_API_KEY` es
+  secreta: va en `.env`, nunca hardcodeada ni comiteada. — asignada a:
+  `rama-ia-companera-fase2-v2` — **✅ MERGEADA a main** (PR original #53
+  quedó 78 commits detrás de main, reconstruida entera — ver la tarea K del
+  backlog y la sección `rama-ia-companera-fase2-v2` en "Estado de ramas"
+  para el detalle completo, incluida la prueba real de conversación +
+  disparador de perfil acumulado que el PR viejo había dejado sin marcar).
+  Depende de: nada más.
 
   **Diseño final (2026-08-13):**
 
@@ -4745,25 +4876,20 @@ actualmente en curso (Fase 1):**
   `SECRETS.md` — asignada a: rama-fundacion-tecnica — lista para merge, ver
   su sección en "Estado de ramas".
 
-- [ ] **J. Dedupe del cliente Groq.** Ya documentado como pendiente en dos
-  lugares (ver secciones de `rama-ia-companera-fase2` y
-  `rama-segmentacion-ideas`): hay DOS implementaciones idénticas del mismo
-  cliente HTTP a Groq, cada rama reimplementó la suya porque la otra no
-  estaba mergeada a `main` todavía. Cuando ambas lleguen a `main`,
-  consolidar en un solo `groqClient`/`llamarGroq` compartido — si esto se
-  pospone, cada feature nueva que use IA (incluida la reflexión narrativa
-  de la tarea 11) va a agregar su propia copia más, multiplicando el
-  problema en vez de resolverlo. — asignada a: sin asignar — Depende de:
-  que ambas ramas lleguen a `main` primero.
+- [x] **J. Dedupe del cliente Groq.** Resuelto como efecto colateral de la
+  reconstrucción de K: `rama-ia-companera-fase2-v2` reusa el `groqClient`/
+  `GROQ_API_URL`/`llamarGroqConReintento` ya existentes (de
+  rama-segmentacion-ideas) en vez de declarar un segundo cliente — un solo
+  cliente Groq en todo el proyecto desde este merge. — tomada por
+  rama-ia-companera-fase2-v2.
 
-- [ ] **K. Resolver el merge sin terminar de `rama-ia-companera-fase2`.**
-  Tiene un conflicto real en `COORDINACION.md` contra `origin/main` sin
-  resolver (detectado 2026-08-15/16, ver su propia sección en "Estado de
-  ramas"). Cuanto más tiempo pase sin resolverlo, más diverge esa rama de
-  `main` y más doloroso se pone terminarlo — es la rama que tiene la
-  integración de Groq que varias tareas nuevas (9, 11) ya asumen como
-  dependencia. — asignada a: sin asignar — Bloquea indirectamente a la
-  tarea 9 completa y a la pieza de reflexión narrativa de la tarea 11.
+- [x] **K. Resolver el merge sin terminar de `rama-ia-companera-fase2`.**
+  PR #53 quedó 78 commits detrás de `main` (mucho más que el conflicto de
+  `COORDINACION.md` original) — reconstruida entera sobre `main` actualizado
+  como `rama-ia-companera-fase2-v2` (misma receta que el resto de
+  reconstrucciones de esta sesión), con las 2 pruebas reales que el PR
+  viejo había dejado sin marcar (conversación real de 15+ mensajes y
+  disparador de perfil acumulado). — tomada por rama-ia-companera-fase2-v2.
 
 - [ ] **L. Observabilidad real en producción.** Todo el logging hoy es
   `console.log`/`console.error` — en Railway eso es difícil de buscar y

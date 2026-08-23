@@ -85,6 +85,13 @@
         <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'moneda' }) %></span>
         <span>Mercado</span>
       </a>
+      <!-- rama-logros: primera mecánica nueva del "juego" (de las 4
+           candidatas de la tarea O) -- sin badge de no-leído, el toast
+           de más abajo ya cumple ese rol al desbloquear. -->
+      <a href="/logros" class="menu-pantalla-item" role="menuitem">
+        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'trofeo' }) %></span>
+        <span>Logros</span>
+      </a>
       <a href="/ajustes" class="menu-pantalla-item" role="menuitem">
         <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'ajustes' }) %></span>
         <span>Ajustes</span>
@@ -105,3 +112,19 @@
       </form>
     </div>
   </div>
+
+  <!-- rama-logros: celebración de desbloqueo, ver res.locals.logrosNuevos
+       en el middleware global de server.js -- aparece en el próximo
+       render de CUALQUIER página después de un desbloqueo (no hace falta
+       enganchar un query param a cada ruta que puede desbloquear uno).
+       Auto-dismiss por JS, ver partials/scripts.ejs. -->
+  <% if (typeof logrosNuevos !== 'undefined' && logrosNuevos.length) { %>
+    <div id="toasts-logro" aria-live="polite">
+      <% logrosNuevos.forEach((l) => { %>
+        <div class="toast-logro">
+          <%- include('icono', { nombre: 'trofeo' }) %>
+          <span><strong>¡Logro desbloqueado!</strong><small><%= l.nombre %></small></span>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>

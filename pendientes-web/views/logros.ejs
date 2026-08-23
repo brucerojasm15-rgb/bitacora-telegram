@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Logros' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'trofeo' }) %> Logros</h1>
+    <p class="count">Insignias por hitos que ya alcanzaste usando la app -- sin apuro, se desbloquean solos.</p>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+      <% logros.forEach((l) => { %>
+        <section class="estancado-card<%= l.desbloqueadoEn ? '' : ' logro-bloqueado' %>">
+          <p class="estancado-texto">
+            <%= l.nombre %>
+            <% if (l.desbloqueadoEn) { %>
+              <span class="badge-completado"><%- include('partials/icono', { nombre: 'check' }) %> Desbloqueado</span>
+            <% } %>
+          </p>
+          <p class="estancado-fecha">
+            <%= l.descripcion %>
+            <% if (l.desbloqueadoEn) { %>
+              — <%= new Date(l.desbloqueadoEn).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' }) %>
+            <% } %>
+          </p>
+        </section>
+      <% }) %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

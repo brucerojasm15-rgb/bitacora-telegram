@@ -64,6 +64,8 @@ const ICONOS = {
   // rama-inicio-planta: icono nuevo para el boton "volver al inicio" de
   // la barra superior -- casa simple, mismo estilo.
   casa: '<path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"></path><path d="M9.5 20v-6h5v6"></path>',
+  // rama-logros: icono nuevo para Logros, mismo estilo -- copa/trofeo.
+  trofeo: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"></path><path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4"></path>',
 };
 const nombreIcono = (typeof nombre !== 'undefined' && ICONOS[nombre]) ? nombre : null;
 %><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><%- nombreIcono ? ICONOS[nombreIcono] : '' %></svg>

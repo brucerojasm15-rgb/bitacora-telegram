@@ -199,6 +199,7 @@ app.use(async (req, res, next) => {
     res.locals.tutorialCapitulosCompletados = [];
     res.locals.tutorialCapitulosPendientes = 0;
     res.locals.iaChatSinLeer = false;
+    res.locals.logrosNuevos = [];
     return next();
   }
   try {
@@ -251,6 +252,22 @@ app.use(async (req, res, next) => {
       [req.usuarioId, usuario ? usuario.ia_chat_visto_hasta : null]
     );
     res.locals.iaChatSinLeer = sinLeerRows[0].hay;
+    // rama-logros: SOLO lectura acá -- este middleware corre en TODA
+    // request logueada, incluidas las que redirigen sin renderizar nunca
+    // partials/nav.ejs (ej. POST /captura). Marcar "mostrado" acá mismo
+    // se probó y tiene una race real: un POST que pasa por acá justo
+    // después de un desbloqueo lo marca visto sin que ningún toast se
+    // haya renderizado nunca. El marcado real lo confirma el cliente
+    // (POST /logros/marcar-visto, ver partials/scripts.ejs) recién
+    // después de mostrar el toast de verdad en el navegador.
+    const { rows: logrosRows } = await pool.query(
+      'SELECT logro FROM logros_desbloqueados WHERE usuario_id = $1 AND mostrado = FALSE',
+      [req.usuarioId]
+    );
+    res.locals.logrosNuevos = logrosRows
+      .map((r) => LOGROS[r.logro])
+      .filter(Boolean)
+      .map((l) => ({ nombre: l.nombre, descripcion: l.descripcion }));
   } catch (err) {
     res.locals.tema = null;
     res.locals.barraSuperior = null;
@@ -258,6 +275,7 @@ app.use(async (req, res, next) => {
     res.locals.tutorialCapitulosCompletados = [];
     res.locals.tutorialCapitulosPendientes = 0;
     res.locals.iaChatSinLeer = false;
+    res.locals.logrosNuevos = [];
   }
   next();
 });
@@ -802,6 +820,44 @@ app.get('/tutorial', async (req, res) => {
   }
 });
 
+// rama-logros: lista los 9 logros, desbloqueados destacados (con fecha) y
+// bloqueados atenuados -- mismo criterio visual que /tutorial con
+// capítulos completados/pendientes.
+app.get('/logros', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT logro, desbloqueado_en FROM logros_desbloqueados WHERE usuario_id = $1',
+      [req.usuarioId]
+    );
+    const desbloqueadosPorSlug = Object.fromEntries(rows.map((r) => [r.logro, r.desbloqueado_en]));
+    const logros = Object.entries(LOGROS).map(([slug, l]) => ({
+      slug,
+      nombre: l.nombre,
+      descripcion: l.descripcion,
+      desbloqueadoEn: desbloqueadosPorSlug[slug] || null,
+    }));
+    res.render('logros', { logros, error: null });
+  } catch (err) {
+    console.error('Error consultando logros:', err.message);
+    res.status(500).render('logros', { logros: [], error: 'No se pudo leer la base de datos.' });
+  }
+});
+
+// rama-logros: marca como "mostrado" recién cuando el navegador confirma
+// que ya renderizó el toast (ver partials/scripts.ejs) -- no hace falta
+// mandar qué slugs, simplemente marca todo lo pendiente de este usuario,
+// que es exactamente lo que el toast que se acaba de mostrar incluía.
+app.post('/logros/marcar-visto', async (req, res) => {
+  try {
+    await pool.query('UPDATE logros_desbloqueados SET mostrado = TRUE WHERE usuario_id = $1 AND mostrado = FALSE', [
+      req.usuarioId,
+    ]);
+  } catch (err) {
+    console.error('Error marcando logros como vistos:', err.message);
+  }
+  res.status(204).end();
+});
+
 // rama-tutorial-multicapitulo: reemplaza a POST /tutorial/completar (que
 // marcaba un único booleano). Ahora hay un capítulo por :capitulo -- se
 // valida contra TUTORIAL_CAPITULOS, se marca completado (idempotente vía
@@ -829,6 +885,14 @@ app.post('/tutorial/capitulo/:capitulo/completar', async (req, res) => {
       await pagarMoneda(client, req.usuarioId, TUTORIAL_CAPITULOS[capitulo].recompensa, `Tutorial: capítulo "${capitulo}"`, null);
     }
     await client.query('COMMIT');
+    // rama-logros: cuenta para "graduado" tanto si se completó de verdad
+    // como si se saltó (mismo criterio que ya usa tutorialCapitulosPendientes
+    // -- ambos casos insertan la fila en tutorial_capitulos_completados).
+    if (seInsertoDeVerdad) {
+      await revisarYOtorgarLogros(req.usuarioId).catch((err) =>
+        console.error('Error revisando logros tras completar capítulo de tutorial:', err.message)
+      );
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error marcando capítulo de tutorial como completado:', err.message);
@@ -1438,6 +1502,20 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS ia_chat_visto_hasta TIMESTAMP,
       ADD COLUMN IF NOT EXISTS reflexion_ia_activa BOOLEAN NOT NULL DEFAULT TRUE
   `);
+  // rama-logros: primera mecánica nueva del "juego" (de las 4 candidatas
+  // que mencionaba la tarea O -- logros, cosméticos, eventos, intercambio).
+  // Sin pago de moneda al desbloquear -- puramente celebratorio, cero
+  // riesgo de economía. `mostrado` es lo que le permite al middleware
+  // global mostrar el toast una sola vez (ver revisarYOtorgarLogros).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS logros_desbloqueados (
+      usuario_id INT REFERENCES usuarios(id),
+      logro TEXT NOT NULL,
+      desbloqueado_en TIMESTAMPTZ DEFAULT now(),
+      mostrado BOOLEAN NOT NULL DEFAULT FALSE,
+      PRIMARY KEY (usuario_id, logro)
+    )
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -1799,6 +1877,106 @@ async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = 
     rachaGeneral: rachas.get(usuarioId) || 0,
     ...(incluirPerfilIa ? { perfilIaResumen: perfilIaRows.rows[0] ? perfilIaRows.rows[0].resumen : '' } : {}),
   };
+}
+
+// rama-logros: catálogo de logros -- mismo espíritu que TUTORIAL_CAPITULOS
+// (objeto por slug, criterio evaluado contra stats ya calculados). Todos
+// derivados de datos que YA existían antes de esta rama -- cero tracking
+// nuevo aparte de la tabla de desbloqueo. Sin recompensa de moneda al
+// desbloquear (decisión explícita: puramente celebratorio, a diferencia
+// de tareas 7/11).
+const LOGROS = {
+  primeros_pasos: {
+    nombre: 'Primeros pasos',
+    descripcion: 'Completá tu primer pendiente.',
+    criterio: (stats) => stats.pendientesCompletados >= 1,
+  },
+  racha_semana: {
+    nombre: 'Racha de una semana',
+    descripcion: 'Mantené una racha de 7 días.',
+    criterio: (stats) => stats.racha >= 7,
+  },
+  racha_mes: {
+    nombre: 'Racha de un mes',
+    descripcion: 'Mantené una racha de 30 días.',
+    criterio: (stats) => stats.racha >= 30,
+  },
+  planta_adulta: {
+    nombre: 'Planta adulta',
+    descripcion: 'Llevá tu planta a la etapa adulta.',
+    criterio: (stats) => stats.etapaIndice >= IA_ETAPAS.length - 1,
+  },
+  cien_tareas: {
+    nombre: 'Cien tareas',
+    descripcion: 'Completá 100 pendientes en total.',
+    criterio: (stats) => stats.pendientesCompletados >= 100,
+  },
+  coleccionista_ideas: {
+    nombre: 'Coleccionista de ideas',
+    descripcion: 'Capturá 50 ideas.',
+    criterio: (stats) => stats.ideasCapturadas >= 50,
+  },
+  mejor_en_equipo: {
+    nombre: 'Mejor en equipo',
+    descripcion: 'Completá 10 tareas que te asignó un amigo.',
+    criterio: (stats) => stats.tareasAsignadasCompletadas >= 10,
+  },
+  graduado: {
+    nombre: 'Graduado',
+    descripcion: 'Completá los 3 capítulos del tutorial.',
+    criterio: (stats) => stats.tutorialCompletados >= 3,
+  },
+  primer_amigo: {
+    nombre: 'Primer amigo',
+    descripcion: 'Hacé tu primera amistad.',
+    criterio: (stats) => stats.amigos >= 1,
+  },
+};
+
+// Revisa los logros todavía no desbloqueados de un usuario y otorga los
+// que ya cumplen su criterio. Se llama desde los puntos donde puede
+// cambiar algún stat relevante (completar pendiente, capturar idea,
+// aceptar amistad, completar capítulo de tutorial, recapitulación
+// diaria) -- no hace falta engancharlo a pagarMoneda genérico, esos 5
+// puntos cubren todo lo que puede mover un criterio. Devuelve los slugs
+// recién otorgados (para quien quiera usarlos, aunque hoy nadie los usa
+// directo -- la celebración la arma el middleware global leyendo
+// `mostrado=FALSE`, no el valor de retorno de esta función).
+async function revisarYOtorgarLogros(usuarioId) {
+  const [yaDesbloqueadosRows, perfil, pendRows, ideasRows, eventosRows, tutRows, amigosRows] = await Promise.all([
+    pool.query('SELECT logro FROM logros_desbloqueados WHERE usuario_id = $1', [usuarioId]),
+    perfilJuegoDeUsuario(usuarioId),
+    pool.query('SELECT COUNT(*)::int AS c FROM pendientes WHERE usuario_id = $1 AND hecho = TRUE AND eliminado = FALSE', [
+      usuarioId,
+    ]),
+    pool.query('SELECT COUNT(*)::int AS c FROM ideas WHERE usuario_id = $1', [usuarioId]),
+    pool.query('SELECT COUNT(*)::int AS c FROM eventos_completado WHERE completado_por = $1', [usuarioId]),
+    pool.query('SELECT COUNT(*)::int AS c FROM tutorial_capitulos_completados WHERE usuario_id = $1', [usuarioId]),
+    pool.query(
+      "SELECT COUNT(*)::int AS c FROM amistades WHERE (usuario_a_id = $1 OR usuario_b_id = $1) AND estado = 'aceptada'",
+      [usuarioId]
+    ),
+  ]);
+  const yaDesbloqueados = new Set(yaDesbloqueadosRows.rows.map((r) => r.logro));
+  const stats = {
+    pendientesCompletados: pendRows.rows[0].c,
+    racha: perfil ? perfil.rachaGeneral : 0,
+    etapaIndice: perfil ? perfil.etapa.indice : 0,
+    ideasCapturadas: ideasRows.rows[0].c,
+    tareasAsignadasCompletadas: eventosRows.rows[0].c,
+    tutorialCompletados: tutRows.rows[0].c,
+    amigos: amigosRows.rows[0].c,
+  };
+  const nuevos = Object.entries(LOGROS)
+    .filter(([slug, logro]) => !yaDesbloqueados.has(slug) && logro.criterio(stats))
+    .map(([slug]) => slug);
+  for (const slug of nuevos) {
+    await pool.query('INSERT INTO logros_desbloqueados (usuario_id, logro) VALUES ($1, $2) ON CONFLICT DO NOTHING', [
+      usuarioId,
+      slug,
+    ]);
+  }
+  return nuevos;
 }
 
 // Origen 'gastada' es una extensión chica sobre el enum de la tarea 7
@@ -2179,6 +2357,13 @@ async function recapitularUsuario(usuarioId, reflexionActiva, diaObjetivo, inici
     client.release();
   }
 
+  // rama-logros: el pago de arriba puede cruzar planta_adulta.
+  if (huboActividad) {
+    await revisarYOtorgarLogros(usuarioId).catch((err) =>
+      console.error(`Error revisando logros tras recapitulación diaria del usuario ${usuarioId}:`, err.message)
+    );
+  }
+
   if (huboActividad && reflexionActiva && groqClient) {
     await generarReflexionDiaria(usuarioId, delta);
   }
@@ -2369,6 +2554,15 @@ app.post('/pendientes/:id/completar', async (req, res) => {
       notificarA = req.usuarioId === pendiente.usuario_id ? pendiente.asignado_a : pendiente.usuario_id;
     }
     await client.query('COMMIT');
+    // rama-logros: cualquier pendiente completado (propio o asignado)
+    // puede cruzar primeros_pasos/racha/cien_tareas/mejor_en_equipo, y el
+    // pago de tarea 7 de arriba puede cruzar planta_adulta -- después del
+    // commit, no adentro de la transacción.
+    if (pendiente) {
+      await revisarYOtorgarLogros(req.usuarioId).catch((err) =>
+        console.error('Error revisando logros tras completar pendiente:', err.message)
+      );
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error marcando pendiente como hecho:', err.message);
@@ -3205,6 +3399,12 @@ app.post('/captura', async (req, res) => {
     console.error('Error guardando captura rápida:', err.message);
     return res.status(500).render('captura', localsCaptura({ error: 'No se pudo guardar. Intenta de nuevo.' }));
   }
+  // rama-logros: solo la rama "idea" puede cruzar coleccionista_ideas.
+  if (tipo === 'idea') {
+    await revisarYOtorgarLogros(req.usuarioId).catch((err) =>
+      console.error('Error revisando logros tras capturar idea:', err.message)
+    );
+  }
   // rama-interfaz: ?logro=1 -- misma señal que /pendientes/:id/completar
   // para que la barra superior anime la mini planta.
   const params = new URLSearchParams({ guardado: '1', logro: '1' });
@@ -4005,6 +4205,12 @@ app.post('/amigos/:id/aceptar', async (req, res) => {
     if (rowCount === 0) {
       return res.status(404).send('Solicitud no encontrada.');
     }
+    // rama-logros: solo revisa acá (quien acepta) -- el que solicitó recibe
+    // su propio logro primer_amigo en su próxima acción que dispare una
+    // revisión, mismo trade-off que ya acepta el resto de esta rama.
+    await revisarYOtorgarLogros(req.usuarioId).catch((err) =>
+      console.error('Error revisando logros tras aceptar amistad:', err.message)
+    );
   } catch (err) {
     console.error('Error aceptando solicitud de amistad:', err.message);
     return res.status(500).send('No se pudo aceptar la solicitud.');
@@ -4605,6 +4811,10 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     // rama-recapitulacion-diaria (tarea 11): mismo motivo que arriba --
     // recapitulacion_diaria.usuario_id tampoco tiene ON DELETE CASCADE.
     await client.query('DELETE FROM recapitulacion_diaria WHERE usuario_id = $1', [usuarioId]);
+
+    // rama-logros: mismo motivo que las 2 tablas de arriba --
+    // logros_desbloqueados.usuario_id tampoco tiene ON DELETE CASCADE.
+    await client.query('DELETE FROM logros_desbloqueados WHERE usuario_id = $1', [usuarioId]);
 
     // 16. rama-login-email: tokens de reseteo de contraseña propios --
     // `reseteos_password.usuario_id` no tenía ON DELETE CASCADE, así que

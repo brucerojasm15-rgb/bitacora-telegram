@@ -194,3 +194,26 @@
     window.__tutorialCapitulosCompletados = <%- JSON.stringify(typeof tutorialCapitulosCompletados !== 'undefined' ? tutorialCapitulosCompletados : []) %>;
   </script>
   <script src="/tutorial.js" defer></script>
+  <script>
+    // rama-logros: fade-in/auto-dismiss de los toasts de logrosNuevos
+    // (ver partials/nav.ejs) -- se escalona un poco cada uno si hay más
+    // de uno para que no aparezcan/desaparezcan todos exactamente juntos.
+    // Confirma "mostrado" al servidor recién ACÁ (no en el middleware que
+    // arma res.locals.logrosNuevos) -- se probó marcarlo del lado del
+    // servidor en el mismo request que lo lee y tiene una race real: un
+    // POST que pasa por ese middleware justo después de un desbloqueo
+    // (ej. capturar otra idea) lo marca visto sin que el toast se haya
+    // mostrado nunca en un navegador.
+    (function () {
+      const toasts = document.querySelectorAll('#toasts-logro .toast-logro');
+      if (!toasts.length) return;
+      toasts.forEach((toast, i) => {
+        setTimeout(() => toast.classList.add('toast-logro-visible'), 50 + i * 200);
+        setTimeout(() => {
+          toast.classList.remove('toast-logro-visible');
+          setTimeout(() => toast.remove(), 400);
+        }, 5000 + i * 200);
+      });
+      fetch('/logros/marcar-visto', { method: 'POST' }).catch(() => {});
+    })();
+  </script>

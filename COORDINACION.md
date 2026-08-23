@@ -3627,7 +3627,7 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   ampliada con el borrado de `recapitulacion_diaria`), `views/ajustes.ejs`
   (sección nueva del toggle), `views/partials/nav.ejs` (badge en el tile
   del chat).
-- Último commit: ver Historial de merges.
+- Último commit: `d9829d5`.
 
 ### rama-integracion
 - Estado: —
@@ -3872,6 +3872,16 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
+  #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
+  tarea 11 (moneda determinística por actividad propia + reflexión
+  narrativa) — fórmula, hora de cron, anti-doble-pago, tope compartido
+  con tarea 7, y versionado del protocolo, todo lo que el enunciado
+  original dejaba sin decidir. Probado corriendo el cron real cada
+  minuto contra la DB con 4 cuentas de prueba (pago+reflexión, no pago
+  doble, cero costo en días inactivos, opt-out, tope diario compartido
+  respetado). Ver la sección `rama-recapitulacion-diaria` para el
+  detalle completo.
 - 2026-08-22 — merge de rama-perfil-juego (eb68014) → main vía PR #79:
   sin conflictos (mergeStateStatus MERGEABLE). CI verde. Commit de merge
   `2ffb1b1`. Resuelve la tarea O del backlog — sin tabla/columna nueva,

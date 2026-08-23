@@ -3704,7 +3704,7 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   (fade-in/dismiss + confirmación al servidor), `views/partials/
   icono.ejs` (ícono `trofeo`), `public/style.css` (`.toast-logro`,
   `.logro-bloqueado`).
-- Último commit: ver Historial de merges.
+- Último commit: `2b35f11`.
 
 ### rama-integracion
 - Estado: —
@@ -3949,6 +3949,17 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-logros (2b35f11) → main vía PR #81: sin
+  conflictos. CI verde. Commit de merge `ac6aa4d`. Primera mecánica
+  nueva del "juego" (de las 4 candidatas de la tarea O) — 9 insignias
+  derivadas de datos ya existentes, sin economía asociada. Se encontró y
+  arregló una race real antes de mergear: marcar un logro como
+  "mostrado" en el mismo middleware global que arma el toast podía
+  consumirlo silenciosamente si un POST corría justo después del
+  desbloqueo pero antes de que cualquier navegador renderizara el toast
+  — separado en lectura (middleware) vs. confirmación real del cliente
+  (`POST /logros/marcar-visto`). Ver la sección `rama-logros` para el
+  detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

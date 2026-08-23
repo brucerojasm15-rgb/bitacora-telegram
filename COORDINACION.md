@@ -3734,6 +3734,18 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-08-22 — merge de rama-ia-companera-fase2-v2 (3a7fac3) → main vía PR
+  #78: sin conflictos (mergeStateStatus CLEAN). CI verde. Commit de merge
+  `310658d`. Reemplaza el PR #53 (`rama-ia-companera-fase2`), cerrado sin
+  mergear por haber quedado 78 commits detrás de main (tarea K del backlog)
+  -- reconstruida entera sobre main actualizado, reusando el `groqClient`/
+  `llamarGroqConReintento` ya existentes en vez de duplicarlos (resuelve
+  también la tarea J). Probada de punta a punta contra la DB real y el
+  endpoint real de Groq: conversación real de 15+ mensajes con RAG anclado
+  a datos reales, disparador de perfil acumulado exitoso a los 15 mensajes,
+  y gating del límite mensual (40/mes) confirmado. Ver la sección
+  `rama-ia-companera-fase2-v2` para el detalle completo, incluido el
+  hallazgo del límite de 8,000 TPM del tier gratis de Groq.
 - 2026-08-22 — merge de rama-fix-chat-visual (100fd79) → main vía PR #70:
   sin conflictos. CI verde. Commit de merge `3ad3ced`. Desplegado en
   Railway. Primer punto de una tanda nueva de feedback del usuario (chat

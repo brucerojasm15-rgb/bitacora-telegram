@@ -3893,6 +3893,28 @@ tome no tenga que releer todo el mensaje original):**
   extensión de la vista `/ideas` ya existente, no una feature nueva desde
   cero; decidir el diseño exacto cuando se tome esta tarea.
 
+**Nota de negocio (2026-08-24, no técnica, sin acción tomada -- el usuario
+pidió solo dejarla documentada):** el usuario preguntó cómo protegerse de
+que le copien la idea al mostrar la app a "viberos" (comunidad, demo
+informal, no inversionistas formales). Respuesta dada, para que cualquier
+sesión futura la retome sin repetir la conversación:
+- Una idea en sí no es protegible legalmente -- lo que sí lo es
+  automáticamente (sin registrar nada) es el código como tal (derecho de
+  autor). Lo que de verdad protege del lado de negocio es la ejecución:
+  la red social real ya construida (amigos, datos de comportamiento
+  acumulados en `perfil_ia`) no se copia de un día para otro aunque
+  alguien vea la idea.
+- Para una demo pública a una comunidad: no compartir el repositorio ni
+  el código, solo la app funcionando -- suficiente y es lo normal.
+- Si en algún momento presenta el proyecto a gente puntual (posibles
+  socios técnicos, no una audiencia abierta), un NDA de una página antes
+  de esa reunión es razonable pedirlo.
+- Si se lo toma en serio como negocio, registrar el nombre "zentIA" como
+  marca en INDECOPI (Perú) es barato y protege la marca aunque alguien
+  clone la mecánica del juego.
+- No se recomendó sobre-invertir en secretismo para una demo/pitch --
+  eso no es lo que decide si un producto como este tiene éxito.
+
 **Sin asignar todavía -- ninguna de estas tareas tiene rama.** Cuando el
 usuario decida priorizar el juego (después de terminar el tramo de
 chat/amigos), la sesión que lo tome debe: (a) diseñar el esquema de datos
@@ -4444,9 +4466,36 @@ eliminación de ese repo/bot sin quedar huérfano.
   inventado que rebota), pedido `/recuperar-email`, confirmado que no
   quedó ningún error en los logs de Railway (`enviarEmailReseteo` solo
   loggea en el `catch`, silencio = éxito), y la cuenta descartable borrada
-  después por la ruta real. **Queda pendiente que el usuario confirme
-  visualmente que el correo llegó a su bandeja** -- el chequeo de logs
-  dice que el envío no reventó, no que Gmail lo entregó de verdad.
+  después por la ruta real.
+  **⚠️ El usuario confirmó que el correo NO le llegó (2026-08-24, mismo
+  día).** Diagnóstico hecho antes de asumir nada roto:
+  1. `railway logs` (deploy logs, vía CLI) no mostró NINGÚN output más
+     allá del banner de arranque en toda la ventana probada (ni siquiera
+     `--since 24h`/`--http` con o sin filtros) -- esto no es evidencia de
+     que el envío falló, es que la visibilidad de logs por CLI en este
+     proyecto no está sirviendo para diagnosticar nada en este momento
+     (huella para la próxima sesión: no confiar en `railway logs` acá
+     sin verificarlo primero con algo que sepamos que sí logueó).
+  2. Probado el SMTP de Gmail **aislado de la app**, con las mismas
+     credenciales exactas: `transporter.verify()` OK y un `sendMail()`
+     real completado con `250 OK` de Gmail -- las credenciales y la
+     conexión SMTP funcionan.
+  3. Confirmado directo contra la DB real que la app SÍ ejecutó el
+     flujo completo: se generó una fila real en `reseteos_password` para
+     la cuenta de prueba, lo que prueba que `POST /recuperar-email`
+     encontró la cuenta y llegó hasta la llamada a
+     `enviarEmailReseteo()`.
+  **Conclusión: probablemente filtrado como spam por Gmail**, no un bug
+  de la app -- un correo mandado por SMTP desde una cuenta hacia sí
+  misma (no desde la interfaz web de Gmail) es un patrón clásico que
+  activa el filtro de spam. **Pendiente que el usuario revise
+  Spam/Promociones**; si de verdad no está en ningún lado, retomar desde
+  acá (los 3 puntos de arriba ya descartan credenciales/conexión/lógica
+  de la app como causa). Si este patrón se repite con usuarios reales,
+  considerar migrar de Gmail SMTP a un proveedor transaccional real
+  (Resend/SendGrid/SES) -- Gmail SMTP no está pensado para
+  deliverability de producto, solo para volumen bajo/personal. No es
+  urgente mientras sea solo esta cuenta de prueba.
 - 2026-08-22 — merge de rama-fix-doble-release (8af7422) → main vía PR
   #67: sin conflictos. CI verde. Commit de merge `d5aeff0`. Desplegado en
   Railway y verificado SUCCESS. Bug de crash (doble `client.release()`)

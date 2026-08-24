@@ -4494,6 +4494,42 @@ después.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-comprar-espacio-casa
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): tercera mecánica del juego, elegida
+  entre varias opciones ofrecidas. Cierra un hueco real del diseño
+  original: `usuarios.casa_espacios_comprados` existía en el esquema
+  desde `rama-juego-fundacion`, pero ninguna ruta lo tocaba -- hoy la
+  casa solo crecía subiendo de nivel, nunca gastando moneda directamente
+  (parte explícita del pedido original: "debe subir de nivel O comprar
+  monedas").
+- **Curva de costo -- placeholder que el diseño original dejaba
+  pendiente, decidido acá**: 1er espacio comprado cuesta 50, cada
+  siguiente 25 más (75, 100, 125...) -- mismo orden de magnitud que el
+  resto de la tienda (`IA_COSTO_SKIN=30`..`IA_COSTO_TEMA_EXTRA=60`), y
+  creciente a propósito para que ampliar mucho la casa sea una inversión
+  real, no un gasto trivial repetible.
+- `POST /casa/ampliar` reusa `gastarMoneda()` (mismo helper atómico que
+  ya usa `/ia/comprar`, con su propio `SELECT ... FOR UPDATE` y su
+  registro en `moneda_transacciones` con `origen='gastada'`) en vez de
+  reinventar el descuento de saldo -- **confirmado que gastar NO baja el
+  nivel del jugador** (`monedaAcumuladaDeVida` solo suma `origen IN
+  ('ganada','comprada')`, nunca `'gastada'`), mismo comportamiento ya
+  garantizado para el resto de la tienda.
+- `perfilJuegoDeUsuario()` extendido con `espaciosComprados` y
+  `costoProximoEspacio` (éste último ya calculado con la fórmula, no solo
+  el número crudo) para que `GET /casa` no repita la cuenta.
+- **Probado contra la DB real de Railway**: comprar sin saldo suficiente
+  falla (400, botón deshabilitado en la vista si no alcanza); dado saldo
+  real, 2 compras seguidas confirmaron el costo escalando 50→75, el saldo
+  descontándose exacto, y las 2 transacciones quedando registradas en
+  `moneda_transacciones` con `origen='gastada'` y motivo legible.
+- Archivos tocados: `server.js` (`capacidadCasa`/`costoProximoEspacioCasa`,
+  `perfilJuegoDeUsuario`, `GET /casa`, ruta nueva `POST /casa/ampliar`),
+  `views/casa.ejs` (sección nueva "Ampliar la casa").
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -2113,6 +2113,20 @@ function capacidadCasa(nivelJugador, espaciosComprados) {
   return CASA_CAPACIDAD_BASE + (nivelJugador - 1) * CASA_INCREMENTO_POR_NIVEL + espaciosComprados;
 }
 
+// rama-comprar-espacio-casa: el diseño original dejaba "curva de costo
+// progresivo de comprar un espacio más" como placeholder explícito --
+// decidido acá, en el momento de implementar. Mismo orden de magnitud que
+// el resto de la tienda (IA_COSTO_SKIN=30 .. IA_COSTO_TEMA_EXTRA=60):
+// 1er espacio comprado cuesta 50, 2do 75, 3ro 100... cada uno 25 más que
+// el anterior, para que ampliar mucho la casa se sienta como una
+// inversión real, no un gasto trivial repetible sin pensar.
+const CASA_COSTO_BASE_ESPACIO = 50;
+const CASA_COSTO_INCREMENTO_POR_ESPACIO = 25;
+
+function costoProximoEspacioCasa(espaciosYaComprados) {
+  return CASA_COSTO_BASE_ESPACIO + espaciosYaComprados * CASA_COSTO_INCREMENTO_POR_ESPACIO;
+}
+
 // rama-juego-plaza-salud: segundo tramo del juego, diseño ya anticipado en
 // COORDINACION.md ("Diseño del modelo de datos del juego") -- cron de
 // salud/abandono + Plaza. Ajuste sobre el placeholder original: el
@@ -2253,6 +2267,8 @@ async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = 
       ? {
           revividasDisponibles: fila.revividas_disponibles,
           capacidadCasa: capacidadCasa(nivelJugador, fila.casa_espacios_comprados),
+          espaciosComprados: fila.casa_espacios_comprados,
+          costoProximoEspacio: costoProximoEspacioCasa(fila.casa_espacios_comprados),
         }
       : {}),
     ...(incluirPerfilIa ? { perfilIaResumen: perfilIaRows.rows[0] ? perfilIaRows.rows[0].resumen : '' } : {}),
@@ -5060,13 +5076,16 @@ app.get('/casa', async (req, res) => {
       nivelJugador: perfil.nivelJugador,
       capacidadCasa: perfil.capacidadCasa,
       espaciosLibres: perfil.capacidadCasa - animales.length,
+      saldoMoneda: perfil.saldoMoneda,
+      costoProximoEspacio: perfil.costoProximoEspacio,
       nacio: Number(req.query.nacio) || null,
       error: null,
     });
   } catch (err) {
     console.error('Error consultando la casa:', err.message);
     res.status(500).render('casa', {
-      especies: ESPECIES_ANIMAL, animales: [], nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0, nacio: null,
+      especies: ESPECIES_ANIMAL, animales: [], nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0,
+      saldoMoneda: 0, costoProximoEspacio: 0, nacio: null,
       error: 'No se pudo leer la base de datos.',
     });
   }
@@ -5101,6 +5120,43 @@ app.post('/casa/adoptar', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error adoptando animal:', err.message);
     return res.status(500).send('No se pudo adoptar el animal.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/casa');
+});
+
+// rama-comprar-espacio-casa: la otra vía para ganar espacio, aparte de
+// subir de nivel ("debe subir de nivel O comprar monedas", pedido
+// original del usuario) -- hasta ahora `casa_espacios_comprados` existía
+// en el esquema pero no había ninguna ruta que lo tocara. Reusa
+// `gastarMoneda` (mismo helper atómico que ya usa /ia/comprar) en vez de
+// reinventar el descuento de saldo.
+app.post('/casa/ampliar', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT casa_espacios_comprados FROM usuarios WHERE id = $1 FOR UPDATE',
+      [req.usuarioId]
+    );
+    if (!rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Usuario inválido.');
+    }
+    const espaciosActuales = rows[0].casa_espacios_comprados;
+    const costo = costoProximoEspacioCasa(espaciosActuales);
+    const ok = await gastarMoneda(client, req.usuarioId, costo, `Ampliar casa (espacio comprado #${espaciosActuales + 1})`);
+    if (!ok) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('No te alcanza la moneda.');
+    }
+    await client.query('UPDATE usuarios SET casa_espacios_comprados = casa_espacios_comprados + 1 WHERE id = $1', [req.usuarioId]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error ampliando la casa:', err.message);
+    return res.status(500).send('No se pudo ampliar la casa.');
   } finally {
     client.release();
   }

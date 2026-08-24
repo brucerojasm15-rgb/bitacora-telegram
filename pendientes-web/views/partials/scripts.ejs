@@ -160,6 +160,30 @@
 
       window.animarLogroBarraSuperior = animarPlanta;
 
+      // rama-racha-viva: actualiza los números de racha/semillas a mano --
+      // hasta ahora quedaban desactualizados en vistas que interceptan su
+      // form con fetch() y nunca navegan (ej. `.completar-form` de
+      // index.ejs), porque esos `<span>` solo se renderizan una vez por
+      // request real. Recibe el mismo objeto `barra` que ya devuelve
+      // `barraSuperiorDeUsuario()` en el servidor ({ racha, semillas, ... }).
+      // Anima el dato que cambió (mismo criterio que la racha vía
+      // localStorage de más abajo) para que se sienta consistente con el
+      // resto de la barra.
+      window.actualizarBarraSuperior = function (datosBarra) {
+        if (!datosBarra) return;
+        const spanRacha = barra.querySelector('.barra-superior-racha span');
+        const spanSemillas = barra.querySelector('.barra-superior-semillas span');
+        if (spanRacha && Number(datosBarra.racha) !== Number(spanRacha.textContent)) {
+          spanRacha.textContent = datosBarra.racha;
+          animarDato('barra-superior-racha');
+        }
+        if (spanSemillas && Number(datosBarra.semillas) !== Number(spanSemillas.textContent)) {
+          spanSemillas.textContent = datosBarra.semillas;
+          animarDato('barra-superior-semillas');
+        }
+        barra.dataset.racha = datosBarra.racha;
+      };
+
       const params = new URLSearchParams(window.location.search);
       if (params.get('logro') === '1') {
         animarPlanta();

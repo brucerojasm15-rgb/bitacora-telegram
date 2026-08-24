@@ -187,7 +187,11 @@
         if (window.mostrarCargaBoton) window.mostrarCargaBoton(e.submitter);
         const fila = form.closest('tr');
         try {
-          const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+          const res = await fetch(form.action, {
+            method: 'POST',
+            headers: { Accept: 'application/json' },
+            body: new FormData(form),
+          });
           if (!res.ok) {
             window.location.reload();
             return;
@@ -198,6 +202,17 @@
           // a aplicarse acá, así que se anima la barra superior a mano.
           // Ver el comentario largo en partials/scripts.ejs.
           if (window.animarLogroBarraSuperior) window.animarLogroBarraSuperior();
+          // rama-racha-viva: el servidor devuelve JSON (Accept pedido arriba)
+          // con la barra superior recién calculada -- sin esto, racha/
+          // semillas quedaban con el número viejo hasta el próximo reload.
+          try {
+            const datos = await res.json();
+            if (window.actualizarBarraSuperior) window.actualizarBarraSuperior(datos.barra);
+          } catch (jsonErr) {
+            // Respuesta no-JSON (ej. sesión vencida devolviendo HTML de
+            // /login) -- no rompe el resto del flujo, la fila igual se
+            // marca completada más abajo.
+          }
           if (!fila) return;
           const celdaAcciones = fila.querySelector('td:last-child');
           if (celdaAcciones) celdaAcciones.innerHTML = '<span class="check-confirm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"></path></svg></span>';

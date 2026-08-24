@@ -1192,6 +1192,59 @@ async function ensureSchema() {
       creado TIMESTAMP DEFAULT now()
     )
   `);
+  // rama-pruebas-regresion: `pendientes`/`ideas`/`recordatorios`/`hechos`
+  // -- las 4 tablas centrales de TODA la app -- nunca tuvieron su propio
+  // CREATE TABLE en `ensureSchema()`. Existían en la DB de Railway desde
+  // antes de que este código las tocara (la app original venía de un bot
+  // de Telegram previo), así que nadie lo notó nunca: cada ALTER TABLE de
+  // acá en adelante asumía en silencio que ya existían. Encontrado real
+  // corriendo esta misma rama en CI contra una Postgres completamente
+  // vacía por primera vez -- `ensureSchema()` reventaba en el primer
+  // ALTER TABLE pendientes de abajo ("relation pendientes does not
+  // exist"), lo que además abortaba TODO lo que venía después en la
+  // cadena (incluida la columna `ia_especie` de `usuarios`, con el efecto
+  // secundario de que hasta el registro de un usuario fallaba). Esquema
+  // exacto tomado de `information_schema` contra la Railway real -- estas
+  // 4 tablas seguían sin usar `TIMESTAMPTZ`/`DEFAULT` consistentes entre
+  // sí (legado de antes de este código), no se normalizan acá a propósito
+  // para no arriesgar una migración de datos reales sin que el usuario lo
+  // pida explícitamente.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendientes (
+      id SERIAL PRIMARY KEY,
+      texto TEXT,
+      creado TIMESTAMPTZ,
+      hecho BOOLEAN DEFAULT false,
+      usuario_id INT REFERENCES usuarios(id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ideas (
+      id SERIAL PRIMARY KEY,
+      fecha TEXT,
+      idea TEXT,
+      estado TEXT,
+      usuario_id INT REFERENCES usuarios(id),
+      etiqueta TEXT
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recordatorios (
+      id SERIAL PRIMARY KEY,
+      texto TEXT,
+      cuando TIMESTAMPTZ,
+      avisado BOOLEAN DEFAULT false,
+      usuario_id INT REFERENCES usuarios(id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS hechos (
+      id SERIAL PRIMARY KEY,
+      texto TEXT,
+      cuando TIMESTAMPTZ,
+      usuario_id INT REFERENCES usuarios(id)
+    )
+  `);
   await pool.query(`
     ALTER TABLE pendientes
       ADD COLUMN IF NOT EXISTS contador_posposiciones INT DEFAULT 0,

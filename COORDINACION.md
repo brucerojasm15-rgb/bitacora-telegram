@@ -3924,6 +3924,275 @@ de Plaza) como su propio paso documentado acá ANTES de escribir
 worktree propio, nunca en el clone compartido; (c) NO tocar el modelo de
 pagos reales hasta tener la info pendiente del punto 3 de arriba.
 
+#### Diseño del modelo de datos del juego (2026-08-24) -- paso (a) de arriba, hecho
+
+El usuario pidió arrancar por acá antes de tocar código. **Esto es diseño,
+todavía NO implementado** -- ninguna tabla de esta sección existe en la DB
+real todavía. Cuando se implemente, se hace en worktree propio
+(`rama-juego-fundacion` o el nombre que se elija), copiando estos bloques
+de SQL casi literal a `ensureSchema()`.
+
+**Decisión de producto ya confirmada por el usuario (pregunta directa
+antes de diseñar):** el límite de 3 revividas del personaje main es **por
+CUENTA** (3 de por vida en total, no 3 por mascota) -- refuerza que
+abandonar un animal tiene consecuencia real, y deja el gancho abierto para
+vender revividas extra más adelante cuando se resuelva el modelo de pagos
+(ver el punto 3 de arriba).
+
+**Decisión de arquitectura (mío, siguiendo el patrón que YA usa este
+proyecto en todos lados, no una idea nueva):** catálogos chicos y fijos
+(especies, definición de genes/alelos, enfermedades) van **hardcodeados en
+JS**, igual que `IA_ESPECIES`/`IA_ETAPAS`/`LOGROS` ya hacen -- NO tablas
+de catálogo en la DB. Solo lo que es específico de cada animal/usuario
+(instancias reales) necesita tabla. Mismo criterio, ya aplicado
+repetidamente: no crear infraestructura para datos que no cambian en
+producción, un catálogo que cambia se cambia con un deploy, no con un
+INSERT.
+
+**Nivel de jugador: NO es una columna nueva.** Mismo criterio que ya
+dejó documentado `rama-perfil-juego` (tarea O) sobre la etapa de la
+planta: se deriva en vivo de `monedaAcumuladaDeVida()` (el mismo
+agregado que ya usa `etapaPorMoneda`), con su propia función paralela
+`nivelJugadorPorMoneda()` y su propia tabla de umbrales -- nunca se
+duplica el dato, solo se le suma una interpretación nueva al mismo
+número. Se extiende `perfilJuegoDeUsuario()` para devolver también
+`nivelJugador`, en vez de que cada pantalla nueva del juego recalcule
+por su cuenta (el error que la tarea O ya corrigió una vez, no
+repetirlo).
+
+```js
+// Placeholder -- 15 niveles, curva creciente a propósito para que nivel 11
+// (donde empiezan los avisos automáticos de salud) se sienta como una meta
+// real, no algo que se cruza a la semana. Números de ejemplo, el dueño del
+// producto los ajusta antes de anunciar el juego -- lo que importa fijar
+// AHORA es que se derivan de totalDeVida, nunca se guardan aparte.
+const NIVEL_UMBRAL_MONEDA = [
+  0, 30, 80, 150, 250, 400, 600, 850, 1150, 1500, 1900, 2400, 3000, 3700, 4500,
+]; // índice 0 = nivel 1 ... índice 10 = nivel 11 (avisos de salud se activan acá)
+
+function nivelJugadorPorMoneda(totalDeVida) {
+  let indice = 0;
+  for (let i = NIVEL_UMBRAL_MONEDA.length - 1; i >= 0; i--) {
+    if (totalDeVida >= NIVEL_UMBRAL_MONEDA[i]) { indice = i; break; }
+  }
+  return indice + 1; // nivel 1-indexado, más natural para mostrarlo al usuario
+}
+const NIVEL_AVISOS_SALUD_AUTOMATICOS = 11;
+```
+
+**Catálogos hardcodeados (JS, no DB) -- placeholders de contenido real,
+la mecánica es lo que importa fijar ahora:**
+
+```js
+// Especie = plan corporal base para el arte (silueta) -- lo "legendario" NO
+// sale de la especie (a diferencia de Happy Pets, decisión explícita del
+// usuario), sale de la combinación de genes de abajo.
+const ESPECIES_ANIMAL = ['gato', 'perro', 'conejo', 'ave'];
+
+// Cada gen es un "locus": un animal tiene 2 alelos por locus (uno heredado
+// de cada padre), igual que genética real (diploide). `rarezaBase` es el
+// peso con el que un alelo aparece en una cría SIN padres (nacimiento
+// inicial/semilla del sistema) -- entre padres reales, la cría hereda un
+// alelo real de cada uno, `rarezaBase` deja de aplicar (ver la función de
+// cría más abajo). `dominante: true` es el que se expresa visualmente si
+// el animal tiene un alelo dominante Y uno recesivo en ese locus (herencia
+// mendeliana simple, no hace falta más que esto para que se sienta real).
+const GENES = {
+  color_base: {
+    tipo: 'visual',
+    alelos: {
+      marron: { rarezaBase: 40, dominante: true },
+      negro: { rarezaBase: 30, dominante: true },
+      blanco: { rarezaBase: 20, dominante: false },
+      dorado: { rarezaBase: 8, dominante: false },
+      iridiscente: { rarezaBase: 2, dominante: false }, // legendario si se expresa
+    },
+  },
+  patron: {
+    tipo: 'visual',
+    alelos: {
+      liso: { rarezaBase: 55, dominante: true },
+      manchado: { rarezaBase: 30, dominante: false },
+      rayado: { rarezaBase: 13, dominante: false },
+      estelar: { rarezaBase: 2, dominante: false }, // legendario si se expresa
+    },
+  },
+  brillo: {
+    tipo: 'visual',
+    alelos: {
+      normal: { rarezaBase: 92, dominante: true },
+      luminiscente: { rarezaBase: 8, dominante: false }, // legendario si se expresa
+    },
+  },
+  // El gen de salud reusa EXACTAMENTE el mismo sistema de herencia que los
+  // genes visuales de arriba -- así "probabilidad real de nacer con una
+  // condición heredada" no es un número inventado aparte, es la MISMA
+  // matemática mendeliana: dos portadores tienen 25% de probabilidad real
+  // de que la cría exprese la condición (ambos alelos recesivos), no un
+  // dado aparte tirado a mano.
+  salud: {
+    tipo: 'salud',
+    alelos: {
+      sano: { rarezaBase: 85, dominante: true },
+      portador_debil: { rarezaBase: 15, dominante: false }, // no enferma, pero puede transmitirlo
+    },
+  },
+};
+
+// "Legendario" (decisión explícita del usuario: por RASGOS, no por especie
+// ni por tabla de rareza fija): un animal es legendario si expresa 2 o más
+// alelos marcados como legendarios-si-se-expresan en la misma cría. Con
+// las rarezaBase de arriba, esto da un legendario genuinamente raro sin
+// necesitar una tirada de dado aparte -- emerge de la genética, como pidió
+// el usuario. El umbral "2 o más" es ajustable, documentado como
+// constante nombrada, no un número suelto en el código.
+const RASGOS_LEGENDARIOS = { color_base: ['iridiscente'], patron: ['estelar'], brillo: ['luminiscente'] };
+const UMBRAL_RASGOS_PARA_LEGENDARIO = 2;
+
+// Enfermedades por ABANDONO (no genéticas) -- se asignan por el cron de
+// cuidado (ver más abajo), nunca al nacer.
+const ENFERMEDADES_ABANDONO = {
+  desnutricion: { nombre: 'Desnutrición', umbralDias: 3 },
+  letargo: { nombre: 'Letargo', umbralDias: 10 },
+};
+```
+
+**Tablas nuevas (instancias reales, sí van en la DB):**
+
+```sql
+-- Un animal real, propiedad de un usuario. `padre_id`/`madre_id` NULL para
+-- animales "semilla" (el primero que recibe un usuario nuevo, sin cría
+-- real detrás) -- para esos, el genotipo se sortea con rarezaBase
+-- directamente en vez de heredarse.
+CREATE TABLE IF NOT EXISTS animales (
+  id SERIAL PRIMARY KEY,
+  usuario_id INT REFERENCES usuarios(id),
+  especie TEXT NOT NULL,
+  nombre TEXT,
+  padre_id INT REFERENCES animales(id),
+  madre_id INT REFERENCES animales(id),
+  es_legendario BOOLEAN NOT NULL DEFAULT false,
+  nacido TIMESTAMPTZ DEFAULT now(),
+  salud_estado TEXT NOT NULL DEFAULT 'sano', -- sano | enfermo | critico | fallecido
+  ultima_alimentacion TIMESTAMPTZ DEFAULT now(),
+  fallecido_en TIMESTAMPTZ,
+  eliminado BOOLEAN NOT NULL DEFAULT false -- mismo patrón de borrado lógico que `pendientes.eliminado`
+);
+CREATE INDEX IF NOT EXISTS idx_animales_usuario ON animales (usuario_id);
+
+-- Genotipo: 2 alelos por locus por animal (PK compuesta = nunca duplicado
+-- por accidente). `locus`/`alelo_1`/`alelo_2` son texto libre validado
+-- contra el catálogo GENES en el código de la ruta, no con una FK -- mismo
+-- criterio que el resto del proyecto (los catálogos hardcodeados nunca
+-- tuvieron FK, ver `categoria` en `pendientes`).
+CREATE TABLE IF NOT EXISTS animales_genes (
+  animal_id INT NOT NULL REFERENCES animales(id),
+  locus TEXT NOT NULL,
+  alelo_1 TEXT NOT NULL,
+  alelo_2 TEXT NOT NULL,
+  PRIMARY KEY (animal_id, locus)
+);
+
+-- Historial de enfermedades -- se guarda tanto la genética (diagnosticada
+-- al nacer, origen='genetica') como la de abandono (diagnosticada por el
+-- cron, origen='abandono'). Queda historial aunque se cure -- mismo
+-- espíritu que `historial_ediciones`: el dato de "esto pasó" no se borra.
+CREATE TABLE IF NOT EXISTS animales_enfermedades (
+  id SERIAL PRIMARY KEY,
+  animal_id INT NOT NULL REFERENCES animales(id),
+  enfermedad TEXT NOT NULL,
+  origen TEXT NOT NULL, -- genetica | abandono
+  diagnosticada_en TIMESTAMPTZ DEFAULT now(),
+  curada_en TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_animales_enfermedades_animal ON animales_enfermedades (animal_id);
+
+-- Plaza: SOLO emojis (validado server-side en la ruta -- rechazar
+-- cualquier texto que no sean puntos de código de emoji, nunca confiar en
+-- el cliente). Nunca se junta con `mensajes`/`mensajes_generales`
+-- existentes -- son conversaciones reales entre gente que se conoce, la
+-- Plaza es lo opuesto a propósito (ver la sección de apertura de
+-- crecimiento más arriba).
+CREATE TABLE IF NOT EXISTS plaza_mensajes (
+  id SERIAL PRIMARY KEY,
+  autor_id INT REFERENCES usuarios(id),
+  emojis TEXT NOT NULL,
+  fecha TIMESTAMPTZ DEFAULT now()
+);
+
+-- Columnas nuevas en `usuarios` -- estado simple de 1 fila por usuario, no
+-- amerita tabla aparte (mismo criterio que `saldo_moneda`/`ia_especie` ya
+-- existentes).
+ALTER TABLE usuarios
+  ADD COLUMN IF NOT EXISTS alias_juego TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS revividas_disponibles INT NOT NULL DEFAULT 3,
+  ADD COLUMN IF NOT EXISTS casa_espacios_comprados INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS plaza_advertencia_vista BOOLEAN NOT NULL DEFAULT false;
+
+-- Genera "animalover1", "animalover2"... en orden real de asignación
+-- (nunca el id interno del usuario, para no filtrar cuántas cuentas
+-- existen ni en qué orden se crearon vs alias) -- se asigna la PRIMERA vez
+-- que el usuario entra a cualquier pantalla del juego (Casa/Plaza), no al
+-- registrarse (usuarios que nunca tocan el juego no necesitan alias).
+CREATE SEQUENCE IF NOT EXISTS alias_juego_seq START 1;
+```
+
+**Capacidad de la casa -- tampoco es una sola columna aislada, se computa:**
+`capacidad_final = CASA_CAPACIDAD_BASE + (nivelJugador - 1) * CASA_INCREMENTO_POR_NIVEL + usuarios.casa_espacios_comprados`.
+Solo la parte COMPRADA se guarda (`casa_espacios_comprados`) -- la parte
+por nivel se deriva en vivo de `nivelJugador`, mismo criterio que todo lo
+de arriba. `CASA_CAPACIDAD_BASE`/`CASA_INCREMENTO_POR_NIVEL`/el costo
+progresivo de comprar un espacio más son placeholders a decidir en el
+momento de implementar (mismo patrón que el resto del backlog: "decidir
+el número, documentar el porqué" cuando se esté viendo el balance real).
+
+**Cría (breeding) -- lógica de servidor, NO tabla nueva:** `POST
+/animales/:id/cruzar` (nombre de ruta a decidir en implementación) toma 2
+animales del MISMO usuario (v1 -- cruzar con el animal de un amigo queda
+para una ronda futura, no bloquea esto), valida especie compatible, y por
+cada locus en `GENES` sortea 1 alelo real de cada padre (no de
+`rarezaBase` -- eso es solo para animales sin padres). Si el locus `salud`
+termina con 2 alelos `portador_debil`, inserta una fila real en
+`animales_enfermedades` con `origen='genetica'`. Si 2+ loci visuales
+expresan su alelo marcado en `RASGOS_LEGENDARIOS`, `es_legendario = true`.
+
+**Cron de cuidado/abandono (nuevo, mismo patrón que
+`revisarYNotificarSiNoHayHechosHoy`/`recapitulacion_diaria`):** revisa
+`animales.ultima_alimentacion` diario. Escalada de ejemplo (placeholder,
+decidir curva exacta en implementación, el usuario ya dio el ancla real:
+"3 meses" hasta fallecer):
+- `sano` → `enfermo` tras `ENFERMEDADES_ABANDONO.desnutricion.umbralDias`
+  (3 días) sin alimentar -- inserta fila en `animales_enfermedades`.
+- `enfermo` → `critico` tras ~30 días totales de abandono.
+- `critico` → `fallecido` tras ~90 días totales (el "3 meses" original) --
+  setea `fallecido_en`.
+A partir de `NIVEL_AVISOS_SALUD_AUTOMATICOS` (nivel 11), este mismo cron
+dispara una notificación push proactiva (reusa `enviarPushAUsuario`, ya
+existe) apenas un animal pasa a `enfermo` -- antes de nivel 11, el usuario
+tiene que darse cuenta solo (decisión explícita del usuario, parte de la
+mecánica de aprendizaje).
+
+**Revivir:** `POST /animales/:id/revivir` -- exige
+`usuarios.revividas_disponibles > 0`, decrementa, pone `salud_estado =
+'critico'` (no `'sano'` directo -- revivir no es gratis ni perfecto,
+mercy-revival) y limpia `fallecido_en`. Sin tabla de historial aparte por
+ahora -- si más adelante se quiere una pantalla "memorial", se agrega
+entonces (mismo criterio que el resto del proyecto: no construir para un
+caso de uso que todavía no se pidió).
+
+**Personajes (guía + planta):** sin tabla nueva por ahora -- son
+contenido (diálogo/arte), no estado. Si el personaje main necesita
+recordar qué ya le explicó a cada usuario, reusar el patrón de
+`tutorial_capitulos_completados` (una fila por hito mostrado) en vez de
+inventar uno nuevo, cuando se llegue a esa parte.
+
+**Todavía sin resolver, a propósito, para cuando se implemente:** números
+exactos de `NIVEL_UMBRAL_MONEDA`, `rarezaBase` reales (los de arriba son
+solo para que la mecánica tenga sentido, no balance final), curva de costo
+de `casa_espacios_comprados`, y si la cría entre animales de DOS usuarios
+distintos (amigos) se habilita en esta primera versión o en una ronda
+después.
+
 ### rama-fix-metas-huerfanas
 - Estado: lista para merge.
 - Pedido por el usuario (2026-08-24): arreglar lo "chico" pendiente antes

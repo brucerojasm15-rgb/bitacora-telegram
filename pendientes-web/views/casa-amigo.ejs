@@ -16,13 +16,16 @@
     <% } else { %>
       <% animales.forEach((a) => { %>
         <section class="meta-card <%= a.salud_estado !== 'sano' ? 'meta-inactiva' : '' %>">
-          <div class="meta-card-header">
-            <h2><%= a.nombre || ('Sin nombre (' + a.especie + ')') %><% if (a.es_legendario) { %> ✨<% } %></h2>
-            <span class="meta-estado-badge"><%= a.salud_estado %></span>
+          <div class="meta-card-header meta-card-header-animal">
+            <img class="animal-imagen" src="<%= a.imagen %>" alt="<%= a.especie %> en etapa <%= a.etapaVida %>" loading="lazy">
+            <div>
+              <h2><%= a.nombre || ('Sin nombre (' + a.especie + ')') %><% if (a.es_legendario) { %> ✨<% } %></h2>
+              <span class="meta-estado-badge"><%= a.salud_estado %></span>
+            </div>
           </div>
           <p class="meta-progreso-texto">
             <%= a.especie.charAt(0).toUpperCase() + a.especie.slice(1) %><% if (a.es_legendario) { %> — <strong>legendario</strong><% } %>
-            — <%= a.esAdulto ? 'adulto' : 'cría' %>
+            — <%= a.etapaVida %>
           </p>
           <p class="meta-progreso-texto">
             <% Object.entries(a.alelosExpresados).filter(([locus]) => locus !== 'salud').forEach(([locus, alelo], i) => { %>
@@ -44,6 +47,14 @@
           <% } %>
         </section>
       <% }) %>
+    <% } %>
+
+    <% if (!error && arbolesGenealogicos.length > 0) { %>
+      <section class="ajustes-grupo pared-familia">
+        <h2>Pared de la familia</h2>
+        <p class="ajustes-nota">Memoriales de animales que fallecieron y dejaron familia real -- padres, crías, o ambos.</p>
+        <%- include('partials/arbol-genealogico', { arboles: arbolesGenealogicos }) %>
+      </section>
     <% } %>
   </main>
 

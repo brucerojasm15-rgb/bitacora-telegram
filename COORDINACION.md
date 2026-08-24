@@ -4426,6 +4426,74 @@ después.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-juego-plaza-salud
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): segundo (y último planeado por
+  ahora) tramo del juego -- lo que `rama-juego-fundacion` dejó a
+  propósito para después: Plaza (emojis) y el cron de salud/abandono.
+- **Plaza:**
+  1. `alias_juego` ("animaloverN", vía `alias_juego_seq`) se asigna la
+     primera vez que el usuario abre `GET /plaza` -- nunca al
+     registrarse. La vista NUNCA muestra `nombre_usuario` real, solo el
+     alias.
+  2. Advertencia de privacidad obligatoria (`usuarios.
+     plaza_advertencia_vista`) antes de ver o mandar cualquier mensaje --
+     tanto `GET /plaza` como `POST /plaza/mensaje` la exigen (probado que
+     mandar sin haberla aceptado da 403, no solo que la vista la oculta).
+  3. Validación real de "solo emojis" server-side
+     (`PLAZA_EMOJI_REGEX`, con `\p{Extended_Pictographic}`/
+     `\p{Emoji_Modifier}`/`\p{Regional_Indicator}` + ZWJ/selector de
+     variación/keycap para emojis compuestos) -- probado que texto plano
+     con un número de teléfono inventado es rechazado con 400.
+  4. Tope de longitud (`PLAZA_MAX_EMOJIS_POR_MENSAJE = 20`) contra spam de
+     un solo mensaje gigante.
+- **Cron de salud/abandono** (`revisarSaludYAbandonoDeAnimales`, corre
+  8:45am Lima, horario elegido para no chocar con los otros 3 cron jobs
+  diarios ya existentes):
+  1. Escalada en 3 pasos, cada `UPDATE` toma solo animales en el estado
+     JUSTO anterior (nunca re-dispara sobre animales ya en el estado
+     nuevo): `sano` → `enfermo` a los 3 días sin alimentar
+     (`desnutricion`), `enfermo` → `critico` a los 30 días
+     (`letargo`), `critico` → `fallecido` a los 90 días (el "3 meses"
+     que dio el usuario como ancla real). **Ajuste sobre el placeholder
+     original del diseño**: `letargo` pasó de 10 a 30 días de umbral --
+     en el diseño original no tenía un rol claro en la escalada, acá se
+     le asignó el punto exacto `enfermo`→`critico`, decidido en el
+     momento de implementar (mismo criterio que el resto del backlog).
+  2. Avisos push proactivos (reusa `enviarPushAUsuario` ya existente)
+     SOLO si `nivelJugadorPorMoneda(usuario) >= NIVEL_AVISOS_SALUD_
+     AUTOMATICOS` (11) -- antes de ese nivel, el usuario tiene que darse
+     cuenta solo, decisión explícita del usuario ya documentada en el
+     diseño.
+  3. **`POST /animales/:id/alimentar` (de `rama-juego-fundacion`, era un
+     placeholder informativo sin consecuencia) ahora CURA de verdad**:
+     `critico` → `enfermo` (mejora parcial, una sola alimentada no
+     resuelve una crisis) → `sano` (recién ahí se marca
+     `animales_enfermedades.curada_en` de la enfermedad de abandono
+     activa). Decisión de diseño tomada acá, no estaba en el documento
+     original: tiene sentido temático (`desnutricion` se cura
+     literalmente alimentando) y le da un propósito real a "alimentar"
+     que antes no tenía ninguna consecuencia visible.
+- **Probado de punta a punta contra la DB real de Railway**, incluida la
+  escalada completa del cron (no solo el camino feliz): se simuló
+  `ultima_alimentacion` vieja a mano (5, 40, y 100 días) y se corrió el
+  cron real 3 veces seguidas -- confirmado `sano`→`enfermo`→`critico`→
+  `fallecido` con la enfermedad correcta insertada en cada paso; revivido
+  ese mismo animal y confirmado que alimentarlo 2 veces lo lleva de
+  `critico` a `sano` marcando ambas enfermedades de abandono como
+  curadas; y de nuevo el caso de riesgo real -- borrar una cuenta con un
+  animal que pasó por TODA esa historia (cría, 2 enfermedades curadas,
+  fallecido, revivido) no revienta el server. La Plaza se probó con 2
+  cuentas reales: A manda un mensaje, B lo ve con el alias de A, nunca
+  con su nombre real.
+- Archivos tocados: `server.js` (`ensureSchema`, catálogos nuevos, cron,
+  rutas de Plaza, `POST /animales/:id/alimentar` extendida, `POST
+  /ajustes/eliminar-cuenta`), `views/plaza.ejs` (nueva),
+  `views/partials/nav.ejs`, `views/partials/icono.ejs` (ícono
+  `emoji_carita`), `public/style.css` (`.plaza-emojis`/`.plaza-atajos`).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -4831,7 +4831,25 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
        )`,
       [usuarioId]
     );
-    await client.query('DELETE FROM metas_compartidas WHERE creado_por = $1', [usuarioId]);
+    // rama-fix-metas-huerfanas: antes este DELETE filtraba por
+    // `creado_por = $1`, que solo cubre el caso en que quien se está
+    // borrando ES el creador actual. Si el creador original ya se había
+    // borrado antes (dejando `creado_por = NULL` por el UPDATE de arriba,
+    // porque en ese momento todavía quedaban otros participantes) y
+    // después se borran TODOS los participantes restantes uno por uno, la
+    // fila quedaba huérfana para siempre (cero participantes, `creado_por`
+    // ya NULL, nunca vuelve a coincidir con ningún usuario que se borre).
+    // Reproducido real probando rama-chat-metas (fila "EdgeCaseMeta",
+    // documentado en COORDINACION.md). El criterio correcto es orfandad
+    // real, no "quién se está borrando ahora mismo" -- así de paso barre
+    // cualquier otra fila que ya hubiera quedado huérfana antes de este
+    // fix, sin necesitar una migración aparte.
+    await client.query(
+      `DELETE FROM metas_compartidas
+       WHERE NOT EXISTS (
+         SELECT 1 FROM metas_compartidas_participantes WHERE meta_compartida_id = metas_compartidas.id
+       )`
+    );
 
     // 15. Ideas, recordatorios, hechos.
     await client.query('DELETE FROM ideas WHERE usuario_id = $1', [usuarioId]);

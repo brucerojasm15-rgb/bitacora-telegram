@@ -5101,6 +5101,34 @@ eliminación de ese repo/bot sin quedar huérfano.
   `TRUE`, cuenta de prueba borrada al final vía la ruta real de
   eliminación (no SQL a mano). CI (`verificar` + `pruebas-integracion`,
   4/4) en verde. Health-check post-deploy: `/login` → 200.
+- 2026-08-24 — merge de rama-etapas-genealogia (18c860a) → main vía PR
+  #93: sin conflictos. CI verde (ambos jobs). Desplegado en Render.
+  Pedido del usuario: diseños visuales por etapa de vida (bebé/
+  adolescente/adulto/anciano) para cada animal, más un árbol genealógico
+  "en la pared" cuando un animal fallece con familia real. 16
+  ilustraciones (4 especies x 4 etapas) generadas gratis vía la API
+  pública de pollinations.ai (sin cuenta, sin pago) -- no había ninguna
+  herramienta de generación de imágenes ya integrada en esta sesión, se
+  investigó y se usó esa. Etapa **puramente cosmética**:
+  `etapaVidaAnimal()` es nueva y separada de `esAdulto()`/
+  `EDAD_ADULTO_DIAS` (el gate real de cría, ya en producción) -- "adulto"
+  en la escala visual empieza exactamente en `EDAD_ADULTO_DIAS` a
+  propósito, para que nunca diverjan. "Pared de la familia": el usuario
+  eligió explícitamente que solo un animal fallecido con padres y/o
+  crías reales genera memorial (uno adoptado y nunca criado no genera
+  nada) -- derivado en vivo de `padre_id`/`madre_id` + `salud_estado`,
+  sin tabla ni columna nueva, visible tanto en `/casa` propia como al
+  visitar la de un amigo (`GET /casa/:usuarioId`), tal como pidió el
+  usuario ("para que vean tus amigos"). **Probado a mano contra Neon**,
+  no solo con schema: cría real con `nacido` backdateado, fallecido con
+  familia real muestra el árbol correcto, fallecido aislado NO genera
+  memorial, y una segunda cuenta amiga confirmó ver la pared al visitar
+  (2 cuentas reales + amistad real, no simulada). Esto también volvió a
+  ejercitar sin crashear el `ON DELETE SET NULL` de `padre_id`/
+  `madre_id` de rama-cruzar-amigos, al borrar una cuenta cuyo animal
+  fallecido era padre de otro. Cuentas de prueba borradas al terminar
+  vía la ruta real de eliminación. CI + test suite de integración (4/4)
+  en verde.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

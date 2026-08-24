@@ -5814,6 +5814,29 @@ pero no hubo todavía un login real de prueba en el Render nuevo.
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [ ] **Etapa 2 del patio animado — rivalidad entre animales** (agregado
+  2026-08-24, sin asignar). Etapa 1 (deambular + jugar, sin rivalidad) ya
+  está en `rama-patio-animado`, PR #94. Diseño confirmado con el usuario
+  para esta etapa:
+  - **Rivalidad por especie fija**: Gato↔Ave, Perro↔Conejo. Las otras
+    combinaciones (gato↔perro, gato↔conejo, perro↔ave, conejo↔ave) NO son
+    rivales por especie (pueden serlo igual por rasgo genético, ver abajo).
+  - **Rivalidad por rasgo genético**: emerge de la genética real (mismo
+    criterio que lo legendario) -- pendiente decidir la regla exacta al
+    implementar (ej. compartir el mismo alelo dominante en un locus
+    concreto), pero debe ser mecánica real, no un dado aparte.
+  - **Efecto visual en el patio**: un animal rival se mantiene lejos de su
+    rival en el `.patio` (nunca se los empareja para "jugar"), pero TODOS
+    se juntan igual a la hora de comer (evento de alimentación, ya existe
+    la acción "Alimentar" -- ahí es donde se anula la distancia, no en el
+    deambular normal).
+  - **Reconciliación antes de cruzar**: pedido explícito del usuario --
+    si querés cruzar dos animales que son rivales (por especie o por
+    genética), primero hay que "amistarlos" con una mecánica que imite
+    cómo se amistan animales reales antes de aparearse (todavía sin
+    diseñar en detalle: podría ser una acción repetida tipo "acercarlos"
+    varias veces, o un mini-cooldown de convivencia) -- sin esto, no se
+    puede cruzar directamente aunque ambos sean adultos. — sin asignar
 - [x] Página 404 propia — tomada por rama-404
 - [x] Loading states — tomada por rama-loading-states
 - [x] BUG de `completar-asignado-form` (encontrado en `rama-loading-states`) — tomada por rama-fix-completar-asignado

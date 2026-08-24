@@ -5129,6 +5129,25 @@ eliminación de ese repo/bot sin quedar huérfano.
   fallecido era padre de otro. Cuentas de prueba borradas al terminar
   vía la ruta real de eliminación. CI + test suite de integración (4/4)
   en verde.
+- 2026-08-24 — merge de rama-patio-animado (2fdcd59) → main vía PR #94:
+  sin conflictos. CI verde (ambos jobs). Desplegado en Render. Etapa 1
+  de "animación de caminata + juegos entre ellos según su especie"
+  (pedido del usuario) -- dividido en 2 etapas confirmadas con el
+  usuario, esta es la ambiental sin rivalidad todavía; la Etapa 2
+  (rivalidad por especie fija + rasgo genético, reconciliación antes de
+  cruzar) quedó anotada en el Backlog para la próxima ronda. Nuevo
+  `.patio` en Casa propia y en la de un amigo visitado: los animales
+  vivos (fallecidos excluidos, ya tienen su memorial en la Pared de la
+  familia) deambulan solos con las mismas imágenes de etapa de vida ya
+  generadas -- posición + flip horizontal según dirección, sin sprite de
+  caminata cuadro por cuadro. Cada tanto 2 al azar se acercan y "juegan"
+  (wiggle CSS). Enfermos/críticos se mueven más lento. 100% client-side
+  (`public/patio.js`), sin estado en servidor ni cambios de esquema --
+  se resortea en cada carga de página. Probado contra Neon (registro,
+  adopción de las 4 especies, markup verificado vía HTTP). **Mismo
+  caveat que rama-login-lockscreen**: sin navegador real disponible esta
+  sesión para ver la animación funcionando de verdad -- pendiente que el
+  usuario lo confirme en vivo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

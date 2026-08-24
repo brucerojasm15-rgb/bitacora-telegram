@@ -98,6 +98,7 @@
               </span>
               <a href="/chat?amistad_id=<%= a.amistad_id %>" class="btn-link"><%- include('partials/icono', { nombre: 'chat' }) %> Chat</a>
               <a href="/trazabilidad?amistad_id=<%= a.amistad_id %>" class="btn-link"><%- include('partials/icono', { nombre: 'grafico' }) %> Actividad</a>
+              <a href="/casa/<%= a.usuario_id %>" class="btn-link"><%- include('partials/icono', { nombre: 'pata' }) %> Casa</a>
             </li>
           <% }) %>
         </ul>

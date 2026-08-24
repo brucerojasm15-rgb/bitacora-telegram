@@ -4589,6 +4589,44 @@ después.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-visitar-casa-amigo
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): quinta mecánica, elegida entre
+  varias opciones ofrecidas -- vista de solo lectura para ver la casa de
+  un amigo, natural ahora que existe cruzar animales entre amigos (ayuda
+  a elegir con quién cruzar sin tener que pedir por chat qué animales
+  tiene).
+- `GET /casa/:usuarioId` -- exige amistad ACEPTADA real (mismo patrón de
+  validación que el resto de la app, nunca confía en el id del cliente
+  sin cruzarlo contra `amistades`); visitar el propio id redirige a
+  `/casa`. **Solo lectura a propósito**: no expone nombrar/alimentar/
+  revivir/ampliar casa, ninguna acción de cuidado privada -- lo único que
+  puede hacer un visitante es pedir un cruce (reusa `POST /animales/:id/
+  solicitar-cruce-amigo` de `rama-cruzar-amigos` tal cual, tanto la ruta
+  como toda su validación server-side, sin duplicar nada).
+- Por cada animal adulto del amigo, si el visitante tiene animales
+  adultos propios de la misma especie, aparece un selector para elegir
+  CUÁL de sus animales ofrecer + "Pedir cruce". Como la ruta real espera
+  el id del animal propio en la URL (no en el body), un JS chico arma la
+  `action` del form justo antes de enviarlo según lo elegido -- alternativa
+  evaluada y descartada: duplicar la ruta para aceptar el id por body,
+  hubiera significado dos caminos para la misma acción ya probada.
+- Link nuevo "Casa" en cada fila de `/amigos`, junto a "Chat"/"Actividad"
+  ya existentes.
+- **Sin cambios de esquema** -- reusa `animales`/`animales_genes` tal
+  cual, ninguna tabla ni columna nueva, nada que agregar a `POST
+  /ajustes/eliminar-cuenta`.
+- **Probado contra la DB real de Railway**: visitar la casa de alguien
+  que NO es amigo da 403 con el mensaje de error correcto; visitar el
+  propio id redirige a `/casa`; visitar la casa de un amigo sin tener
+  animales propios muestra sus animales pero SIN el botón de pedir cruce;
+  tras adoptar y madurar un animal de la misma especie, el botón aparece
+  con el selector poblado de verdad.
+- Archivos tocados: `server.js` (ruta nueva `GET /casa/:usuarioId`),
+  `views/casa-amigo.ejs` (nueva), `views/amigos.ejs` (link nuevo).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

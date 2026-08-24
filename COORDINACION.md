@@ -4241,6 +4241,23 @@ eliminación de ese repo/bot sin quedar huérfano.
   crecimiento, pagos reales) queda documentado en la sección "Ronda nueva
   (2026-08-24)" más abajo, sin construir todavía. Ver la sección
   `rama-chat-metas` para el detalle completo.
+- 2026-08-24 — merge de rama-fix-metas-huerfanas (ae89bf2) → main vía PR
+  #83: sin conflictos. CI verde. Arregla el hueco documentado en
+  rama-chat-metas: `metas_compartidas` sin participantes se limpiaba
+  filtrando por `creado_por = $1`, que no cubre el caso en que el creador
+  original ya se había borrado antes que el resto. Cambiado a limpieza
+  por orfandad real (`NOT EXISTS` sobre participantes). Probado
+  reproduciendo el escenario exacto contra la DB real.
+- 2026-08-24 — merge de rama-racha-viva (8587a8d) → main vía PR #84: sin
+  conflictos. CI verde. Cierra el gap de Fase 4 (racha/semillas de la
+  barra superior no se actualizaban en vivo tras completar por fetch).
+  `POST /pendientes/:id/completar` responde JSON con la barra recién
+  calculada cuando se pide `Accept: application/json`. **Bug real
+  encontrado y corregido antes de mergear**: `pendiente` quedaba
+  scopeado dentro del `try` y el código nuevo lo leía fuera de ese bloque
+  — `ReferenceError` sin capturar que tumbaba el proceso de Node
+  completo (nunca llegó a producción, encontrado probando localmente).
+  Ver la sección `rama-racha-viva` para el detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

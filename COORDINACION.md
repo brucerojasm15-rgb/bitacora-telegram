@@ -5084,6 +5084,23 @@ eliminación de ese repo/bot sin quedar huérfano.
   que el markup y los datos son correctos. Pendiente que el usuario lo
   revise en vivo. Ver la sección `rama-login-lockscreen` para el detalle
   completo.
+- 2026-08-24 — merge de rama-personaje-guia (f758fe5) → main vía PR #92:
+  sin conflictos. CI verde (ambos jobs). Desplegado en Render (migrado de
+  Railway ese mismo día -- ver "Incidente: caída de Railway..." más
+  arriba). Personaje main del juego ("Zen"), mencionado en la visión
+  original pero nunca construido: mensaje de intro en el primer `/casa`
+  de una cuenta nueva con botón "Entendido", mensajes contextuales cuando
+  hay un animal fallecido (con/sin revividas disponibles) y un consejo
+  general en el resto de casos. Cuentas existentes no ven la intro
+  (`personaje_main_intro_visto` con `DEFAULT TRUE` en el `ALTER TABLE`).
+  **Probado de punta a punta contra Neon** (primera prueba real post-
+  migración, sirvió también como verificación indirecta de que la
+  migración quedó sólida): registro nuevo, intro + "Entendido", los 4
+  estados del mensaje (intro, consejo, fallecido con 3 revividas,
+  fallecido con 0), las 14 cuentas reales confirmadas con el flag ya en
+  `TRUE`, cuenta de prueba borrada al final vía la ruta real de
+  eliminación (no SQL a mano). CI (`verificar` + `pruebas-integracion`,
+  4/4) en verde. Health-check post-deploy: `/login` → 200.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

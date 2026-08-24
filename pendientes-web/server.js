@@ -1065,6 +1065,29 @@ app.post('/recuperar-email/:token', limitarIntentos('recuperar-email'), async (r
 });
 
 async function ensureSchema() {
+  // rama-pruebas-regresion: la tabla `session` de connect-pg-simple
+  // (config más abajo, `createTableIfMissing: true`) se crea SOLA pero de
+  // forma perezosa/asíncrona en segundo plano al inicializar el store --
+  // contra una DB que ya la tenía de antes (cualquier deploy real en
+  // Railway) nunca se nota, pero contra una DB completamente nueva (el
+  // servicio `postgres` efímero de CI) la primera request real puede
+  // llegar (y escribir sesión, ej. en POST /registro) antes de que esa
+  // tabla exista, reventando con un 500 -- encontrado de verdad corriendo
+  // rama-pruebas-regresion en CI por primera vez. Se crea acá, en el mismo
+  // punto que todo lo demás en ensureSchema (que SIEMPRE se espera antes
+  // de app.listen), con el mismo esquema exacto que connect-pg-simple usa
+  // por default -- `createTableIfMissing` se deja como red de seguridad,
+  // ya no hace falta que gane la carrera.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS session (
+      sid VARCHAR NOT NULL COLLATE "default" PRIMARY KEY,
+      sess JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session (expire)
+  `);
   // usuarios debe existir antes que cualquier ALTER TABLE que la referencie.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS usuarios (

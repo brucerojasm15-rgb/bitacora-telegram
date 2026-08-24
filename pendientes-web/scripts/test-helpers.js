@@ -44,8 +44,15 @@ function iniciarServidor(envExtra = {}) {
       }
     };
     proc.stdout.on('data', onData);
+    // Se reenvía TODO lo que imprima el server real (incluido después de
+    // arrancar, ej. console.error de una request que falló) al stdout/
+    // stderr de este mismo proceso -- si no, un error real del server
+    // durante los tests queda enterrado en el closure de esta función y
+    // en CI solo se ve "status 500" sin ninguna pista de la causa real.
+    proc.stdout.on('data', (chunk) => process.stdout.write(`[server] ${chunk}`));
     proc.stderr.on('data', (chunk) => {
       salida += chunk.toString();
+      process.stderr.write(`[server] ${chunk}`);
     });
     proc.on('exit', (code) => {
       if (!resuelto) {

@@ -4863,6 +4863,18 @@ eliminación de ese repo/bot sin quedar huérfano.
   enfermedades curadas + fallecido + revivido no revienta el server. Ver
   la sección `rama-juego-plaza-salud` para el detalle completo. Con esto,
   las 2 rondas de juego que el usuario pidió por etapas quedan cerradas.
+- 2026-08-24 — merge de rama-comprar-espacio-casa (06e4c6e) → main vía PR
+  #88: sin conflictos. CI verde (ambos jobs). Desplegado en Railway y
+  verificado. Tercera mecánica del juego -- cierra un hueco real:
+  `usuarios.casa_espacios_comprados` existía desde `rama-juego-fundacion`
+  pero ninguna ruta lo tocaba, la casa solo crecía subiendo de nivel.
+  `POST /casa/ampliar` reusa `gastarMoneda()` (mismo helper atómico que
+  `/ia/comprar`) con costo progresivo 50/+25 por espacio (placeholder que
+  el diseño original dejaba pendiente, decidido acá). Confirmado que
+  gastar moneda no baja el nivel del jugador. Probado contra la DB real:
+  sin saldo falla (400), con saldo 2 compras seguidas confirman el costo
+  escalando y el registro correcto en `moneda_transacciones`. Ver la
+  sección `rama-comprar-espacio-casa` para el detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

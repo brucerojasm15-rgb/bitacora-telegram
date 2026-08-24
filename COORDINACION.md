@@ -5533,6 +5533,166 @@ fast-follow de v0.2, todavía sin construir ni diseñar en detalle):
 - IA sugiere un paso accionable para pendientes estancados.
 - Meta COMPARTIDA entre varios amigos (distinta de la meta individual).
 
+## Análisis de punto de equilibrio — suscripción opcional (2026-08-24, pedido por el usuario)
+
+**Solo análisis y números, nada de esto está implementado.** Pedido explícito:
+evaluar si conviene una suscripción opcional PARALELA para cubrir el costo real
+de hosting, sin tocar la decisión ya tomada en la tarea 9 ("gratis para todos"
+para la IA compañera — esa decisión sigue vigente, esto no la reemplaza).
+
+**Decisión de infraestructura registrada acá por primera vez** (no estaba
+documentada en ningún lado antes de este análisis, confirmado con el usuario):
+la app va a migrar a un modelo híbrido — **Railway solo para el servidor
+Express** (~$5/mes) + **Neon para Postgres** (tier gratis), reemplazando el
+Postgres que hoy corre como servicio aparte dentro del mismo proyecto de
+Railway. Esta migración en sí (mover los datos, actualizar `DATABASE_URL`,
+probar `DATABASE_SSL`/certificados contra Neon) **no es parte de este
+análisis** — acá solo se usan sus números de costo para el cálculo. Cuando se
+decida ejecutar la migración, es su propia tarea con su propio diseño (mismo
+criterio que el resto del backlog).
+
+### 1. Costo mensual real actual y proyectado
+
+**Railway (servidor Express, plan Hobby):** $5/mes fijo, incluye $5 de uso
+(CPU/memoria/egress) — si el uso real queda por debajo de eso, no se cobra
+de más; si lo supera, se cobra el excedente. Para una app de este tamaño
+(círculo chico hoy, apertura de crecimiento reciente pero todavía sin
+usuarios masivos) es razonable asumir que el uso se mantiene dentro de ese
+crédito incluido, así que **$5/mes es el número real a usar**, no un piso
+optimista.
+
+**Neon (Postgres, tier gratis):** 100 CU-hours/mes, 0.5 GB de almacenamiento,
+autoscaling hasta 2 CU. Con el volumen de datos actual (círculo chico, texto
+plano en su mayoría — pendientes/ideas/mensajes, nada de blobs/imágenes) es
+muy probable que el tier gratis alcance por bastante tiempo. **$0/mes**
+mientras se mantenga dentro de esos límites — no se investigó acá el costo
+del siguiente tier de Neon si se supera, porque no hay señal todavía de que
+vaya a pasar pronto (a diferencia de Groq, ver abajo, donde SÍ hay un
+incidente real de haberlo superado).
+
+**Groq (IA compañera, tier gratis):** acá es donde el análisis pedido importa
+de verdad. Números reales YA confirmados por un incidente real de este mismo
+proyecto (2026-08-16, ver `rama-segmentacion-ideas` y la tarea N del backlog
+más abajo) — **más confiables que blogs genéricos de pricing**, que además
+dieron cifras inconsistentes entre sí al buscarlas ahora (algunas fuentes
+recientes reportan un límite de 200K tokens/día para `openai/gpt-oss-120b`
+específicamente, que contradice lo que este proyecto ya midió de verdad):
+- **100,000 tokens/día** (org completa, una sola `GROQ_API_KEY` compartida
+  por toda la app) — se agotó en menos de un día con una sola cuenta
+  procesando 233 ideas.
+- **14,400 requests/día**.
+- **8,000 tokens/minuto (TPM)** — no documentado oficialmente por Groq,
+  encontrado por un incidente real: una conversación larga puede juntar la
+  llamada de chat + la actualización de perfil inmediatamente después y
+  superarlo, sin que sea un problema de volumen de usuarios, solo de
+  *ritmo* dentro de un minuto.
+- **Recomendación**: confirmar estos 3 números contra
+  [console.groq.com](https://console.groq.com) antes de tomar cualquier
+  decisión de negocio con ellos — son los más confiables que existen hoy
+  (medidos, no leídos en un blog), pero pueden cambiar sin aviso.
+
+**¿En qué número de usuarios activos se acerca al límite diario?** Con el
+tope ya vigente de 40 mensajes/usuario/mes (tarea 9), y asumiendo un tamaño
+de llamada RAG típico de esta app de **~1,200 tokens por mensaje**
+(estimado, no medido — este proyecto no tiene todavía un promedio real
+instrumentado para el chat conversacional específicamente, a diferencia de
+la segmentación de ideas que sí dejó el dato de arriba; `ia_llamadas` ya
+loggea tokens por llamada desde la tarea 9, así que este número se puede
+reemplazar por uno real apenas haya volumen suficiente para promediarlo):
+
+- 100,000 tokens/día ÷ ~1,200 tokens/mensaje ≈ **~83 mensajes/día** que la
+  cuenta gratuita puede procesar antes de agotar el cupo, sin importar
+  cuántos usuarios distintos los mandan.
+- Si el uso se reparte parejo (cada usuario activo manda ~2 mensajes/día en
+  promedio, no los 40/mes de golpe), eso da margen para **~40 usuarios
+  activos por día** antes de tocar el techo.
+- **Pero el riesgo real no es el promedio, es el pico**: el incidente de
+  2026-08-16 fue exactamente eso — UN usuario agotó el cupo de TODA la app
+  en un rato. Con más usuarios reales, la probabilidad de que alguno tenga
+  una sesión larga (como esa) sube, no baja. Esto ya está anotado como
+  tarea N del backlog ("Gestión de cupo de IA a escala") — este análisis no
+  la reemplaza, la refuerza con números.
+
+**Respaldo pago si el tier gratis se queda corto:** Groq cobra
+**$0.15 por millón de tokens de entrada** y **$0.60 por millón de tokens de
+salida** para `openai/gpt-oss-120b` en su tier pago (pay-as-you-go, sin
+mínimo mensual). Ejemplo concreto: 1,000 usuarios usando el tope completo de
+40 mensajes/mes cada uno (40,000 mensajes/mes total, ~1,200 tokens promedio,
+~70% entrada / 30% salida) sale en **~$13.70/mes** — barato en términos
+absolutos. El costo NO es el problema real de escalar Groq; **el problema es
+el techo del tier gratis** (RPM/TPM/RPD), que un plan pago elimina casi por
+completo. Conclusión: si el cupo gratis se queda corto, pasar a pago es
+viable y barato — la pregunta de negocio es CUÁNDO conviene pagar por
+adelantado vs. esperar a que el límite gratis realmente empiece a doler.
+
+**Costo mensual total proyectado, resumen:**
+
+| Escenario | Railway | Neon | Groq | Total |
+|---|---|---|---|---|
+| Hoy (círculo chico) | $5 | $0 | $0 (gratis) | **$5/mes** |
+| Crecimiento moderado, gratis alcanza | $5 | $0 | $0 (gratis) | **$5/mes** |
+| Crecimiento real, Groq pago (~1,000 usuarios activos al tope) | $5 | $0 (probable) | ~$13.70 | **~$18.70/mes** |
+
+### 2. Punto de equilibrio de una suscripción opcional
+
+Cobertura de referencia: **$5/mes** (Railway, el costo fijo real de hoy —
+Neon y Groq quedan en $0 mientras no se superen sus tiers gratis, así que no
+suman al piso mínimo a cubrir). Tipo de cambio de referencia usado:
+**S/ 3.35 por USD** (SUNAT, 2026-08-24 — cambia todos los días, es solo
+referencia para este cálculo, no una tasa fija a futuro).
+
+| Precio mensual | Equivalente USD | Usuarios pagando para cubrir $5/mes |
+|---|---|---|
+| S/ 5 | ~$1.49 | **4 usuarios** |
+| S/ 10 | ~$2.99 | **2 usuarios** |
+| S/ 15 | ~$4.48 | **2 usuarios** |
+
+Efectivamente es un número muy bajo, como esperaba el usuario — con 2 personas
+pagando S/10 u S/15/mes ya se cubre el hosting completo de hoy. **Ojo con un
+matiz real que este cálculo simple no incluye**: cualquier procesador de
+pagos (Stripe, Culqi, Mercado Pago) cobra una comisión por transacción
+(típicamente 3.5%–6% + un cargo fijo en la región) — el ingreso NETO por
+suscriptor es menor al precio de lista, así que el número real de usuarios
+necesarios es un poco más alto que la tabla de arriba, sobre todo en el
+tier de S/5 donde la comisión pesa proporcionalmente más.
+
+### 3. Qué podría desbloquear una suscripción opcional (insumo para decidir, sin comprometerse a construir nada)
+
+No inventado desde cero — las 3 ideas ya tienen un gancho dejado a propósito
+en decisiones anteriores de este mismo proyecto:
+
+1. **Más mensajes/mes con la IA compañera** (hoy 40/mes fijo para todos,
+   tarea 9). Encaja directo con la tensión real documentada arriba (tarea N)
+   — un suscriptor podría tener un tope más alto (ej. 150/mes) sin cambiar
+   el default gratis para nadie más.
+2. **Revividas extra sin esperar** — `rama-juego-fundacion` ya dejó esto
+   anotado explícitamente como gancho futuro cuando diseñó el límite de 3
+   revividas por cuenta: *"dejar el gancho para vender revividas extra
+   cuando se resuelva el modelo de pagos real"*. Este análisis es
+   justamente ese momento.
+3. **Cosméticos anticipados o exclusivos** para la Casa/animales, cuando esa
+   mecánica exista (mencionada como candidata de la próxima ronda del
+   juego, todavía sin construir) — acceso antes que el resto, o alguno
+   exclusivo para suscriptores, sin que los cosméticos base dejen de ser
+   gratis/gastables con moneda ganada.
+
+Ninguna de las 3 está diseñada en detalle ni asignada a ninguna rama — quedan
+acá como opciones reales para cuando el usuario decida si avanzar con esto.
+
+### 4. Tema fiscal/regulatorio en Perú — sigue sin resolver, sigue aplicando
+
+Cobrar dinero real por cualquier suscripción (sea cual sea el monto o lo que
+desbloquee) reabre el mismo tema pendiente que cualquier venta con dinero
+real en un proyecto de este usuario: entidad/persona que factura, si hace
+falta RUC y qué régimen tributario corresponde, boleta/factura electrónica
+para un servicio digital recurrente, y cómo un procesador de pagos
+(Stripe/Culqi/Mercado Pago) maneja cobros recurrentes en soles vs. dólares
+para una cuenta peruana. **No se resuelve acá** — mismo criterio que el
+resto de este documento con temas legales/fiscales: se anota como bloqueante
+real, no se adivina una respuesta.
+
+---
+
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
 
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`

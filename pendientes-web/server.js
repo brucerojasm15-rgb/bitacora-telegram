@@ -1705,6 +1705,32 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS revividas_disponibles INT NOT NULL DEFAULT 3,
       ADD COLUMN IF NOT EXISTS casa_espacios_comprados INT NOT NULL DEFAULT 0
   `);
+
+  // rama-juego-plaza-salud: Plaza -- espacio social SOLO de emojis (nunca
+  // texto libre, validado en la ruta) para usuarios que puede que no se
+  // conozcan entre sí. `alias_juego` reemplaza el nombre real DENTRO del
+  // juego -- se asigna la primera vez que el usuario entra a la Plaza
+  // (no al registrarse, cuentas que nunca tocan el juego no lo necesitan).
+  // "animalover1", "animalover2"... en orden real de asignación, nunca el
+  // id interno del usuario (no filtrar cuántas cuentas existen ni en qué
+  // orden se crearon).
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS alias_juego_seq START 1`);
+  await pool.query(`
+    ALTER TABLE usuarios
+      ADD COLUMN IF NOT EXISTS alias_juego TEXT UNIQUE,
+      ADD COLUMN IF NOT EXISTS plaza_advertencia_vista BOOLEAN NOT NULL DEFAULT false
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS plaza_mensajes (
+      id SERIAL PRIMARY KEY,
+      autor_id INT REFERENCES usuarios(id),
+      emojis TEXT NOT NULL,
+      fecha TIMESTAMPTZ DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_plaza_mensajes_fecha ON plaza_mensajes (fecha)
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -2086,6 +2112,25 @@ const CASA_INCREMENTO_POR_NIVEL = 1;
 function capacidadCasa(nivelJugador, espaciosComprados) {
   return CASA_CAPACIDAD_BASE + (nivelJugador - 1) * CASA_INCREMENTO_POR_NIVEL + espaciosComprados;
 }
+
+// rama-juego-plaza-salud: segundo tramo del juego, diseño ya anticipado en
+// COORDINACION.md ("Diseño del modelo de datos del juego") -- cron de
+// salud/abandono + Plaza. Ajuste sobre el placeholder original: el
+// catálogo de enfermedades de abandono ahora mapea 1 a 1 con cada
+// transición de `salud_estado` (antes `letargo` no tenía un rol claro en
+// la escalada) -- decidido acá, en el momento de implementar, mismo
+// criterio que el resto del backlog.
+const ENFERMEDADES_ABANDONO = {
+  desnutricion: { nombre: 'Desnutrición', umbralDias: 3 }, // sano -> enfermo
+  letargo: { nombre: 'Letargo', umbralDias: 30 }, // enfermo -> critico
+};
+// critico -> fallecido: el ancla real que dio el usuario ("3 meses").
+const DIAS_ABANDONO_FALLECER = 90;
+// A partir de este nivel, el cron de salud avisa proactivamente por push
+// cuando un animal empeora -- antes de este nivel, el usuario tiene que
+// darse cuenta solo (decisión explícita del usuario, parte de la mecánica
+// de aprendizaje).
+const NIVEL_AVISOS_SALUD_AUTOMATICOS = 11;
 
 // Sortea un alelo por rarezaBase -- usado SOLO para animales sin padres
 // (adoptados). Suma de pesos, número random en ese rango, primer alelo
@@ -3596,6 +3641,104 @@ cron.schedule('30 8 * * *', recapitularActividadDiaria, {
   timezone: 'America/Lima',
 });
 
+function payloadSaludAnimal(nombreAnimal, estadoNuevo) {
+  const mensajesPorEstado = {
+    enfermo: `${nombreAnimal} se está enfermando -- necesita que lo alimentes.`,
+    critico: `${nombreAnimal} está en estado crítico -- aliméntalo pronto.`,
+    fallecido: `${nombreAnimal} falleció por abandono. Tu personaje guía puede revivirlo.`,
+  };
+  return {
+    title: 'Tu animal necesita atención',
+    body: mensajesPorEstado[estadoNuevo] || `${nombreAnimal} cambió de estado de salud.`,
+    data: { defaultUrl: '/casa' },
+  };
+}
+
+// rama-juego-plaza-salud: cron de salud/abandono -- el que
+// rama-juego-fundacion dejó dormido a propósito. Escalada en 3 pasos, cada
+// UPDATE solo toma los animales que están JUSTO en el estado anterior (no
+// re-dispara sobre los que ya están en el estado nuevo), así corre todos
+// los días sin duplicar enfermedades ni reenviar avisos de un estado ya
+// notificado. `($1::text || ' days')::interval` -- Postgres no castea
+// número a texto implícito para `||`, hace falta el `::text` explícito.
+async function revisarSaludYAbandonoDeAnimales() {
+  try {
+    const { rows: nuevosEnfermos } = await pool.query(
+      `UPDATE animales SET salud_estado = 'enfermo'
+       WHERE eliminado = false AND salud_estado = 'sano'
+         AND ultima_alimentacion < now() - ($1::text || ' days')::interval
+       RETURNING id, usuario_id, nombre`,
+      [ENFERMEDADES_ABANDONO.desnutricion.umbralDias]
+    );
+    for (const a of nuevosEnfermos) {
+      await pool.query(
+        `INSERT INTO animales_enfermedades (animal_id, enfermedad, origen) VALUES ($1, 'desnutricion', 'abandono')`,
+        [a.id]
+      );
+    }
+
+    const { rows: nuevosCriticos } = await pool.query(
+      `UPDATE animales SET salud_estado = 'critico'
+       WHERE eliminado = false AND salud_estado = 'enfermo'
+         AND ultima_alimentacion < now() - ($1::text || ' days')::interval
+       RETURNING id, usuario_id, nombre`,
+      [ENFERMEDADES_ABANDONO.letargo.umbralDias]
+    );
+    for (const a of nuevosCriticos) {
+      await pool.query(
+        `INSERT INTO animales_enfermedades (animal_id, enfermedad, origen) VALUES ($1, 'letargo', 'abandono')`,
+        [a.id]
+      );
+    }
+
+    const { rows: nuevosFallecidos } = await pool.query(
+      `UPDATE animales SET salud_estado = 'fallecido', fallecido_en = now()
+       WHERE eliminado = false AND salud_estado = 'critico'
+         AND ultima_alimentacion < now() - ($1::text || ' days')::interval
+       RETURNING id, usuario_id, nombre`,
+      [DIAS_ABANDONO_FALLECER]
+    );
+
+    console.log(
+      `[cron] Salud de animales: ${nuevosEnfermos.length} enfermaron, ` +
+      `${nuevosCriticos.length} empeoraron a crítico, ${nuevosFallecidos.length} fallecieron.`
+    );
+
+    const cambios = [
+      ...nuevosEnfermos.map((a) => ({ ...a, estado: 'enfermo' })),
+      ...nuevosCriticos.map((a) => ({ ...a, estado: 'critico' })),
+      ...nuevosFallecidos.map((a) => ({ ...a, estado: 'fallecido' })),
+    ];
+    if (cambios.length === 0) return;
+
+    // Avisos proactivos SOLO a partir de NIVEL_AVISOS_SALUD_AUTOMATICOS --
+    // antes de ese nivel, el usuario tiene que darse cuenta solo (decisión
+    // explícita del usuario, parte de la mecánica de aprendizaje).
+    // Agrupado por usuario para pedirle el nivel una sola vez aunque tenga
+    // varios animales afectados el mismo día.
+    const usuarioIds = [...new Set(cambios.map((c) => c.usuario_id))];
+    for (const usuarioId of usuarioIds) {
+      try {
+        const totalDeVida = await monedaAcumuladaDeVida(usuarioId);
+        if (nivelJugadorPorMoneda(totalDeVida) < NIVEL_AVISOS_SALUD_AUTOMATICOS) continue;
+        for (const c of cambios.filter((x) => x.usuario_id === usuarioId)) {
+          await enviarPushAUsuario(usuarioId, payloadSaludAnimal(c.nombre || 'Tu animal', c.estado));
+        }
+      } catch (err) {
+        console.error(`[cron] Error avisando salud a usuario ${usuarioId}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[cron] Error en el job de salud/abandono de animales:', err.message);
+  }
+}
+
+// Horario distinto a los otros 3 cron jobs diarios (9:00, 8:30, y
+// HORA_NOTIFICACION configurable) para no concentrarlos.
+cron.schedule('45 8 * * *', revisarSaludYAbandonoDeAnimales, {
+  timezone: 'America/Lima',
+});
+
 app.get('/captura', (req, res) => {
   res.render('captura', localsCaptura({
     guardado: req.query.guardado === '1',
@@ -4977,19 +5120,34 @@ app.post('/animales/:id/nombrar', async (req, res) => {
   res.redirect('/casa');
 });
 
-// Alimentar: en esta ronda es informativo/preparatorio -- actualiza
-// `ultima_alimentacion`, que es lo que el cron de abandono de la ronda
-// futura va a leer para decidir si un animal se enferma. Sin ese cron
-// todavía, alimentar no tiene consecuencia visible más allá de la fecha,
-// a propósito (fundación, no la mecánica completa).
+// Alimentar: además de resetear el reloj de abandono, ahora CURA de forma
+// gradual (rama-juego-plaza-salud, extiende lo que rama-juego-fundacion
+// dejó como placeholder informativo). `critico` -> `enfermo` (mejora
+// parcial, no alcanza un solo cuidado para una crisis) -> `sano` (recién
+// ahí se cura la enfermedad de abandono activa) -- tiene sentido temático
+// además: `desnutricion` se cura literalmente alimentando. `fallecido`
+// NO se arregla alimentando, solo con /animales/:id/revivir.
 app.post('/animales/:id/alimentar', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).send('id inválido.');
   try {
-    await pool.query(
-      `UPDATE animales SET ultima_alimentacion = now() WHERE id = $1 AND usuario_id = $2 AND eliminado = false`,
+    const { rows } = await pool.query(
+      `UPDATE animales SET ultima_alimentacion = now(), salud_estado = CASE
+         WHEN salud_estado = 'critico' THEN 'enfermo'
+         WHEN salud_estado = 'enfermo' THEN 'sano'
+         ELSE salud_estado
+       END
+       WHERE id = $1 AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido'
+       RETURNING salud_estado`,
       [id, req.usuarioId]
     );
+    if (rows[0] && rows[0].salud_estado === 'sano') {
+      await pool.query(
+        `UPDATE animales_enfermedades SET curada_en = now()
+         WHERE animal_id = $1 AND origen = 'abandono' AND curada_en IS NULL`,
+        [id]
+      );
+    }
   } catch (err) {
     console.error('Error alimentando animal:', err.message);
     return res.status(500).send('No se pudo alimentar.');
@@ -5487,6 +5645,11 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     );
     await client.query('DELETE FROM animales WHERE usuario_id = $1', [usuarioId]);
 
+    // rama-juego-plaza-salud: mismo criterio que ya usa mensajes_generales
+    // (chat general) -- los mensajes propios de la Plaza se borran con la
+    // cuenta, plaza_mensajes.autor_id no tiene ON DELETE CASCADE.
+    await client.query('DELETE FROM plaza_mensajes WHERE autor_id = $1', [usuarioId]);
+
     // 16. rama-login-email: tokens de reseteo de contraseña propios --
     // `reseteos_password.usuario_id` no tenía ON DELETE CASCADE, así que
     // sin este paso el DELETE de abajo fallaba por violación de FK para
@@ -5858,6 +6021,122 @@ app.post('/mensajes-general', async (req, res) => {
     return res.status(500).send('No se pudo enviar el mensaje.');
   }
   res.redirect('/chat-general');
+});
+
+// rama-juego-plaza-salud: Plaza -- espacio social solo de emojis, pensado
+// para usuarios que puede que no se conozcan entre sí (a diferencia del
+// resto de la app). Nunca muestra `nombre_usuario` real -- solo
+// `alias_juego`.
+
+// Valida que el texto sea SOLO emojis (pictográficos, modificadores de
+// tono de piel, indicadores regionales para banderas, y los caracteres de
+// combinación que arman un emoji compuesto -- ZWJ ‍, selector de
+// variación ️, keycap ⃣). Rechaza cualquier letra/número/texto
+// libre -- es la defensa real contra que alguien intente pasar un número
+// de teléfono o similar. Construido con `new RegExp` a partir de escapes
+// \u explícitos (no caracteres invisibles literales en el código fuente)
+// para que quede legible/editable en cualquier editor.
+const PLAZA_EMOJI_REGEX = new RegExp(
+  '^(\\p{Extended_Pictographic}|\\p{Emoji_Modifier}|\\p{Regional_Indicator}|[\\u200D\\uFE0F\\u20E3])+$',
+  'u'
+);
+const PLAZA_MAX_EMOJIS_POR_MENSAJE = 20;
+
+function esSoloEmojis(texto) {
+  if (!texto || !PLAZA_EMOJI_REGEX.test(texto)) return false;
+  return [...texto].length <= PLAZA_MAX_EMOJIS_POR_MENSAJE * 2; // *2: modificadores/ZWJ cuentan como codepoints propios
+}
+
+// Asigna "animalover<N>" la primera vez que un usuario entra a la Plaza --
+// nunca al registrarse (cuentas que nunca tocan el juego no lo necesitan).
+// N viene de una SEQUENCE (orden real de asignación), nunca del id interno
+// del usuario, para no filtrar cuántas cuentas existen.
+async function aliasJuegoDe(usuarioId) {
+  const { rows } = await pool.query('SELECT alias_juego FROM usuarios WHERE id = $1', [usuarioId]);
+  if (rows[0] && rows[0].alias_juego) return rows[0].alias_juego;
+  const { rows: seqRows } = await pool.query("SELECT nextval('alias_juego_seq') AS n");
+  const alias = 'animalover' + seqRows[0].n;
+  await pool.query('UPDATE usuarios SET alias_juego = $1 WHERE id = $2', [alias, usuarioId]);
+  return alias;
+}
+
+const PLAZA_MENSAJES_POR_PAGINA = 50;
+
+app.get('/plaza', async (req, res) => {
+  const antesId = Number(req.query.antes);
+  try {
+    const { rows: usuarioRows } = await pool.query(
+      'SELECT plaza_advertencia_vista FROM usuarios WHERE id = $1',
+      [req.usuarioId]
+    );
+    const advertenciaVista = usuarioRows[0] ? usuarioRows[0].plaza_advertencia_vista : false;
+    // Sin advertencia aceptada, no se muestra ningún mensaje ni el alias
+    // todavía -- ver la advertencia es un paso obligatorio antes de
+    // participar (decisión de privacidad explícita del diseño original).
+    if (!advertenciaVista) {
+      return res.render('plaza', {
+        advertenciaVista: false, alias: null, mensajes: [], hayMasAntiguos: false, primerId: null,
+        usuarioId: req.usuarioId, error: null,
+      });
+    }
+    const alias = await aliasJuegoDe(req.usuarioId);
+    const params = [];
+    let consulta = `SELECT m.id, m.autor_id, m.emojis, m.fecha, u.alias_juego
+       FROM plaza_mensajes m
+       LEFT JOIN usuarios u ON u.id = m.autor_id`;
+    if (Number.isInteger(antesId)) {
+      params.push(antesId);
+      consulta += ` WHERE m.id < $${params.length}`;
+    }
+    params.push(PLAZA_MENSAJES_POR_PAGINA);
+    consulta += ` ORDER BY m.id DESC LIMIT $${params.length}`;
+    const { rows } = await pool.query(consulta, params);
+    const mensajes = rows.reverse();
+    res.render('plaza', {
+      advertenciaVista: true,
+      alias,
+      mensajes,
+      hayMasAntiguos: mensajes.length === PLAZA_MENSAJES_POR_PAGINA,
+      primerId: mensajes.length > 0 ? mensajes[0].id : null,
+      usuarioId: req.usuarioId,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando la Plaza:', err.message);
+    res.status(500).render('plaza', {
+      advertenciaVista: true, alias: null, mensajes: [], hayMasAntiguos: false, primerId: null,
+      usuarioId: req.usuarioId, error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
+app.post('/plaza/aceptar-advertencia', async (req, res) => {
+  try {
+    await pool.query('UPDATE usuarios SET plaza_advertencia_vista = true WHERE id = $1', [req.usuarioId]);
+  } catch (err) {
+    console.error('Error aceptando advertencia de Plaza:', err.message);
+    return res.status(500).send('No se pudo continuar.');
+  }
+  res.redirect('/plaza');
+});
+
+app.post('/plaza/mensaje', async (req, res) => {
+  const emojis = (req.body.emojis || '').trim();
+  if (!esSoloEmojis(emojis)) {
+    return res.status(400).send('Solo se permiten emojis en la Plaza (nada de texto, números, o links).');
+  }
+  try {
+    const { rows: usuarioRows } = await pool.query('SELECT plaza_advertencia_vista FROM usuarios WHERE id = $1', [req.usuarioId]);
+    if (!usuarioRows[0] || !usuarioRows[0].plaza_advertencia_vista) {
+      return res.status(403).send('Primero tenés que ver y aceptar la advertencia de la Plaza.');
+    }
+    await aliasJuegoDe(req.usuarioId); // por si el usuario llegó acá sin haber abierto GET /plaza antes
+    await pool.query('INSERT INTO plaza_mensajes (autor_id, emojis, fecha) VALUES ($1, $2, now())', [req.usuarioId, emojis]);
+  } catch (err) {
+    console.error('Error enviando mensaje de Plaza:', err.message);
+    return res.status(500).send('No se pudo enviar el mensaje.');
+  }
+  res.redirect('/plaza');
 });
 
 // rama-fix-404: página propia con el estilo visual de la app en vez del

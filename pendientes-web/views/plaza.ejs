@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Plaza' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'personas' }) %> Plaza</h1>
+
+    <% if (!advertenciaVista) { %>
+      <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'candado' }) %> Antes de entrar</h2>
+        <p class="ajustes-nota">
+          La Plaza es un espacio para saludar y reaccionar con emojis a otros usuarios que quizás no conozcas.
+          <strong>Nunca compartas tu número, tu ubicación, tu nombre real, ni ningún otro dato personal</strong> --
+          ni en la Plaza ni con nadie que conozcas ahí. Tu identidad acá es solo un alias, y solo se permiten emojis
+          para que no sea posible pasar esa información por accidente.
+        </p>
+        <form method="POST" action="/plaza/aceptar-advertencia">
+          <button type="submit">Entendido, continuar</button>
+        </form>
+      </section>
+    <% } else { %>
+      <p class="count">Tu alias acá: <strong><%= alias %></strong> -- nadie ve tu nombre real en la Plaza.</p>
+
+      <% if (error) { %>
+        <p class="error"><%= error %></p>
+      <% } else { %>
+        <% if (hayMasAntiguos) { %>
+          <a href="/plaza?antes=<%= primerId %>" class="btn-link">Cargar mensajes más antiguos</a>
+        <% } %>
+
+        <% if (mensajes.length === 0) { %>
+          <p class="empty">Todavía no hay mensajes en la Plaza. Sé el primero en saludar.</p>
+        <% } else { %>
+          <ul class="chat-mensajes">
+            <% mensajes.forEach((m) => {
+              const esMio = m.autor_id === usuarioId;
+            %>
+              <li class="<%= esMio ? 'mensaje-propio' : 'mensaje-otro' %>">
+                <% if (!esMio) { %><span class="autor"><%= m.alias_juego || 'animalover?' %></span><% } %>
+                <span class="texto plaza-emojis"><%= m.emojis %></span>
+                <span class="fecha">
+                  <%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %>
+                </span>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+
+        <form method="POST" action="/plaza/mensaje" class="nuevo" id="form-plaza">
+          <input type="text" name="emojis" id="input-plaza-emojis" placeholder="Solo emojis..." required autocomplete="off">
+          <button type="submit">Enviar</button>
+        </form>
+        <div class="plaza-atajos" aria-label="Emojis rápidos">
+          <% ['😀','😂','😍','😢','😮','👍','👎','🎉','❤️','🔥','🐱','🐶'].forEach((e) => { %>
+            <button type="button" class="plaza-atajo-boton" data-emoji="<%= e %>"><%= e %></button>
+          <% }) %>
+        </div>
+      <% } %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+<script>
+  // rama-juego-plaza-salud: atajos de emoji -- insertan en el input en vez
+  // de reemplazarlo, así se pueden combinar varios. Validación real sigue
+  // siendo server-side (PLAZA_EMOJI_REGEX); esto es solo comodidad de UI.
+  document.querySelectorAll('.plaza-atajo-boton').forEach((boton) => {
+    boton.addEventListener('click', () => {
+      const input = document.getElementById('input-plaza-emojis');
+      if (input) { input.value += boton.dataset.emoji; input.focus(); }
+    });
+  });
+</script>
+</body>
+</html>

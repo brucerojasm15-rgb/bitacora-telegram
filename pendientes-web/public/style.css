@@ -1247,6 +1247,33 @@ svg[viewBox="0 0 24 24"] {
   font-size: 0.85em;
 }
 
+/* rama-juego-plaza-salud */
+.plaza-emojis {
+  font-size: 1.6rem;
+  line-height: 1.3;
+}
+
+.plaza-atajos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.plaza-atajo-boton {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.55rem;
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.plaza-atajo-boton:hover {
+  border-color: var(--accent);
+}
+
 @keyframes burbuja-entra {
   from {
     opacity: 0;

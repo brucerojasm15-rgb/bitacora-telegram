@@ -1,0 +1,36 @@
+name: Restaurar Postgres desde un respaldo
+
+# Utilidad manual: restaura un respaldo generado por backup-db.yml en la
+# base de datos que apunte el secreto NEON_DATABASE_URL (o el que se pase).
+# Pensado para migraciones (ej. Railway -> Neon, agosto 2026) y para probar
+# que los respaldos realmente son restaurables -- ver nota pendiente en
+# backup-db.yml ("nadie ha probado restaurar un backup del workflow").
+#
+# Requiere el secreto de repo NEON_DATABASE_URL (connection string completo,
+# con sslmode=require).
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run id del workflow 'Backup de Postgres' del que sacar el artefacto"
+        required: true
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el respaldo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download ${{ inputs.run_id }} --repo ${{ github.repository }} --dir ./respaldo
+
+      - name: Restaurar en la base de datos destino
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          archivo=$(find ./respaldo -name "*.dump" | head -1)
+          relativo=${archivo#./respaldo/}
+          echo "Restaurando $archivo"
+          docker run --rm -v "$PWD/respaldo:/respaldo" -e NEON_DATABASE_URL="$NEON_DATABASE_URL" postgres:18 \
+            pg_restore --clean --if-exists --no-owner --no-privileges -d "$NEON_DATABASE_URL" "/respaldo/$relativo"

@@ -14,9 +14,16 @@ const nodemailer = require('nodemailer');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// rama-pruebas-regresion: SSL siempre encendido salvo que se pida
+// explícitamente lo contrario con DATABASE_SSL=false -- Railway (y
+// cualquier Postgres gestionado real) lo requiere, así que el default no
+// cambia para producción/desarrollo local contra Railway. Solo lo usa
+// `ci.yml`, contra el servicio `postgres` efímero de GitHub Actions, que
+// no habla SSL -- sin esto, `pg` fallaría el handshake contra esa DB de
+// prueba antes de poder correr ningún test.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
 });
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -1058,6 +1065,29 @@ app.post('/recuperar-email/:token', limitarIntentos('recuperar-email'), async (r
 });
 
 async function ensureSchema() {
+  // rama-pruebas-regresion: la tabla `session` de connect-pg-simple
+  // (config más abajo, `createTableIfMissing: true`) se crea SOLA pero de
+  // forma perezosa/asíncrona en segundo plano al inicializar el store --
+  // contra una DB que ya la tenía de antes (cualquier deploy real en
+  // Railway) nunca se nota, pero contra una DB completamente nueva (el
+  // servicio `postgres` efímero de CI) la primera request real puede
+  // llegar (y escribir sesión, ej. en POST /registro) antes de que esa
+  // tabla exista, reventando con un 500 -- encontrado de verdad corriendo
+  // rama-pruebas-regresion en CI por primera vez. Se crea acá, en el mismo
+  // punto que todo lo demás en ensureSchema (que SIEMPRE se espera antes
+  // de app.listen), con el mismo esquema exacto que connect-pg-simple usa
+  // por default -- `createTableIfMissing` se deja como red de seguridad,
+  // ya no hace falta que gane la carrera.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS session (
+      sid VARCHAR NOT NULL COLLATE "default" PRIMARY KEY,
+      sess JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session (expire)
+  `);
   // usuarios debe existir antes que cualquier ALTER TABLE que la referencie.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS usuarios (
@@ -1160,6 +1190,59 @@ async function ensureSchema() {
       expira TIMESTAMP,
       usado BOOLEAN NOT NULL DEFAULT FALSE,
       creado TIMESTAMP DEFAULT now()
+    )
+  `);
+  // rama-pruebas-regresion: `pendientes`/`ideas`/`recordatorios`/`hechos`
+  // -- las 4 tablas centrales de TODA la app -- nunca tuvieron su propio
+  // CREATE TABLE en `ensureSchema()`. Existían en la DB de Railway desde
+  // antes de que este código las tocara (la app original venía de un bot
+  // de Telegram previo), así que nadie lo notó nunca: cada ALTER TABLE de
+  // acá en adelante asumía en silencio que ya existían. Encontrado real
+  // corriendo esta misma rama en CI contra una Postgres completamente
+  // vacía por primera vez -- `ensureSchema()` reventaba en el primer
+  // ALTER TABLE pendientes de abajo ("relation pendientes does not
+  // exist"), lo que además abortaba TODO lo que venía después en la
+  // cadena (incluida la columna `ia_especie` de `usuarios`, con el efecto
+  // secundario de que hasta el registro de un usuario fallaba). Esquema
+  // exacto tomado de `information_schema` contra la Railway real -- estas
+  // 4 tablas seguían sin usar `TIMESTAMPTZ`/`DEFAULT` consistentes entre
+  // sí (legado de antes de este código), no se normalizan acá a propósito
+  // para no arriesgar una migración de datos reales sin que el usuario lo
+  // pida explícitamente.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendientes (
+      id SERIAL PRIMARY KEY,
+      texto TEXT,
+      creado TIMESTAMPTZ,
+      hecho BOOLEAN DEFAULT false,
+      usuario_id INT REFERENCES usuarios(id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ideas (
+      id SERIAL PRIMARY KEY,
+      fecha TEXT,
+      idea TEXT,
+      estado TEXT,
+      usuario_id INT REFERENCES usuarios(id),
+      etiqueta TEXT
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recordatorios (
+      id SERIAL PRIMARY KEY,
+      texto TEXT,
+      cuando TIMESTAMPTZ,
+      avisado BOOLEAN DEFAULT false,
+      usuario_id INT REFERENCES usuarios(id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS hechos (
+      id SERIAL PRIMARY KEY,
+      texto TEXT,
+      cuando TIMESTAMPTZ,
+      usuario_id INT REFERENCES usuarios(id)
     )
   `);
   await pool.query(`

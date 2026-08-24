@@ -3973,6 +3973,101 @@ pagos reales hasta tener la info pendiente del punto 3 de arriba.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-pruebas-regresion
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): último de los items "chicos" antes
+  de retomar el juego grande. Cierra la **tarea 12** (helper compartido de
+  pruebas) y la **tarea M** (suite de pruebas de regresión), que dependía
+  de la 12.
+- **Tarea 12 — `scripts/test-helpers.js`**: extrae el patrón que casi cada
+  rama de este archivo reescribía desde cero (`crearUsuarioDescartable`,
+  `borrarUsuarioYDatos`, más `iniciarServidor`/`detenerServidor` para
+  levantar `node server.js` como proceso real). `iniciarServidor` NO
+  importa `server.js` como módulo (no tiene guarda `require.main ===
+  module`, así que importarlo llamaría a `app.listen` igual) -- lo
+  spawnea como subproceso real y espera a ver "Servidor corriendo" en su
+  stdout antes de resolver, nunca un `setTimeout` fijo a ciegas.
+- **Tarea M — `test/integracion.test.js`**: usa `node:test` (built-in
+  desde Node 18/20, sin agregar ninguna dependencia nueva -- "no hace
+  falta un framework pesado" como pedía el enunciado original). 4 pruebas,
+  compartiendo 2-3 cuentas descartables entre todas (no una por test) para
+  no agotar el límite real de registro (`LIMITE_REGISTROS_EXITOSOS_POR_
+  HORA = 5`, que el mismo proceso de server cuenta en memoria durante toda
+  la corrida): (1) capturar+completar un pendiente propio, confirmando que
+  la respuesta JSON de `rama-racha-viva` coincide con la DB real; (2)
+  amistad + mensaje de chat; (3) meta compartida creada por A con un
+  tercero C (nunca con B), compartida en el chat A-B, y B uniéndose --
+  cubre el flujo completo de `rama-chat-metas`; (4) **borrar ambas cuentas
+  al final y confirmar que el server sigue respondiendo** -- este es el
+  motivo real de la suite: las 3 ramas de hoy (`rama-chat-metas`,
+  `rama-fix-metas-huerfanas`, `rama-racha-viva`) encontraron crashes
+  reales (2 de FK, 1 de scope de variable) que solo se detectaron probando
+  a mano contra Railway, nunca por `npm run ci` (sintaxis) ni por revisión
+  de código. Esta prueba deja eso vigilado automáticamente de acá en
+  adelante.
+- **Corrección necesaria en `server.js` para que esto funcione en CI**: el
+  `pool` de Postgres tenía `ssl: { rejectUnauthorized: false }` fijo --
+  correcto contra Railway (y necesario ahí), pero el servicio `postgres`
+  efímero de GitHub Actions no habla SSL, así que el handshake fallaba
+  antes de poder correr ningún test. Se agregó `DATABASE_SSL=false` como
+  vía de escape explícita (default sin cambios: sigue siendo SSL siempre
+  salvo que se pida lo contrario) -- **no es una debilidad de seguridad
+  nueva**, nadie en producción/desarrollo real pasa esa variable, la pone
+  únicamente `ci.yml` contra una DB de prueba efímera.
+- **`.github/workflows/ci.yml`**: nuevo job `pruebas-integracion` (separado
+  de `verificar`, corren en paralelo) con un servicio `postgres:16` propio
+  del job -- siempre vacía al arrancar, `ensureSchema()` la puebla sola,
+  **nunca toca la DB de producción de Railway**. `DATABASE_SSL=false`,
+  `SESSION_SECRET` fijo de prueba, healthcheck de Postgres antes de correr
+  nada.
+- **Probado localmente contra la DB real de Railway** (con SSL, sin
+  `DATABASE_SSL=false`) antes de cada push -- las 4 pruebas pasan y no
+  quedan cuentas de prueba (`tsa*`/`tsb*`/`tsc*`) sin borrar al terminar.
+  **El camino exacto de CI (servicio `postgres` efímero + `DATABASE_SSL=
+  false`) no se pudo probar localmente** por no haber Docker disponible en
+  esta laptop -- se validó con 3 runs reales de GitHub Actions en el PR
+  (`gh pr checks`, nunca asumido en verde), y encontró **2 huecos reales
+  de infraestructura que nunca se habían notado, porque nunca se había
+  corrido `ensureSchema()` contra una Postgres genuinamente vacía**:
+  1. **La tabla `session` de `connect-pg-simple`** se crea con
+     `createTableIfMissing: true`, pero de forma perezosa en segundo
+     plano al inicializar el store -- contra una DB completamente nueva,
+     la primera request real (`POST /registro`) podía llegar antes de que
+     esa tabla existiera todavía, reventando con 500. En Railway nunca se
+     notó porque esa tabla ya existe ahí desde hace tiempo. Arreglado
+     creándola explícitamente en `ensureSchema()` (que siempre se espera
+     antes de `app.listen`), con el mismo esquema exacto que
+     `connect-pg-simple` usa por default -- `createTableIfMissing` queda
+     como red de seguridad redundante, ya no hace falta que gane ninguna
+     carrera.
+  2. **Mucho más significativo**: `pendientes`/`ideas`/`recordatorios`/
+     `hechos` -- las 4 tablas centrales de TODA la app -- **nunca tuvieron
+     su propio `CREATE TABLE` en `ensureSchema()`**. Existían en Railway
+     desde antes de este código (heredadas del bot de Telegram original
+     que precedió a esta app), así que cada `ALTER TABLE`/FK que las
+     referencia asumía en silencio que ya estaban ahí -- nadie lo notó en
+     meses de desarrollo porque la única DB real que existe (Railway) ya
+     las tenía. Confirmado real: si esta app se desplegara alguna vez
+     contra una Postgres nueva de cero (recuperación de desastre,
+     migración a otra DB, o exactamente este caso de CI), `ensureSchema()`
+     reventaba en el primer `ALTER TABLE pendientes`, **abortando en
+     cadena TODO lo que viene después en la función** (incluida la
+     columna `ia_especie` de `usuarios`) -- ni siquiera el registro de un
+     usuario nuevo funcionaba. Arreglado agregando el `CREATE TABLE IF NOT
+     EXISTS` de las 4, con el esquema exacto tomado de
+     `information_schema` contra la Railway real (no inventado). **Esto
+     no cambia nada para Railway** (`IF NOT EXISTS` es no-op ahí), pero
+     cierra un hueco real de "¿podemos arrancar esta app desde una DB
+     vacía?" que hasta hoy la respuesta silenciosa era no.
+- Archivos tocados: `pendientes-web/server.js` (SSL condicional del
+  `pool`, tabla `session` + las 4 tablas centrales agregadas a
+  `ensureSchema()`), `pendientes-web/package.json` (script
+  `test:integracion`), `pendientes-web/scripts/test-helpers.js` (nuevo),
+  `pendientes-web/test/integracion.test.js` (nuevo),
+  `.github/workflows/ci.yml` (job nuevo).
+- **Confirmado en verde el run real de GitHub Actions** (job
+  `pruebas-integracion`, run `32754560834`) antes de mergear.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -5229,7 +5324,7 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   ramas"** para la fórmula exacta, la hora del cron, y todas las
   decisiones que este enunciado dejaba explícitamente pendientes.
 
-- [ ] **12. Helper compartido para pruebas contra la DB real.** Deuda
+- [x] **12. ✅ RESUELTA (2026-08-24, `rama-pruebas-regresion`) — Helper compartido para pruebas contra la DB real.** Deuda
   técnica identificada 2026-08-16, no un pedido de producto: casi cada
   rama del historial de este archivo prueba su trabajo con el mismo patrón
   (crear usuario(s) descartable(s) vía `POST /registro` real, ejercitar la
@@ -5459,7 +5554,7 @@ actualmente en curso (Fase 1):**
   Postgres se desconecta — hoy nadie se entera de una caída hasta que un
   usuario se queja. — asignada a: sin asignar.
 
-- [ ] **M. Suite de pruebas de regresión automatizada.** `npm run ci`
+- [x] **M. ✅ RESUELTA (2026-08-24, `rama-pruebas-regresion`) — Suite de pruebas de regresión automatizada.** `npm run ci`
   (`scripts/verificar.js`) solo valida sintaxis y que las plantillas
   `.ejs` compilan — no prueba comportamiento. Cada feature nueva se prueba
   a mano, una vez, contra la DB real de Railway, con un script `_test_*.js`

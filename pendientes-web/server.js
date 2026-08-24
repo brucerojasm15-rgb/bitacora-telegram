@@ -677,8 +677,8 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     const codigoRecuperacionHash = crearPinHash(codigoRecuperacion);
     const nombreIaPorDefecto = especie.charAt(0).toUpperCase() + especie.slice(1);
     const { rows } = await pool.query(
-      `INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash, ia_especie, ia_nombre, tutorial_interactivo_visto)
-       VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
+      `INSERT INTO usuarios (nombre_usuario, pin_hash, codigo_recuperacion_hash, ia_especie, ia_nombre, tutorial_interactivo_visto, personaje_main_intro_visto)
+       VALUES ($1, $2, $3, $4, $5, FALSE, FALSE) RETURNING id`,
       [nombreUsuario, pinHash, codigoRecuperacionHash, especie, nombreIaPorDefecto]
     );
     const nuevoUsuarioId = rows[0].id;
@@ -772,8 +772,8 @@ app.post('/registro/email', limitarIntentos('registro'), async (req, res) => {
     // mismo criterio que POST /registro -- una cuenta nueva por email es tan
     // "usuario nuevo" como una por PIN, y debe ver el tour también.
     const { rows } = await pool.query(
-      `INSERT INTO usuarios (nombre_usuario, email, password_hash, ia_especie, ia_nombre, tutorial_interactivo_visto)
-       VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
+      `INSERT INTO usuarios (nombre_usuario, email, password_hash, ia_especie, ia_nombre, tutorial_interactivo_visto, personaje_main_intro_visto)
+       VALUES ($1, $2, $3, $4, $5, FALSE, FALSE) RETURNING id`,
       [nombreUsuario, email, passwordHash, especie, nombreIaPorDefecto]
     );
     const nuevoUsuarioId = rows[0].id;
@@ -1765,6 +1765,14 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS casa_espacios_comprados INT NOT NULL DEFAULT 0
   `);
 
+  // rama-personaje-guia: mismo patrón que `tutorial_interactivo_visto`
+  // (rama-tutorial-interactivo) -- DEFAULT TRUE para que ninguna cuenta
+  // YA existente vea la intro de golpe; los registros nuevos (`POST
+  // /registro` y `POST /registro/email`) la insertan en FALSE explícito.
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS personaje_main_intro_visto BOOLEAN NOT NULL DEFAULT true
+  `);
+
   // rama-juego-plaza-salud: Plaza -- espacio social SOLO de emojis (nunca
   // texto libre, validado en la ruta) para usuarios que puede que no se
   // conozcan entre sí. `alias_juego` reemplaza el nombre real DENTRO del
@@ -2205,6 +2213,33 @@ const DIAS_ABANDONO_FALLECER = 90;
 // de aprendizaje).
 const NIVEL_AVISOS_SALUD_AUTOMATICOS = 11;
 
+// rama-personaje-guia: el "personaje main" del pedido original del
+// usuario -- se presenta como el creador del juego, explica las
+// mecánicas, y es quien "concede" las revividas (ya existían en
+// rama-juego-fundacion sin ningún narrador detrás). Nombre y textos son
+// contenido, no mecánica -- ajustables sin tocar nada de lógica, mismo
+// criterio que el resto de catálogos hardcodeados del juego.
+const PERSONAJE_MAIN_NOMBRE = 'Zen';
+const PERSONAJE_MAIN_MENSAJES = {
+  intro:
+    `¡Hola! Soy ${PERSONAJE_MAIN_NOMBRE}, y creé este juego para que puedas conectar más ` +
+    'con tus amigos mientras aprendes a cuidar animalitos de verdad. Vas a poder adoptar, ' +
+    'cruzar y cuidar a tus propios animales -- pero si los abandonas, se enferman de verdad, ' +
+    'igual que en la vida real. Mientras estés empezando, yo puedo revivir a cualquiera de ' +
+    'tus animales hasta 3 veces si algo sale mal. Después de eso, ya depende de ti cuidarlos ' +
+    'bien. ¡Que empiece la aventura!',
+  fallecidoConRevividas: (revividas) =>
+    `Veo que uno de tus animales falleció por abandono... no pasa nada, todavía te quedan ` +
+    `${revividas} revivida${revividas === 1 ? '' : 's'} de mi parte. Usá el botón de Revivir, ` +
+    'pero la próxima vez prometeme que lo vas a alimentar más seguido.',
+  fallecidoSinRevividas:
+    'Uno de tus animales falleció y ya no te quedan revividas de mi parte -- esta vez no ' +
+    'puedo ayudarte a traerlo de vuelta. Cuidá bien a los que te quedan.',
+  consejo:
+    'Alimentá a tus animales seguido -- si los dejás mucho tiempo sin comer, se pueden ' +
+    'enfermar de verdad, igual que cualquier mascota real.',
+};
+
 // Sortea un alelo por rarezaBase -- usado SOLO para animales sin padres
 // (adoptados). Suma de pesos, número random en ese rango, primer alelo
 // cuyo acumulado lo supera.
@@ -2304,7 +2339,8 @@ async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = 
       : pool
           .query(
             `SELECT ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda,
-                    comodines_perdon_disponibles, revividas_disponibles, casa_espacios_comprados
+                    comodines_perdon_disponibles, revividas_disponibles, casa_espacios_comprados,
+                    personaje_main_intro_visto
              FROM usuarios WHERE id = $1`,
             [usuarioId]
           )
@@ -2342,6 +2378,7 @@ async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = 
           capacidadCasa: capacidadCasa(nivelJugador, fila.casa_espacios_comprados),
           espaciosComprados: fila.casa_espacios_comprados,
           costoProximoEspacio: costoProximoEspacioCasa(fila.casa_espacios_comprados),
+          personajeMainIntroVisto: fila.personaje_main_intro_visto,
         }
       : {}),
     ...(incluirPerfilIa ? { perfilIaResumen: perfilIaRows.rows[0] ? perfilIaRows.rows[0].resumen : '' } : {}),
@@ -5159,6 +5196,26 @@ async function animalesAdultosDeAmigosPorEspecie(usuarioId, especie) {
   return rows;
 }
 
+// rama-personaje-guia: qué le dice el personaje main al usuario en este
+// momento -- prioridad fija (intro sin ver > un animal fallecido > un
+// consejo genérico). `mostrarBoton` solo es true para la intro, porque es
+// la ÚNICA que necesita marcarse como "vista" -- las otras dos reaparecen
+// mientras la condición siga siendo cierta, no son un mensaje "de una
+// sola vez".
+function mensajePersonajeMain(perfil, animales) {
+  if (!perfil.personajeMainIntroVisto) {
+    return { texto: PERSONAJE_MAIN_MENSAJES.intro, mostrarBoton: true };
+  }
+  const hayFallecido = animales.some((a) => a.salud_estado === 'fallecido');
+  if (hayFallecido) {
+    const texto = perfil.revividasDisponibles > 0
+      ? PERSONAJE_MAIN_MENSAJES.fallecidoConRevividas(perfil.revividasDisponibles)
+      : PERSONAJE_MAIN_MENSAJES.fallecidoSinRevividas;
+    return { texto, mostrarBoton: false };
+  }
+  return { texto: PERSONAJE_MAIN_MENSAJES.consejo, mostrarBoton: false };
+}
+
 app.get('/casa', async (req, res) => {
   try {
     const [perfil, animales, solicitudesRecibidas] = await Promise.all([
@@ -5195,6 +5252,8 @@ app.get('/casa', async (req, res) => {
       saldoMoneda: perfil.saldoMoneda,
       costoProximoEspacio: perfil.costoProximoEspacio,
       edadAdultoDias: EDAD_ADULTO_DIAS,
+      personajeMainNombre: PERSONAJE_MAIN_NOMBRE,
+      personajeMain: mensajePersonajeMain(perfil, animales),
       nacio: Number(req.query.nacio) || null,
       error: null,
     });
@@ -5203,10 +5262,26 @@ app.get('/casa', async (req, res) => {
     res.status(500).render('casa', {
       especies: ESPECIES_ANIMAL, animales: [], candidatosPorEspecie: {}, solicitudesRecibidas: [],
       nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0,
-      saldoMoneda: 0, costoProximoEspacio: 0, edadAdultoDias: EDAD_ADULTO_DIAS, nacio: null,
+      saldoMoneda: 0, costoProximoEspacio: 0, edadAdultoDias: EDAD_ADULTO_DIAS,
+      personajeMainNombre: PERSONAJE_MAIN_NOMBRE, personajeMain: null, nacio: null,
       error: 'No se pudo leer la base de datos.',
     });
   }
+});
+
+// rama-personaje-guia: solo se marca "vista" acá, disparado por un click
+// real del usuario en el botón "Entendido" -- NUNCA dentro de un
+// middleware que corre en cada request (lección ya documentada de
+// rama-logros: eso puede consumir el mensaje sin que nadie lo haya visto
+// nunca en un navegador, si otro POST corre justo antes de que la vista
+// se renderice).
+app.post('/personaje-main/marcar-intro-visto', async (req, res) => {
+  try {
+    await pool.query('UPDATE usuarios SET personaje_main_intro_visto = true WHERE id = $1', [req.usuarioId]);
+  } catch (err) {
+    console.error('Error marcando intro del personaje main como vista:', err.message);
+  }
+  res.redirect('/casa');
 });
 
 // rama-visitar-casa-amigo: vista de solo lectura -- nunca se exponen acá

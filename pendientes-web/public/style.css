@@ -1409,6 +1409,54 @@ svg[viewBox="0 0 24 24"] {
   border-color: var(--accent);
 }
 
+/* rama-personaje-guia */
+.personaje-guia {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.personaje-guia-avatar {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.personaje-guia-globo {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  padding: 0.85rem 1rem;
+  flex: 1;
+}
+
+.personaje-guia-nombre {
+  margin: 0 0 0.25rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--accent-strong);
+}
+
+.personaje-guia-texto {
+  margin: 0 0 0.5rem;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.personaje-guia-globo form {
+  margin: 0;
+}
+
 @keyframes burbuja-entra {
   from {
     opacity: 0;

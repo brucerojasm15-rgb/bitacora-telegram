@@ -2542,12 +2542,21 @@ app.post('/ia/chat', async (req, res) => {
 
 app.post('/pendientes/:id/completar', async (req, res) => {
   const id = Number(req.params.id);
+  const quiereJson = (req.get('accept') || '').includes('application/json');
   if (!Number.isInteger(id)) {
     return res.status(400).send('id inválido');
   }
   const client = await pool.connect();
   let notificarA = null;
   let comentario = null;
+  // rama-racha-viva: declarada acá (no `const` adentro del try) porque el
+  // bloque de respuesta JSON de más abajo la necesita leer FUERA del try --
+  // antes de esta rama nada la usaba después del bloque, así que quedaba
+  // scopeada adentro sin problema. Bug real encontrado probando esto:
+  // quedó `ReferenceError: pendiente is not defined` sin capturar, lo que
+  // tumbaba el proceso entero de Node (mismo patrón de crash ya visto
+  // varias veces en este proyecto con el doble-release).
+  let pendiente = null;
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
@@ -2556,7 +2565,7 @@ app.post('/pendientes/:id/completar', async (req, res) => {
        RETURNING id, usuario_id, asignado_a, asignado_en`,
       [id, req.usuarioId]
     );
-    const pendiente = rows[0];
+    pendiente = rows[0];
     if (pendiente && pendiente.asignado_a) {
       comentario = (req.body.comentario || '').trim() || null;
 
@@ -2614,6 +2623,22 @@ app.post('/pendientes/:id/completar', async (req, res) => {
       body: comentario ? `Se completó una tarea compartida: "${comentario}"` : 'Se completó una tarea compartida.',
       data: { defaultUrl: '/' },
     }).catch((err) => console.error('Error notificando tarea completada:', err.message));
+  }
+  // rama-racha-viva: `.completar-form` en index.ejs intercepta este submit
+  // con fetch() y nunca navega, así que la barra superior que ya trae
+  // renderizada cada `res.render` (vía res.locals.barraSuperior) queda
+  // desactualizada hasta el próximo reload -- el número real cambió (racha/
+  // semillas) pero lo que se ve en pantalla no, hueco documentado en
+  // COORDINACION.md. Si el cliente pide JSON, se devuelve la barra
+  // recién calculada (reusa `barraSuperiorDeUsuario`, mismo agregador que
+  // ya usa el middleware global -- no se duplica la lógica) para que el
+  // cliente actualice los `<span>` a mano en vez de esperar un reload.
+  if (quiereJson) {
+    const barra = await barraSuperiorDeUsuario(req.usuarioId).catch((err) => {
+      console.error('Error calculando barra superior tras completar:', err.message);
+      return null;
+    });
+    return res.json({ completado: !!pendiente, barra });
   }
   // rama-interfaz: ?logro=1 -- la barra superior lo lee y anima la mini
   // planta (ver partials/scripts.ejs), luego lo limpia de la URL.

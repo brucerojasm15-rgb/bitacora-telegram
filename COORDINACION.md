@@ -3929,6 +3929,50 @@ pagos reales hasta tener la info pendiente del punto 3 de arriba.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-racha-viva
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): tercero de los items "chicos"
+  pendientes. Hueco ya documentado en "Otros loose ends" al final de este
+  archivo: "Fase 4 known gap: racha/semillas count in the top bar doesn't
+  update live after completing a pendiente via the fetch-based button on
+  the main screen (animation works, number catches up on next page
+  load)."
+- **Qué se arregló**: `.completar-form` de `views/index.ejs` intercepta el
+  submit con `fetch()` y nunca navega (para animar la fila sin reload) --
+  eso significa que la barra superior, renderizada una sola vez por
+  request real vía `res.locals.barraSuperior`, nunca se actualizaba tras
+  completar así. `POST /pendientes/:id/completar` ahora responde JSON
+  cuando el cliente manda `Accept: application/json` (reusa
+  `barraSuperiorDeUsuario()`, el mismo agregador que ya usa el middleware
+  global -- no se duplicó lógica de cálculo), y `window.
+  actualizarBarraSuperior()` nuevo en `partials/scripts.ejs` escribe los
+  `<span>` de racha/semillas a mano y dispara la misma animación que ya
+  existía (`animarDato`). El flujo sin JS (form normal, sin ese header)
+  sigue haciendo exactamente lo mismo que antes -- redirect a `/?logro=1`.
+- **Bug real encontrado y corregido ANTES de mergear (tumbaba el server
+  local entero, no llegó a producción)**: la variable `pendiente` estaba
+  declarada con `const` DENTRO del `try` de la ruta -- el código nuevo la
+  necesitaba leer DESPUÉS de ese bloque (junto al `if (quiereJson)`) y
+  quedó un `ReferenceError: pendiente is not defined` sin capturar, que
+  tumbó el proceso de Node completo apenas se probó de verdad (no un
+  error de sintaxis, `npm run ci` no lo detectó). Corregido declarándola
+  con `let` al scope de la función, antes del `try`. **Confirmado que la
+  transacción en sí ya había hecho `COMMIT` antes del crash** -- el bug
+  era solo en el armado de la respuesta, no había riesgo de dato
+  corrupto, pero sí de tumbar el server para cualquier usuario real que
+  completara una tarea desde `/`.
+- **Probado contra la DB real de Railway**: completar un pendiente propio
+  con `Accept: application/json` devuelve `{ completado: true, barra: {
+  racha, semillas, ... } }` con `semillas` coincidiendo exactamente con
+  `usuarios.saldo_moneda` leído directo de la DB tras la operación; el
+  mismo endpoint SIN ese header sigue respondiendo `302 /?logro=1` como
+  antes (compatibilidad hacia atrás confirmada, no solo asumida).
+- Archivos tocados: `server.js` (`POST /pendientes/:id/completar`),
+  `views/index.ejs` (`.completar-form`), `views/partials/scripts.ejs`
+  (`window.actualizarBarraSuperior`).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -4582,11 +4626,13 @@ arriba para el detalle completo de decisiones y pruebas.
   migración de Fase 1 — Groq no pudo segmentarla ni siquiera tras
   reintentar. Sin resolver, sin urgencia (dato de un usuario de prueba real
   en producción, revisar si corresponde).
-- Limitación conocida de Fase 4: el número de racha/semillas en la barra
-  superior no se actualiza en vivo tras completar un pendiente desde la
-  pantalla principal (`.completar-form`, que usa `fetch` sin navegar) — la
-  animación sí funciona, el número se pone al día en la siguiente carga de
-  página. No se consideró bloqueante para el merge.
+- ✅ **Resuelto (2026-08-24, `rama-racha-viva`)** — Limitación conocida de
+  Fase 4: el número de racha/semillas en la barra superior no se
+  actualizaba en vivo tras completar un pendiente desde la pantalla
+  principal (`.completar-form`, que usa `fetch` sin navegar) — la
+  animación sí funcionaba, el número se ponía al día recién en la
+  siguiente carga de página. Ver la sección `rama-racha-viva` en "Estado
+  de ramas" para el detalle.
 - Capacitor + notificación nativa con `RemoteInput` (respuesta en línea de
   verdad, a diferencia del botón actual que solo abre Captura rápida):
   pospuesto explícitamente por el usuario durante Fase 2, como iniciativa

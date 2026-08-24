@@ -235,6 +235,29 @@
     })();
   </script>
   <script>
+    // rama-chat-visible: GET /notificaciones ya existía (construido de
+    // antemano, nunca conectado a ninguna vista) -- solo cuenta mensajes
+    // 1-a-1 sin leer (noLeidos), no el chat general (noLeidosGeneral,
+    // decisión de rama-chat-general de no sumarlos, ver COORDINACION.md).
+    // Un solo fetch al cargar cualquier página logueada -- no hace falta
+    // polling en vivo, el contador se actualiza solo con la próxima
+    // navegación (mismo criterio de "simple primero" del resto de badges
+    // de esta app, ej. logrosNuevos).
+    (function () {
+      const boton = document.getElementById('btn-chat-amigos');
+      const badge = document.getElementById('badge-chat-amigos');
+      if (!boton || !badge) return;
+      fetch('/notificaciones')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((datos) => {
+          if (!datos || !datos.noLeidos) return;
+          badge.textContent = datos.noLeidos > 9 ? '9+' : String(datos.noLeidos);
+          badge.hidden = false;
+        })
+        .catch(() => {});
+    })();
+  </script>
+  <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch(() => {});

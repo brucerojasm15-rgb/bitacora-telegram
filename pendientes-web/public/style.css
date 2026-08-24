@@ -645,6 +645,20 @@ svg[viewBox="0 0 24 24"] {
   text-align: center;
 }
 
+/* rama-fix-bloqueo-hidden: mismo bug ya documentado en
+   .tutorial-modal-overlay -- el `display: flex` de arriba tiene la misma
+   especificidad que el `[hidden] { display: none }` del user-agent
+   stylesheet, así que sin esta regla el atributo `hidden` queda anulado:
+   la pantalla de bloqueo seguía ocupando toda la pantalla (position:
+   fixed, inset: 0) y tapando/interceptando clicks sobre el formulario
+   clásico para CUALQUIER dispositivo sin usuario cacheado (primera
+   visita, navegación privada, localStorage bloqueado) -- login roto de
+   verdad, no solo cosmético, encontrado al verificar la pantalla de
+   bloqueo con un navegador real por primera vez esta sesión. */
+.pantalla-bloqueo[hidden] {
+  display: none;
+}
+
 .bloqueo-reloj {
   font-size: clamp(2.5rem, 10vw, 4rem);
   font-weight: 300;

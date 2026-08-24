@@ -4990,6 +4990,15 @@ eliminación de ese repo/bot sin quedar huérfano.
   "madre" borra su cuenta, la cría del otro usuario sigue viva con
   `madre_id = NULL`, el server sigue respondiendo. Ver la sección
   `rama-cruzar-amigos` para el detalle completo.
+- 2026-08-24 — merge de rama-visitar-casa-amigo (e39dde3) → main vía PR
+  #90: sin conflictos. CI verde (ambos jobs). Desplegado en Railway y
+  verificado. Quinta mecánica -- vista de solo lectura para ver la casa
+  de un amigo, natural ahora que existe cruzar animales entre amigos.
+  `GET /casa/:usuarioId` exige amistad aceptada real, sin ninguna acción
+  de cuidado privada -- lo único que puede hacer un visitante es pedir un
+  cruce, reusando `POST /animales/:id/solicitar-cruce-amigo` de
+  `rama-cruzar-amigos` tal cual. Sin cambios de esquema. Ver la sección
+  `rama-visitar-casa-amigo` para el detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

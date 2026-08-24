@@ -207,6 +207,8 @@ app.use(async (req, res, next) => {
     res.locals.tutorialCapitulosPendientes = 0;
     res.locals.iaChatSinLeer = false;
     res.locals.logrosNuevos = [];
+    res.locals.metodoLogin = null;
+    res.locals.emailUsuario = null;
     return next();
   }
   try {
@@ -225,7 +227,7 @@ app.use(async (req, res, next) => {
     // consulta de abajo para el badge "no leído" del chat de la planta.
     const { rows } = await pool.query(
       `SELECT tema, ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda,
-              comodines_perdon_disponibles, nombre_usuario, ia_chat_visto_hasta
+              comodines_perdon_disponibles, nombre_usuario, ia_chat_visto_hasta, email
        FROM usuarios WHERE id = $1`,
       [req.usuarioId]
     );
@@ -233,6 +235,14 @@ app.use(async (req, res, next) => {
     res.locals.tema = usuario ? usuario.tema : null;
     res.locals.nombreUsuario = usuario ? usuario.nombre_usuario : null;
     res.locals.barraSuperior = await barraSuperiorDeUsuario(req.usuarioId, usuario);
+    // rama-login-lockscreen: qué método se usó para entrar ESTA sesión
+    // (guardado en POST /login y POST /login/email) + el email propio si
+    // lo tiene vinculado -- se exponen acá para que partials/scripts.ejs
+    // pueda cachear en localStorage con qué formulario mostrar la próxima
+    // vez ("pantalla de bloqueo" solo con PIN o solo con contraseña,
+    // según corresponda).
+    res.locals.metodoLogin = req.session.metodoLogin || 'pin';
+    res.locals.emailUsuario = usuario ? usuario.email : null;
     // rama-tutorial-multicapitulo: se calcula acá para TODAS las vistas
     // (como `tema`/`barraSuperior`) porque el tour cruza varias páginas
     // (captura, amigos, ia, metas, chat-general, trazabilidad) y la
@@ -555,6 +565,7 @@ app.post('/login', limitarIntentos('login'), async (req, res) => {
     }
     req.session.usuario_id = usuario.id;
     req.session.nombre_usuario = nombreUsuario;
+    req.session.metodoLogin = 'pin';
     res.redirect('/captura');
   } catch (err) {
     console.error('Error en login:', err.message);
@@ -584,6 +595,7 @@ app.post('/login/email', limitarIntentos('login-email'), async (req, res) => {
     }
     req.session.usuario_id = usuario.id;
     req.session.nombre_usuario = usuario.nombre_usuario;
+    req.session.metodoLogin = 'email';
     // rama-tutorial-interactivo: mismo destino que POST /login (usuario+PIN)
     // -- /captura es la landing desde rama-interfaz-v2, no '/'.
     res.redirect('/captura');
@@ -673,6 +685,10 @@ app.post('/registro', limitarIntentos('registro'), async (req, res) => {
     registrarAltaExitosa(req.ip);
     req.session.usuario_id = nuevoUsuarioId;
     req.session.nombre_usuario = nombreUsuario;
+    // rama-login-lockscreen: sin esto, la cuenta se cachearía en
+    // localStorage con metodo='pin' por default de todas formas (mismo
+    // valor), pero explícito es mejor que confiar en el fallback.
+    req.session.metodoLogin = 'pin';
 
     // rama-invitar-amigos: si el código resuelve a un usuario real, se
     // pre-carga la solicitud de amistad (nuevo usuario -> quien invitó),
@@ -764,6 +780,11 @@ app.post('/registro/email', limitarIntentos('registro'), async (req, res) => {
     registrarAltaExitosa(req.ip);
     req.session.usuario_id = nuevoUsuarioId;
     req.session.nombre_usuario = nombreUsuario;
+    // rama-login-lockscreen: acá SÍ importa de verdad -- sin esto, una
+    // cuenta 100% por email quedaría cacheada como metodo='pin' (el
+    // fallback), y la pantalla de bloqueo le pediría un PIN que esta
+    // cuenta nunca tuvo (pin_hash queda NULL en el registro por email).
+    req.session.metodoLogin = 'email';
 
     // Mismo bloque que POST /registro -- ver ese comentario.
     if (codigoInvitacion) {

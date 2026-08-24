@@ -1,5 +1,37 @@
   <script src="/sonidos.js"></script>
   <script>
+    // rama-login-lockscreen: cachea "quién fue el último en entrar en este
+    // dispositivo" para que /login pueda mostrarse como pantalla de
+    // bloqueo (nombre + especie de su planta + con qué método entra) en
+    // vez del formulario completo con usuario y contraseña cada vez. Solo
+    // texto/nombre de especie -- nunca el PIN/contraseña, nunca datos
+    // sensibles. Se reescribe en CADA página logueada (no solo al hacer
+    // login) para que si cambia de cuenta, la próxima carga de cualquier
+    // página ya autenticada la deje al día.
+    (function () {
+      const nombreUsuario = <%- JSON.stringify(typeof nombreUsuario !== 'undefined' ? nombreUsuario : null) %>;
+      if (!nombreUsuario) return;
+      try {
+        const metodo = <%- JSON.stringify(typeof metodoLogin !== 'undefined' && metodoLogin ? metodoLogin : 'pin') %>;
+        const email = <%- JSON.stringify(typeof emailUsuario !== 'undefined' ? emailUsuario : null) %>;
+        // Si el método fue "email" pero no hay email vinculado (no debería
+        // pasar, pero si pasa) se cae a modo PIN -- nunca mostrar una
+        // pantalla de bloqueo pidiendo un email que no existe.
+        const metodoFinal = metodo === 'email' && email ? 'email' : 'pin';
+        localStorage.setItem('zentia_ultimo_usuario', JSON.stringify({
+          nombreUsuario,
+          especie: <%- JSON.stringify(typeof barraSuperior !== 'undefined' && barraSuperior ? barraSuperior.especie : 'monstera') %>,
+          metodo: metodoFinal,
+          email: metodoFinal === 'email' ? email : null,
+        }));
+      } catch (err) {
+        // Almacenamiento bloqueado (navegador privado, cuota llena, etc.)
+        // -- /login simplemente no entra en modo pantalla de bloqueo, cae
+        // al formulario completo de siempre. Nunca debe romper la página.
+      }
+    })();
+  </script>
+  <script>
     // rama-tema-jungla: toggle claro/oscuro. El ícono refleja el tema
     // ACTUAL (sol si se está mostrando claro, luna si oscuro). Guarda la
     // preferencia en la cuenta (no localStorage — ver COORDINACION.md).

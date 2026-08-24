@@ -628,6 +628,141 @@ svg[viewBox="0 0 24 24"] {
   box-shadow: var(--shadow-tactil-activo);
 }
 
+/* rama-login-lockscreen: pantalla de bloqueo estilo sistema operativo --
+   reusa el fondo aurora que ya pinta `body` en toda la app (mismo
+   "paisaje blur" pedido, sin duplicar nada) y le suma un reloj + tu
+   planta como avatar circular + un solo campo. */
+.pantalla-bloqueo {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.bloqueo-reloj {
+  font-size: clamp(2.5rem, 10vw, 4rem);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  margin-bottom: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bloqueo-avatar {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  background: var(--glass-bg-fuerte);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.bloqueo-avatar-especie svg {
+  width: 96px;
+  height: 96px;
+}
+
+.bloqueo-nombre {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0.75rem 0 1.25rem;
+}
+
+.bloqueo-error {
+  max-width: 280px;
+}
+
+.bloqueo-form {
+  width: 100%;
+  max-width: 280px;
+}
+
+.bloqueo-campo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--glass-bg-fuerte);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  padding: 0.35rem 0.35rem 0.35rem 1.25rem;
+  box-shadow: var(--glass-shadow);
+}
+
+.bloqueo-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 1.05rem;
+  padding: 0.6rem 0;
+  outline: none;
+  min-width: 0;
+}
+
+.bloqueo-boton-entrar {
+  flex-shrink: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-tactil);
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.bloqueo-boton-entrar:hover {
+  background: var(--accent-strong);
+}
+
+.bloqueo-boton-entrar:active {
+  transform: translateY(2px) scale(0.96);
+}
+
+.bloqueo-cambiar {
+  margin-top: 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Sacudida al rechazar el PIN/contraseña -- mismo lenguaje que un lock
+   screen real (macOS/iOS), pero solo el panel del campo, no toda la
+   pantalla, para no marear. */
+@keyframes bloqueo-sacudida {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+
+.bloqueo-rechazo .bloqueo-campo {
+  animation: bloqueo-sacudida 0.5s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bloqueo-rechazo .bloqueo-campo {
+    animation: none;
+  }
+}
+
 .count {
   color: var(--text-muted);
   margin-top: 0;

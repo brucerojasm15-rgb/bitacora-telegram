@@ -3706,6 +3706,201 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
   `.logro-bloqueado`).
 - Último commit: `2b35f11`.
 
+### rama-chat-metas
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): mejorar el chat entre amigos --
+  primer tramo del pedido grande de "juego tipo Happy Pets v0.4" (ver la
+  ronda nueva más abajo para el resto del roadmap, que queda documentado
+  pero sin construir todavía). El usuario eligió explícitamente empezar por
+  chat/amigos antes que el juego (pregunta directa, confirmado).
+- **Qué se construyó:**
+  1. **Optimización del chat (pedido explícito -- "quiero que sea
+     veloz").** `POST /mensajes` ahora responde JSON cuando el cliente pide
+     `Accept: application/json` (fetch desde `partials/chat-script.ejs`) en
+     vez de forzar una recarga completa de `/chat` -- el mensaje se agrega
+     al DOM directo, sin roundtrip de render de toda la página. El
+     `<form>` sigue siendo un POST normal si JS falla (progressive
+     enhancement, mismo criterio que `data-carga-manual`). Índice nuevo
+     `idx_mensajes_amistad_fecha ON mensajes (amistad_id, fecha)` -- la
+     consulta de `GET /chat` filtra y ordena exactamente por esas columnas.
+  2. **Enviar una meta dentro del chat.** Columnas nuevas `mensajes.
+     meta_personal_id` / `mensajes.meta_compartida_id` (nullable, nunca
+     las dos a la vez -- lo garantiza el código, no una constraint, mismo
+     estilo que el resto del esquema). `POST /mensajes/meta` valida que
+     solo se puede compartir una meta PROPIA (personal) o una compartida en
+     la que ya se participa -- nunca la de otro por adivinar el id
+     (probado: 403 real). La vista renderiza una "meta-card" compacta
+     (reusa `.meta-card` de `views/metas.ejs`) en vez de una burbuja de
+     texto cuando el mensaje trae una meta adjunta.
+  3. **Unirse a una meta compartida desde el chat.** Antes, los
+     participantes de una meta compartida solo se elegían al crearla (no
+     existía forma de sumar gente después). `POST /metas/compartida/:id/
+     unirme` -- **decisión de confianza documentada acá (no venía
+     especificada por el usuario)**: solo puede unirse quien es amigo
+     ACEPTADO de quien CREÓ la meta (no hace falta ser amigo de todos los
+     participantes). La meta-card en el chat muestra el botón "Unirme"
+     solo si el que mira NO participa todavía y la meta sigue activa.
+  4. **Ventana de estadísticas ("metas cumplidas") pedida explícitamente
+     por el usuario.** `GET /chat/estadisticas?amistad_id=` -- muestra el
+     conteo de metas PERSONALES completadas de cada quien (solo el número,
+     mismo criterio de privacidad que la racha comparable de `/amigos`: no
+     se listan los títulos de las metas personales del otro) y la lista
+     completa de metas COMPARTIDAS completadas en las que ambos participan
+     juntos (esas sí con título, porque ya son compartidas por
+     definición).
+- **Bug real encontrado y corregido ANTES de mergear (no en producción):**
+  las columnas nuevas de `mensajes` referencian `metas`/`metas_compartidas`
+  -- sin `ON DELETE SET NULL`, eso hubiera reventado `POST /ajustes/
+  eliminar-cuenta` con violación de FK en un caso real: usuario X crea una
+  meta compartida con A, A la comparte en su chat con B (B ni conoce a X);
+  si X borra su cuenta y esa meta termina sin participantes (rama
+  `d` de la lógica ya existente en `rama-fix-metas-eliminar-cuenta`,
+  líneas ~4826-4834), el `DELETE FROM metas_compartidas` reventaría con el
+  mensaje de B-A todavía apuntándole. Corregido con `ON DELETE SET NULL`
+  en ambas FK (agregadas con `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`
+  explícito, no inline en el `ADD COLUMN`, para que un despliegue que ya
+  había corrido esta rama sin el fix se autocorrija en el próximo arranque
+  en vez de quedar con el FK viejo para siempre). La vista ya maneja el
+  caso NULL mostrando "Esta meta ya no existe."
+- **Hueco preexistente encontrado en OTRA rama, documentado acá sin
+  arreglar (regla 6 -- no es parte de este pedido, el usuario no lo
+  autorizó):** al probar el escenario de arriba se confirmó que
+  `POST /ajustes/eliminar-cuenta` (rama-fix-metas-eliminar-cuenta) tiene un
+  gap real: el paso que hace `DELETE FROM metas_compartidas WHERE
+  creado_por = $1` para limpiar metas ya sin participantes solo dispara si
+  quien se está borrando ES el `creado_por` actual. Si un usuario A (el
+  creador original) ya se borró antes y dejó `creado_por = NULL` (porque
+  todavía quedaban otros participantes en ese momento), y DESPUÉS se borran
+  TODOS los participantes restantes uno por uno, la fila de
+  `metas_compartidas` queda huérfana para siempre (cero participantes,
+  `creado_por = NULL`, nunca coincide con ningún `$1`) -- no rompe nada
+  (no hay FK apuntándole después de este fix), solo basura acumulada sin
+  límite. Reproducido real durante las pruebas de esta rama (fila id 11,
+  "EdgeCaseMeta", confirmada huérfana antes de limpiarla a mano). Arreglo
+  sugerido para quien lo tome: en vez de `WHERE creado_por = $1`, usar
+  `WHERE NOT EXISTS (SELECT 1 FROM metas_compartidas_participantes WHERE
+  meta_compartida_id = metas_compartidas.id)` (limpieza por orfandad real,
+  no por quién se está borrando en este momento).
+- **Probado contra la DB real de Railway** (no local/sqlite), con cuentas
+  descartables creadas vía `POST /registro` real y borradas al final con
+  `POST /ajustes/eliminar-cuenta` real (nunca `DELETE` manual, salvo la
+  limpieza puntual de las 5 filas de `metas_compartidas` y 2 mensajes que
+  quedaron huérfanos de una corrida anterior sin cleanup, borrados por id
+  explícito después de confirmar que eran exactamente los de prueba):
+  envío de texto por AJAX, compartir meta personal propia (+ 403 si se
+  intenta compartir la de otro), compartir meta compartida + botón Unirme
+  visible/oculto según corresponda + bloqueo real a un usuario sin ninguna
+  amistad con el creador (403), estadísticas con conteo personal correcto
+  y meta compartida completada visible, y el escenario cruzado de borrado
+  de cuenta descrito arriba (sin 500, `chat_estadisticas`/`chat` siguen
+  respondiendo 200 después). **Nota para la próxima sesión**: el límite de
+  registro (`LIMITE_REGISTROS_EXITOSOS_POR_HORA = 5`) y el de login
+  (`limitarIntentos('login')`) son en memoria del proceso -- se agotan
+  rápido probando varias cuentas descartables seguidas: si hace falta más
+  margen en una sesión de pruebas larga, reiniciar el server local los
+  resetea (no hace falta esperar la ventana real).
+- Archivos tocados: `server.js` (`ensureSchema`, `GET /chat`, `POST
+  /mensajes`, `POST /mensajes/meta` nueva, `POST /metas/compartida/:id/
+  unirme` nueva, `GET /chat/estadisticas` nueva), `views/chat.ejs`,
+  `views/chat-estadisticas.ejs` (nueva), `views/partials/chat-script.ejs`
+  (nueva), `public/style.css`.
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
+### Ronda nueva (2026-08-24) — "Happy Pets v0.4": roadmap de juego, apertura de crecimiento y pagos reales, propuesta por el usuario
+
+El usuario pidió pensar como ingeniero de datos + diseño la evolución de
+zentIA hacia un juego real de mascotas (inspirado explícitamente en Happy
+Pets de Facebook, ya discontinuado) conectado con la app existente. Esta
+sección **documenta el alcance y las decisiones de producto ya confirmadas
+por el usuario, para que cualquier sesión futura la retome sin tener que
+volver a preguntar lo mismo** -- nada de esto está construido todavía
+(salvo `rama-chat-metas` arriba, que es el primer tramo). Conecta
+directamente con la sección "Fundación técnica para crecer
+exponencialmente" (2026-08-16, ver más abajo), que ya anticipaba este
+objetivo y dejó bloqueadas las tareas J-P hasta esta decisión.
+
+**Decisiones de producto ya confirmadas por el usuario (2026-08-24, vía
+preguntas directas antes de diseñar nada):**
+
+1. **Orden de construcción: chat/amigos primero (rama-chat-metas, arriba),
+   el juego después.** No se empieza el juego todavía.
+2. **Sí se abre el crecimiento más allá del círculo chico actual.** Esto
+   dispara directamente la tarea **P** (revisar `LIMITE_REGISTROS_
+   EXITOSOS_POR_HORA = 5`, hoy pensado para un grupo chico) y la tarea
+   **N** (cupo de IA a escala -- una sola `GROQ_API_KEY` compartida ya se
+   agotó una vez con un solo usuario procesando 233 ideas, ver
+   `rama-segmentacion-ideas`) de la sección "Fundación técnica" más abajo
+   -- ambas quedan DESBLOQUEADAS por esta decisión, todavía sin asignar.
+   La Plaza (ver abajo) es la superficie donde usuarios que NO se conocen
+   entre sí van a interactuar -- de ahí que el anonimato ahí sí importe de
+   verdad (a diferencia del resto de la app hoy, pensada para gente que ya
+   se conoce).
+3. **Sí se agregan pagos reales (compra de monedas con dinero real),
+   revirtiendo la decisión anterior de "gratis para todos, sin pagos" de
+   la tarea 9 (2026-08-13).** Esto es trabajo serio aparte (proveedor de
+   pagos, cumplimiento, impuestos) -- **no se puede empezar a construir
+   sin más datos del usuario que solo él puede dar**: entidad/persona que
+   factura, país de operación real (la app ya usa `America/Lima` en todos
+   lados, pero eso no confirma dónde está constituido el negocio),
+   proveedor preferido (Stripe no soporta pagos nativos en Perú a la fecha
+   de este documento -- confirmar disponibilidad real antes de elegir;
+   alternativas regionales: Mercado Pago, Culqi). **Cuando el usuario
+   tenga esa info, retomar esto como su propia ronda, con su propia
+   tarea de "definir proveedor y KYC" ANTES de tocar código de cobro.**
+   Hasta entonces, el modelo de datos de monedas se deja preparado (columna
+   de origen `ganada` vs `comprada`, ya anticipado desde la tarea 8 del
+   roadmap original) pero sin integrar ningún proveedor.
+
+**Alcance del juego (resumen del pedido del usuario, para que quien lo
+tome no tenga que releer todo el mensaje original):**
+
+- **Casa + espacio de animales.** El jugador tiene una casa con espacio
+  limitado para sus mascotas; ampliar el espacio cuesta subir de nivel O
+  gastar monedas (ganadas completando pendientes/ideas/recordatorios --
+  reusa el sistema de moneda ya existente, tareas 7/11, y el agregador
+  `perfilJuegoDeUsuario` de `rama-perfil-juego`).
+- **Personajes.** Dos personajes nuevos, ninguno existe hoy: (a) un
+  "personaje main" -- el creador/guía del juego, quien explica mecánicas,
+  resuelve dudas, y ofrece la opción de revivir un animal (máximo 3 veces
+  por usuario, después de eso ya no puede); (b) un personaje para la
+  planta-IA ya existente (tareas 8/9) -- hoy la planta no tiene personaje
+  propio en el juego, solo evoluciona visualmente.
+- **Cría y genética.** A diferencia de Happy Pets (razas fijas de normal a
+  legendaria), acá lo legendario sale de RASGOS GENÉTICOS únicos heredados
+  de los padres, no de una raza fija -- necesita diseño de un sistema de
+  genes/herencia real (probabilidades, no un roll fijo).
+- **Salud y enfermedad realistas.** Un animal abandonado (sin alimentar,
+  sin atención) se enferma con patrones inspirados en la vida real
+  (probabilidad de nacer con una condición heredada de un padre, o de
+  enfermarse por negligencia) y puede llegar a "fallecer" tras 3 meses de
+  abandono -- ahí es donde el personaje main ofrece revivirlo (máximo 3
+  veces de por vida por cuenta). A partir de nivel 11, el juego empieza a
+  avisar proactivamente cuando un animal está mal de salud (antes de eso,
+  el usuario tiene que darse cuenta solo -- decisión explícita del
+  usuario, parte de la mecánica de aprendizaje).
+- **Plaza social por emojis.** Espacio donde usuarios pueden comunicarse
+  SOLO con emojis (nunca texto libre) para evitar intercambio de datos
+  personales -- con una advertencia explícita antes de entrar (no
+  compartir número, ubicación, nombre real). Alias de juego por cuenta
+  (`animalover1`, `animalover2`, ...) en vez de mostrar el nombre de
+  usuario real dentro del juego -- **a diferencia del resto de la app
+  hoy** (chat de amigos, trazabilidad, `/amigos`), que sigue mostrando
+  nombres reales sin cambios, porque ahí los usuarios ya se conocen.
+- **Ideas ↔ juego.** El usuario también pidió una ventana para "desarrollar
+  ideas" conectada al mismo ciclo de monedas -- probablemente una
+  extensión de la vista `/ideas` ya existente, no una feature nueva desde
+  cero; decidir el diseño exacto cuando se tome esta tarea.
+
+**Sin asignar todavía -- ninguna de estas tareas tiene rama.** Cuando el
+usuario decida priorizar el juego (después de terminar el tramo de
+chat/amigos), la sesión que lo tome debe: (a) diseñar el esquema de datos
+completo (animales, genes, especies, enfermedades, casa/espacio, mensajes
+de Plaza) como su propio paso documentado acá ANTES de escribir
+`ensureSchema`, mismo criterio que el resto del backlog; (b) trabajar en
+worktree propio, nunca en el clone compartido; (c) NO tocar el modelo de
+pagos reales hasta tener la info pendiente del punto 3 de arriba.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -1264,6 +1264,82 @@ svg[viewBox="0 0 24 24"] {
   }
 }
 
+/* rama-chat-metas */
+.chat-acciones-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.chat-acciones-top .filtro-rango {
+  flex: 1 1 auto;
+}
+
+/* Meta-card compacta para caber dentro de una burbuja de chat -- reusa
+   los mismos estilos de .meta-card (metas.ejs) pero sin el padding/margen
+   pensados para una sección de página completa. */
+.meta-card-chat {
+  padding: 0.7rem 0.85rem;
+  margin: 0.3rem 0 0;
+  max-width: 100%;
+}
+
+.mensaje-propio .meta-card-chat {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.meta-card-chat .meta-card-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.meta-card-chat-borrada {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.chat-compartir-meta {
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.chat-compartir-meta summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0.3rem 0;
+}
+
+.chat-compartir-meta form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.chat-compartir-meta select {
+  flex: 1 1 auto;
+  min-width: 12rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+
+.chat-stats-comparacion {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 1.5rem;
+  font-size: 1.1rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

@@ -4353,6 +4353,24 @@ eliminación de ese repo/bot sin quedar huérfano.
   — `ReferenceError` sin capturar que tumbaba el proceso de Node
   completo (nunca llegó a producción, encontrado probando localmente).
   Ver la sección `rama-racha-viva` para el detalle completo.
+- 2026-08-24 — merge de rama-pruebas-regresion (cbb2ec2) → main vía PR
+  #85: sin conflictos. CI verde (job nuevo `pruebas-integracion`
+  confirmado en verde antes de mergear, no asumido). Cierra las tareas 12
+  (helper compartido de pruebas) y M (suite de pruebas de regresión) — 4
+  pruebas reales con `node:test` contra un `postgres:16` efímero propio
+  del job, nunca la DB de Railway. **Encontró 2 huecos reales de
+  infraestructura nunca notados antes** (ensureSchema() nunca se había
+  corrido contra una Postgres genuinamente vacía): la tabla `session` de
+  `connect-pg-simple` se creaba en una carrera perezosa que podía perder
+  contra la primera request real, y las 4 tablas centrales de la app
+  (`pendientes`/`ideas`/`recordatorios`/`hechos`, heredadas del bot de
+  Telegram original) nunca tuvieron su propio `CREATE TABLE` — contra una
+  DB nueva de cero, `ensureSchema()` reventaba en cadena y ni el registro
+  de un usuario funcionaba. Ambos arreglados directo en `ensureSchema()`
+  (no-op contra Railway, que ya tenía todo). Última de las 4 tareas
+  "chicas" pedidas hoy — quedan cerradas todas antes de retomar el juego
+  grande (ver la sección "Ronda nueva (2026-08-24)"). Ver la sección
+  `rama-pruebas-regresion` para el detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

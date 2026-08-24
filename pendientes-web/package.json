@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node server.js",
-    "ci": "node scripts/verificar.js"
+    "ci": "node scripts/verificar.js",
+    "test:integracion": "node --test test/"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

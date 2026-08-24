@@ -19,3 +19,42 @@ jobs:
           node-version: '20'
       - run: npm install
       - run: npm run ci
+
+  # tarea M del backlog (COORDINACION.md): pruebas de integración reales,
+  # contra una DB de PRUEBA propia de este job (el servicio `postgres` de
+  # abajo, siempre vacía al arrancar -- nunca la DB de producción de
+  # Railway). Job separado de `verificar` a propósito: la parte de
+  # sintaxis/plantillas sigue siendo rápida y sin dependencias, y una falla
+  # de la DB de prueba no la bloquea ni al revés.
+  pruebas-integracion:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pendientes-web
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pruebas
+          POSTGRES_PASSWORD: pruebas
+          POSTGRES_DB: pruebas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://pruebas:pruebas@localhost:5432/pruebas
+      DATABASE_SSL: 'false'
+      SESSION_SECRET: secreto-de-pruebas-ci
+      PORT: '4099'
+      TEST_PORT: '4099'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm run test:integracion

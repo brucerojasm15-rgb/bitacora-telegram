@@ -14,9 +14,16 @@ const nodemailer = require('nodemailer');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// rama-pruebas-regresion: SSL siempre encendido salvo que se pida
+// explícitamente lo contrario con DATABASE_SSL=false -- Railway (y
+// cualquier Postgres gestionado real) lo requiere, así que el default no
+// cambia para producción/desarrollo local contra Railway. Solo lo usa
+// `ci.yml`, contra el servicio `postgres` efímero de GitHub Actions, que
+// no habla SSL -- sin esto, `pg` fallaría el handshake contra esa DB de
+// prueba antes de poder correr ningún test.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
 });
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {

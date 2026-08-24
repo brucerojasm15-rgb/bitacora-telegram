@@ -3973,6 +3973,69 @@ pagos reales hasta tener la info pendiente del punto 3 de arriba.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-pruebas-regresion
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): último de los items "chicos" antes
+  de retomar el juego grande. Cierra la **tarea 12** (helper compartido de
+  pruebas) y la **tarea M** (suite de pruebas de regresión), que dependía
+  de la 12.
+- **Tarea 12 — `scripts/test-helpers.js`**: extrae el patrón que casi cada
+  rama de este archivo reescribía desde cero (`crearUsuarioDescartable`,
+  `borrarUsuarioYDatos`, más `iniciarServidor`/`detenerServidor` para
+  levantar `node server.js` como proceso real). `iniciarServidor` NO
+  importa `server.js` como módulo (no tiene guarda `require.main ===
+  module`, así que importarlo llamaría a `app.listen` igual) -- lo
+  spawnea como subproceso real y espera a ver "Servidor corriendo" en su
+  stdout antes de resolver, nunca un `setTimeout` fijo a ciegas.
+- **Tarea M — `test/integracion.test.js`**: usa `node:test` (built-in
+  desde Node 18/20, sin agregar ninguna dependencia nueva -- "no hace
+  falta un framework pesado" como pedía el enunciado original). 4 pruebas,
+  compartiendo 2-3 cuentas descartables entre todas (no una por test) para
+  no agotar el límite real de registro (`LIMITE_REGISTROS_EXITOSOS_POR_
+  HORA = 5`, que el mismo proceso de server cuenta en memoria durante toda
+  la corrida): (1) capturar+completar un pendiente propio, confirmando que
+  la respuesta JSON de `rama-racha-viva` coincide con la DB real; (2)
+  amistad + mensaje de chat; (3) meta compartida creada por A con un
+  tercero C (nunca con B), compartida en el chat A-B, y B uniéndose --
+  cubre el flujo completo de `rama-chat-metas`; (4) **borrar ambas cuentas
+  al final y confirmar que el server sigue respondiendo** -- este es el
+  motivo real de la suite: las 3 ramas de hoy (`rama-chat-metas`,
+  `rama-fix-metas-huerfanas`, `rama-racha-viva`) encontraron crashes
+  reales (2 de FK, 1 de scope de variable) que solo se detectaron probando
+  a mano contra Railway, nunca por `npm run ci` (sintaxis) ni por revisión
+  de código. Esta prueba deja eso vigilado automáticamente de acá en
+  adelante.
+- **Corrección necesaria en `server.js` para que esto funcione en CI**: el
+  `pool` de Postgres tenía `ssl: { rejectUnauthorized: false }` fijo --
+  correcto contra Railway (y necesario ahí), pero el servicio `postgres`
+  efímero de GitHub Actions no habla SSL, así que el handshake fallaba
+  antes de poder correr ningún test. Se agregó `DATABASE_SSL=false` como
+  vía de escape explícita (default sin cambios: sigue siendo SSL siempre
+  salvo que se pida lo contrario) -- **no es una debilidad de seguridad
+  nueva**, nadie en producción/desarrollo real pasa esa variable, la pone
+  únicamente `ci.yml` contra una DB de prueba efímera.
+- **`.github/workflows/ci.yml`**: nuevo job `pruebas-integracion` (separado
+  de `verificar`, corren en paralelo) con un servicio `postgres:16` propio
+  del job -- siempre vacía al arrancar, `ensureSchema()` la puebla sola,
+  **nunca toca la DB de producción de Railway**. `DATABASE_SSL=false`,
+  `SESSION_SECRET` fijo de prueba, healthcheck de Postgres antes de correr
+  nada.
+- **Probado localmente contra la DB real de Railway** (con SSL, sin
+  `DATABASE_SSL=false`) antes de pushear -- las 4 pruebas pasan y no
+  quedan cuentas de prueba (`tsa*`/`tsb*`/`tsc*`) sin borrar al terminar.
+  **No se pudo probar localmente el camino exacto de CI** (el servicio
+  `postgres` efímero + `DATABASE_SSL=false`) por no haber Docker
+  disponible en esta laptop -- se valida con el run real de GitHub Actions
+  en el PR, revisando `gh pr checks` antes de mergear (no asumido en
+  verde).
+- Archivos tocados: `pendientes-web/server.js` (SSL condicional del
+  `pool`), `pendientes-web/package.json` (script `test:integracion`),
+  `pendientes-web/scripts/test-helpers.js` (nuevo),
+  `pendientes-web/test/integracion.test.js` (nuevo),
+  `.github/workflows/ci.yml` (job nuevo).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —
@@ -5229,7 +5292,7 @@ el tiempo total sin generar conflictos de archivo entre ellas.
   ramas"** para la fórmula exacta, la hora del cron, y todas las
   decisiones que este enunciado dejaba explícitamente pendientes.
 
-- [ ] **12. Helper compartido para pruebas contra la DB real.** Deuda
+- [x] **12. ✅ RESUELTA (2026-08-24, `rama-pruebas-regresion`) — Helper compartido para pruebas contra la DB real.** Deuda
   técnica identificada 2026-08-16, no un pedido de producto: casi cada
   rama del historial de este archivo prueba su trabajo con el mismo patrón
   (crear usuario(s) descartable(s) vía `POST /registro` real, ejercitar la
@@ -5459,7 +5522,7 @@ actualmente en curso (Fase 1):**
   Postgres se desconecta — hoy nadie se entera de una caída hasta que un
   usuario se queja. — asignada a: sin asignar.
 
-- [ ] **M. Suite de pruebas de regresión automatizada.** `npm run ci`
+- [x] **M. ✅ RESUELTA (2026-08-24, `rama-pruebas-regresion`) — Suite de pruebas de regresión automatizada.** `npm run ci`
   (`scripts/verificar.js`) solo valida sintaxis y que las plantillas
   `.ejs` compilan — no prueba comportamiento. Cada feature nueva se prueba
   a mano, una vez, contra la DB real de Railway, con un script `_test_*.js`

@@ -12,9 +12,19 @@
       <p class="error"><%= error %></p>
     <% } else { %>
       <p class="count">
-        Nivel <%= nivelJugador %> · Espacio: <%= animales.length %> / <%= capacidadCasa %>
+        Nivel <%= nivelJugador %> · Espacio: <%= animales.length %> / <%= capacidadCasa %> · <%- include('partials/icono', { nombre: 'moneda' }) %> <%= saldoMoneda %>
         <% if (nacio) { %> — <span class="notificacion">¡Nació un animal nuevo!</span><% } %>
       </p>
+
+      <section class="ajustes-grupo">
+        <h2>Ampliar la casa</h2>
+        <p class="ajustes-nota">Subir de nivel también agranda la casa gratis -- esto es para conseguir espacio ya mismo.</p>
+        <form method="POST" action="/casa/ampliar">
+          <button type="submit" <%= saldoMoneda < costoProximoEspacio ? 'disabled' : '' %>>
+            +1 espacio por <%= costoProximoEspacio %> <%- include('partials/icono', { nombre: 'moneda' }) %>
+          </button>
+        </form>
+      </section>
 
       <% if (espaciosLibres > 0) { %>
         <section class="ajustes-grupo">

@@ -4934,6 +4934,24 @@ eliminación de ese repo/bot sin quedar huérfano.
   sin saldo falla (400), con saldo 2 compras seguidas confirman el costo
   escalando y el registro correcto en `moneda_transacciones`. Ver la
   sección `rama-comprar-espacio-casa` para el detalle completo.
+- 2026-08-24 — merge de rama-cruzar-amigos (979c9e7) → main vía PR #89:
+  sin conflictos. CI verde (ambos jobs). Desplegado en Railway y
+  verificado. Cuarta mecánica -- "cruzar animales entre amigos pero solo
+  animales adultos" (pedido explícito del usuario), cierra lo que
+  `rama-juego-fundacion` dejaba abierto a propósito. Concepto nuevo
+  "adulto" (7 días desde `nacido`, derivado en vivo, aplica también a
+  cruzar animales propios). Cruzar con el animal de un amigo pide
+  consentimiento real (`cruces_solicitudes` nueva, aceptar/rechazar), la
+  cría queda con quien pidió el cruce. **Bug real de FK encontrado y
+  corregido ANTES de mergear** (nunca llegó a producción): `padre_id`/
+  `madre_id` no tenían `ON DELETE` porque antes un padre y su cría
+  siempre eran del mismo usuario -- ahora que un padre puede ser de otro
+  usuario, borrar esa cuenta hubiera reventado por FK mientras la cría de
+  un tercero seguía viva. Corregido con `ON DELETE SET NULL`. Probado
+  contra la DB real incluyendo exactamente ese caso: el dueño del animal
+  "madre" borra su cuenta, la cría del otro usuario sigue viva con
+  `madre_id = NULL`, el server sigue respondiendo. Ver la sección
+  `rama-cruzar-amigos` para el detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

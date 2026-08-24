@@ -4155,6 +4155,20 @@ eliminación de ese repo/bot sin quedar huérfano.
   — separado en lectura (middleware) vs. confirmación real del cliente
   (`POST /logros/marcar-visto`). Ver la sección `rama-logros` para el
   detalle completo.
+- 2026-08-24 — merge de rama-chat-metas (72161dd) → main vía PR #82: sin
+  conflictos. CI verde. Commit de merge `3209065`, desplegado en Railway
+  (deployment `1800c4cf`, SUCCESS). Primer tramo del pedido del usuario de
+  evolucionar zentIA hacia un juego tipo Happy Pets v0.4 — mejora el chat
+  entre amigos (envío por AJAX + índice nuevo, compartir metas propias/
+  compartidas como tarjeta en el chat, unirse a una meta compartida desde
+  ahí, ventana `/chat/estadisticas`). Se encontró y arregló un bug real de
+  FK antes de mergear (`ON DELETE SET NULL` en las columnas nuevas de
+  `mensajes`) y se documentó (sin arreglar, es de otra rama) un hueco
+  preexistente de limpieza de `metas_compartidas` huérfanas. El resto del
+  roadmap del juego (animales, genética, salud, Plaza, apertura de
+  crecimiento, pagos reales) queda documentado en la sección "Ronda nueva
+  (2026-08-24)" más abajo, sin construir todavía. Ver la sección
+  `rama-chat-metas` para el detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

@@ -1661,6 +1661,22 @@ async function ensureSchema() {
       eliminado BOOLEAN NOT NULL DEFAULT false
     )
   `);
+  // rama-cruzar-amigos: `padre_id`/`madre_id` se declararon originalmente
+  // sin `ON DELETE` (NO ACTION por default) porque rama-juego-fundacion
+  // solo permitía cruzar animales del MISMO usuario -- un padre y su cría
+  // siempre se borraban juntos en la misma sentencia (ver el comentario
+  // de `POST /ajustes/eliminar-cuenta` más abajo). Ahora que se puede
+  // cruzar con el animal de un amigo, un padre puede pertenecer a OTRO
+  // usuario -- si ese usuario borra su cuenta, la cría (que sigue viva,
+  // de otro dueño) quedaría con una FK apuntando a una fila borrada,
+  // reventando `POST /ajustes/eliminar-cuenta` con violación de FK (mismo
+  // patrón de bug ya atrapado varias veces esta sesión). Redeclaradas acá
+  // con `ON DELETE SET NULL` -- se autocorrige en el próximo arranque
+  // aunque ya hubiera corrido con el constraint viejo.
+  await pool.query(`ALTER TABLE animales DROP CONSTRAINT IF EXISTS animales_padre_id_fkey`);
+  await pool.query(`ALTER TABLE animales ADD CONSTRAINT animales_padre_id_fkey FOREIGN KEY (padre_id) REFERENCES animales(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE animales DROP CONSTRAINT IF EXISTS animales_madre_id_fkey`);
+  await pool.query(`ALTER TABLE animales ADD CONSTRAINT animales_madre_id_fkey FOREIGN KEY (madre_id) REFERENCES animales(id) ON DELETE SET NULL`);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_animales_usuario ON animales (usuario_id)
   `);
@@ -1692,6 +1708,28 @@ async function ensureSchema() {
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_animales_enfermedades_animal ON animales_enfermedades (animal_id)
+  `);
+  // rama-cruzar-amigos: cruzar animales entre DOS usuarios distintos --
+  // el diseño original de la cría (rama-juego-fundacion) exigía que
+  // ambos animales fueran del mismo usuario justamente porque cruzar con
+  // el animal de otra persona necesita SU consentimiento (es su mascota,
+  // no se puede usar sin pedir permiso). Tabla de solicitud pendiente en
+  // vez de una acción directa -- mismo espíritu que `amistades` (pedir/
+  // aceptar), no una acción unilateral.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cruces_solicitudes (
+      id SERIAL PRIMARY KEY,
+      solicitante_id INT REFERENCES usuarios(id),
+      animal_propio_id INT REFERENCES animales(id),
+      destinatario_id INT REFERENCES usuarios(id),
+      animal_ajeno_id INT REFERENCES animales(id),
+      estado TEXT NOT NULL DEFAULT 'pendiente',
+      creado TIMESTAMPTZ DEFAULT now(),
+      resuelto_en TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_cruces_solicitudes_destinatario ON cruces_solicitudes (destinatario_id, estado)
   `);
   // Estado simple de 1 fila por usuario, no amerita tabla aparte (mismo
   // criterio que `saldo_moneda`/`ia_especie` ya existentes).
@@ -2182,6 +2220,20 @@ function aleloExpresado(locus, alelo1, alelo2) {
   if (def1 && def1.dominante) return alelo1;
   if (def2 && def2.dominante) return alelo2;
   return alelo1;
+}
+
+// rama-cruzar-amigos: "solo animales adultos" (pedido explícito del
+// usuario) exige un concepto de madurez que hasta ahora no existía --
+// nunca se guarda como columna, se deriva en vivo de `nacido` (mismo
+// criterio anti-duplicación que nivel/capacidad de casa). Aplica a TODA
+// cría, no solo entre amigos -- un animal recién nacido tampoco puede
+// criar con uno del mismo usuario, es la misma regla de realismo.
+// Placeholder de balance, mismo criterio que el resto del juego.
+const EDAD_ADULTO_DIAS = 7;
+
+function esAdulto(fechaNacido) {
+  const diasDesdeNacido = (Date.now() - new Date(fechaNacido).getTime()) / (1000 * 60 * 60 * 24);
+  return diasDesdeNacido >= EDAD_ADULTO_DIAS;
 }
 
 function etapaPorMoneda(totalDeVida) {
@@ -5061,31 +5113,76 @@ async function animalesDeUsuarioConGenes(usuarioId) {
   return rows.map((a) => ({
     ...a,
     alelosExpresados: a.genotipo ? alelosExpresadosDe(a.genotipo) : {},
+    esAdulto: esAdulto(a.nacido),
   }));
+}
+
+// rama-cruzar-amigos: animales adultos de amigos ACEPTADOS de `usuarioId`,
+// de la misma especie que `especie` -- usado para armar el selector de
+// "cruzar con el animal de un amigo". Nunca confía en un id de animal que
+// mande el cliente sin revalidar el dueño real y la amistad, acá y en las
+// rutas que reciben el id elegido.
+async function animalesAdultosDeAmigosPorEspecie(usuarioId, especie) {
+  const { rows } = await pool.query(
+    `SELECT a.id, a.nombre, a.usuario_id, u.nombre_usuario, a.nacido
+     FROM animales a
+     JOIN usuarios u ON u.id = a.usuario_id
+     JOIN amistades am ON am.estado = 'aceptada'
+       AND ((am.usuario_a_id = $1 AND am.usuario_b_id = a.usuario_id)
+         OR (am.usuario_b_id = $1 AND am.usuario_a_id = a.usuario_id))
+     WHERE a.especie = $2 AND a.eliminado = false AND a.salud_estado != 'fallecido'
+       AND a.nacido <= now() - ($3::text || ' days')::interval
+     ORDER BY u.nombre_usuario ASC, a.nombre ASC`,
+    [usuarioId, especie, EDAD_ADULTO_DIAS]
+  );
+  return rows;
 }
 
 app.get('/casa', async (req, res) => {
   try {
-    const [perfil, animales] = await Promise.all([
+    const [perfil, animales, solicitudesRecibidas] = await Promise.all([
       perfilJuegoDeUsuario(req.usuarioId),
       animalesDeUsuarioConGenes(req.usuarioId),
+      pool.query(
+        `SELECT cs.id, cs.animal_propio_id, cs.animal_ajeno_id, u.nombre_usuario AS solicitante_nombre,
+                ap.nombre AS nombre_animal_solicitante, ap.especie, aa.nombre AS nombre_mi_animal
+         FROM cruces_solicitudes cs
+         JOIN usuarios u ON u.id = cs.solicitante_id
+         JOIN animales ap ON ap.id = cs.animal_propio_id
+         JOIN animales aa ON aa.id = cs.animal_ajeno_id
+         WHERE cs.destinatario_id = $1 AND cs.estado = 'pendiente'
+         ORDER BY cs.creado DESC`,
+        [req.usuarioId]
+      ).then((r) => r.rows),
     ]);
+    // rama-cruzar-amigos: candidatos de amigos por cada especie DISTINTA
+    // entre mis animales adultos -- se evita repetir la consulta por
+    // especie si tengo varios animales adultos de la misma especie.
+    const especiesAdultasPropias = [...new Set(animales.filter((a) => a.esAdulto).map((a) => a.especie))];
+    const candidatosPorEspecie = {};
+    for (const especie of especiesAdultasPropias) {
+      candidatosPorEspecie[especie] = await animalesAdultosDeAmigosPorEspecie(req.usuarioId, especie);
+    }
     res.render('casa', {
       especies: ESPECIES_ANIMAL,
       animales,
+      candidatosPorEspecie,
+      solicitudesRecibidas,
       nivelJugador: perfil.nivelJugador,
       capacidadCasa: perfil.capacidadCasa,
       espaciosLibres: perfil.capacidadCasa - animales.length,
       saldoMoneda: perfil.saldoMoneda,
       costoProximoEspacio: perfil.costoProximoEspacio,
+      edadAdultoDias: EDAD_ADULTO_DIAS,
       nacio: Number(req.query.nacio) || null,
       error: null,
     });
   } catch (err) {
     console.error('Error consultando la casa:', err.message);
     res.status(500).render('casa', {
-      especies: ESPECIES_ANIMAL, animales: [], nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0,
-      saldoMoneda: 0, costoProximoEspacio: 0, nacio: null,
+      especies: ESPECIES_ANIMAL, animales: [], candidatosPorEspecie: {}, solicitudesRecibidas: [],
+      nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0,
+      saldoMoneda: 0, costoProximoEspacio: 0, edadAdultoDias: EDAD_ADULTO_DIAS, nacio: null,
       error: 'No se pudo leer la base de datos.',
     });
   }
@@ -5225,7 +5322,7 @@ app.post('/animales/:id/cruzar', async (req, res) => {
   try {
     await client.query('BEGIN');
     const { rows: padres } = await client.query(
-      `SELECT id, especie, usuario_id FROM animales
+      `SELECT id, especie, usuario_id, nacido FROM animales
        WHERE id = ANY($1::int[]) AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido'
        FOR UPDATE`,
       [[idPadre, idMadre], req.usuarioId]
@@ -5237,6 +5334,13 @@ app.post('/animales/:id/cruzar', async (req, res) => {
     if (padres[0].especie !== padres[1].especie) {
       await client.query('ROLLBACK');
       return res.status(400).send('Solo se pueden cruzar animales de la misma especie.');
+    }
+    // rama-cruzar-amigos: "solo animales adultos" (pedido explícito del
+    // usuario) -- aplica acá también, no solo entre amigos, mismo criterio
+    // de realismo.
+    if (!padres.every((p) => esAdulto(p.nacido))) {
+      await client.query('ROLLBACK');
+      return res.status(400).send(`Los dos animales deben ser adultos (${EDAD_ADULTO_DIAS} días o más) para cruzar.`);
     }
     const { rows: contadorRows } = await client.query(
       'SELECT COUNT(*)::int AS c FROM animales WHERE usuario_id = $1 AND eliminado = false',
@@ -5269,6 +5373,152 @@ app.post('/animales/:id/cruzar', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// rama-cruzar-amigos: pedido explícito del usuario -- cruzar animales
+// entre amigos, pero solo adultos. A diferencia de /animales/:id/cruzar
+// (entre animales propios, acción directa), cruzar con el animal de un
+// amigo necesita SU consentimiento -- es su mascota. Este endpoint solo
+// crea la solicitud, nunca la cría directo.
+app.post('/animales/:id/solicitar-cruce-amigo', async (req, res) => {
+  const idPropio = Number(req.params.id);
+  const idAjeno = Number(req.body.animal_amigo_id);
+  if (!Number.isInteger(idPropio) || !Number.isInteger(idAjeno)) {
+    return res.status(400).send('Datos inválidos.');
+  }
+  try {
+    const { rows: propioRows } = await pool.query(
+      `SELECT especie, nacido FROM animales
+       WHERE id = $1 AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido'`,
+      [idPropio, req.usuarioId]
+    );
+    if (!propioRows.length) return res.status(403).send('Ese animal no es tuyo.');
+    if (!esAdulto(propioRows[0].nacido)) {
+      return res.status(400).send(`Tu animal debe ser adulto (${EDAD_ADULTO_DIAS} días o más) para cruzar.`);
+    }
+    // Nunca confiar en el id del animal ajeno sin revalidar dueño real +
+    // amistad aceptada + especie + adultez -- mismo criterio que el resto
+    // de la app con datos que vienen del cliente.
+    const { rows: ajenoRows } = await pool.query(
+      `SELECT a.usuario_id, a.especie, a.nacido FROM animales a
+       JOIN amistades am ON am.estado = 'aceptada'
+         AND ((am.usuario_a_id = $2 AND am.usuario_b_id = a.usuario_id)
+           OR (am.usuario_b_id = $2 AND am.usuario_a_id = a.usuario_id))
+       WHERE a.id = $1 AND a.eliminado = false AND a.salud_estado != 'fallecido'`,
+      [idAjeno, req.usuarioId]
+    );
+    if (!ajenoRows.length) return res.status(403).send('Ese animal no es de un amigo tuyo.');
+    if (ajenoRows[0].especie !== propioRows[0].especie) {
+      return res.status(400).send('Solo se pueden cruzar animales de la misma especie.');
+    }
+    if (!esAdulto(ajenoRows[0].nacido)) {
+      return res.status(400).send(`El animal de tu amigo debe ser adulto (${EDAD_ADULTO_DIAS} días o más) para cruzar.`);
+    }
+    await pool.query(
+      `INSERT INTO cruces_solicitudes (solicitante_id, animal_propio_id, destinatario_id, animal_ajeno_id)
+       VALUES ($1, $2, $3, $4)`,
+      [req.usuarioId, idPropio, ajenoRows[0].usuario_id, idAjeno]
+    );
+    enviarPushAUsuario(ajenoRows[0].usuario_id, {
+      title: 'Solicitud para cruzar animales',
+      body: 'Un amigo quiere cruzar uno de sus animales con uno tuyo.',
+      data: { defaultUrl: '/casa' },
+    }).catch((err) => console.error('Error notificando solicitud de cruce:', err.message));
+  } catch (err) {
+    console.error('Error solicitando cruce con amigo:', err.message);
+    return res.status(500).send('No se pudo enviar la solicitud.');
+  }
+  res.redirect('/casa');
+});
+
+app.post('/cruces-solicitudes/:id/responder', async (req, res) => {
+  const id = Number(req.params.id);
+  const respuesta = req.body.respuesta;
+  if (!Number.isInteger(id) || !['aceptar', 'rechazar'].includes(respuesta)) {
+    return res.status(400).send('Datos inválidos.');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: solicitudRows } = await client.query(
+      `SELECT solicitante_id, animal_propio_id, destinatario_id, animal_ajeno_id FROM cruces_solicitudes
+       WHERE id = $1 AND destinatario_id = $2 AND estado = 'pendiente' FOR UPDATE`,
+      [id, req.usuarioId]
+    );
+    if (!solicitudRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).send('Esa solicitud no existe o ya fue respondida.');
+    }
+    const solicitud = solicitudRows[0];
+    if (respuesta === 'rechazar') {
+      await client.query(`UPDATE cruces_solicitudes SET estado = 'rechazada', resuelto_en = now() WHERE id = $1`, [id]);
+      await client.query('COMMIT');
+      return res.redirect('/casa');
+    }
+    // Re-valida TODO de nuevo al aceptar -- el estado real pudo cambiar
+    // desde que se creó la solicitud (el animal se enfermó/falleció, el
+    // solicitante se quedó sin espacio, etc.). Nunca confiar en que
+    // seguía siendo válido solo porque lo era al pedirlo.
+    const { rows: animalesRows } = await client.query(
+      `SELECT id, usuario_id, especie, nacido FROM animales
+       WHERE id = ANY($1::int[]) AND eliminado = false AND salud_estado != 'fallecido' FOR UPDATE`,
+      [[solicitud.animal_propio_id, solicitud.animal_ajeno_id]]
+    );
+    if (animalesRows.length !== 2) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Uno de los dos animales ya no está disponible para cruzar.');
+    }
+    if (!animalesRows.every((a) => esAdulto(a.nacido))) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Los dos animales deben seguir siendo adultos.');
+    }
+    if (animalesRows[0].especie !== animalesRows[1].especie) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Los animales ya no son de la misma especie.');
+    }
+    const { rows: contadorRows } = await client.query(
+      'SELECT COUNT(*)::int AS c FROM animales WHERE usuario_id = $1 AND eliminado = false',
+      [solicitud.solicitante_id]
+    );
+    const perfilSolicitante = await perfilJuegoDeUsuario(solicitud.solicitante_id);
+    if (contadorRows[0].c >= perfilSolicitante.capacidadCasa) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Tu amigo ya no tiene espacio en su casa para la cría -- avisale que libere espacio.');
+    }
+    const { rows: genesRows } = await client.query(
+      'SELECT animal_id, locus, alelo_1, alelo_2 FROM animales_genes WHERE animal_id = ANY($1::int[])',
+      [[solicitud.animal_propio_id, solicitud.animal_ajeno_id]]
+    );
+    const genesPorAnimal = { [solicitud.animal_propio_id]: {}, [solicitud.animal_ajeno_id]: {} };
+    for (const g of genesRows) {
+      genesPorAnimal[g.animal_id][g.locus] = { alelo_1: g.alelo_1, alelo_2: g.alelo_2 };
+    }
+    const genotipoCria = generarGenotipoDeCria(genesPorAnimal[solicitud.animal_propio_id], genesPorAnimal[solicitud.animal_ajeno_id]);
+    // La cría queda con el usuario SOLICITANTE -- decisión explícita
+    // (documentada en COORDINACION.md): quien pide el cruce es quien se
+    // queda con la cría, el dueño del animal ajeno solo prestó a su
+    // mascota. Los padres quedan cruzados entre las 2 cuentas a
+    // propósito (padre_id/madre_id ahora sí pueden ser de otro usuario,
+    // ver ON DELETE SET NULL en ensureSchema).
+    const cria = await insertarAnimal(client, {
+      usuarioId: solicitud.solicitante_id, especie: animalesRows[0].especie, nombre: null,
+      padreId: solicitud.animal_propio_id, madreId: solicitud.animal_ajeno_id, genotipo: genotipoCria,
+    });
+    await client.query(`UPDATE cruces_solicitudes SET estado = 'aceptada', resuelto_en = now() WHERE id = $1`, [id]);
+    await client.query('COMMIT');
+    enviarPushAUsuario(solicitud.solicitante_id, {
+      title: '¡Nació un animal nuevo!',
+      body: 'Tu amigo aceptó cruzar animales -- revisa tu casa.',
+      data: { defaultUrl: `/casa?nacio=${cria.id}` },
+    }).catch((err) => console.error('Error notificando cría por cruce de amigos:', err.message));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error respondiendo solicitud de cruce:', err.message);
+    return res.status(500).send('No se pudo procesar la respuesta.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/casa');
 });
 
 // Revivir: 3 veces POR CUENTA de por vida (decisión confirmada
@@ -5684,13 +5934,24 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     // logros_desbloqueados.usuario_id tampoco tiene ON DELETE CASCADE.
     await client.query('DELETE FROM logros_desbloqueados WHERE usuario_id = $1', [usuarioId]);
 
+    // rama-cruzar-amigos: se borra la solicitud de cruce ENTERA si
+    // cualquiera de los dos usuarios involucrados es el que se está
+    // borrando -- antes de tocar `animales`, porque esta tabla referencia
+    // animales de AMBOS lados y ya no se puede asumir que el otro usuario
+    // también se está borrando en la misma operación.
+    await client.query(
+      'DELETE FROM cruces_solicitudes WHERE solicitante_id = $1 OR destinatario_id = $1',
+      [usuarioId]
+    );
     // rama-juego-fundacion: animales_enfermedades y animales_genes primero
-    // (referencian animal_id sin ON DELETE CASCADE), animales al final --
-    // en una sola sentencia que borra TODOS los animales del usuario a la
-    // vez, así que las referencias propias entre padre_id/madre_id (cría
-    // v1 es siempre entre animales del MISMO usuario, nunca cruza cuentas)
-    // no revientan por FK: Postgres valida las referencias contra el
-    // estado de la tabla al final de la sentencia, no fila por fila.
+    // (referencian animal_id sin ON DELETE CASCADE), animales al final.
+    // rama-cruzar-amigos: ya NO se puede asumir que padre_id/madre_id
+    // apuntan siempre a un animal del MISMO usuario (ahora se puede criar
+    // con el animal de un amigo) -- por eso esas 2 columnas se
+    // redeclararon `ON DELETE SET NULL` más arriba en `ensureSchema()`:
+    // si el animal de un amigo (padre/madre de una cría que sigue viva de
+    // OTRO usuario) se borra acá, la cría no revienta, solo pierde esa
+    // referencia.
     await client.query(
       `DELETE FROM animales_enfermedades WHERE animal_id IN (SELECT id FROM animales WHERE usuario_id = $1)`,
       [usuarioId]

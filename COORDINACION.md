@@ -4530,6 +4530,65 @@ después.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-cruzar-amigos
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): cuarta mecánica -- "cruzar animales
+  entre amigos pero solo animales adultos". Cierra explícitamente el
+  punto que el diseño original (`rama-juego-fundacion`) dejaba abierto a
+  propósito: "si la cría entre animales de DOS usuarios distintos (amigos)
+  se habilita en esta primera versión o en una ronda después" -- se
+  habilita ahora.
+- **Concepto nuevo: "adulto"**, no existía hasta esta rama. Se deriva en
+  vivo de `animales.nacido` (nunca una columna nueva, mismo criterio
+  anti-duplicación de siempre) -- `EDAD_ADULTO_DIAS = 7` (placeholder de
+  balance). **Aplica a TODA cría, no solo entre amigos**: se agregó
+  también a `POST /animales/:id/cruzar` (entre animales propios) -- un
+  animal recién nacido no debería poder criar tampoco con uno del mismo
+  dueño, es la misma regla de realismo, y el diseño original no la había
+  incluido ahí.
+- **Consentimiento real, no una acción unilateral**: cruzar con el animal
+  de un amigo no ejecuta la cría directo -- crea una fila en
+  `cruces_solicitudes` (nueva), el dueño del animal ajeno la ve en su
+  `/casa` y puede Aceptar o Rechazar. Al aceptar, TODO se revalida de
+  cero (especie, adultez, vivo, espacio del solicitante) por si el
+  estado real cambió desde que se pidió -- nunca se confía en que seguía
+  siendo válido solo porque lo era al crear la solicitud.
+- **Decisión de diseño explícita (documentada acá, no venía en el
+  original)**: la cría queda con el usuario SOLICITANTE, no con el dueño
+  del animal prestado -- "quien pide, se queda con la cría; el otro solo
+  prestó a su mascota".
+- **Bug real de FK encontrado y corregido ANTES de mergear, sin haber
+  llegado a producción**: `animales.padre_id`/`madre_id` se habían
+  declarado originalmente (rama-juego-fundacion) sin `ON DELETE`, seguro
+  en ese momento porque un padre y su cría siempre eran del MISMO usuario
+  y se borraban juntos en la misma sentencia. Ahora que un padre puede
+  ser de OTRO usuario, si ese usuario borra su cuenta mientras la cría
+  (de un tercero) sigue viva, `POST /ajustes/eliminar-cuenta` hubiera
+  reventado con violación de FK -- mismo patrón de bug ya atrapado varias
+  veces esta sesión, esta vez encontrado por análisis antes de escribir
+  la prueba, no por la prueba misma. Corregido con `ON DELETE SET NULL`
+  en ambas columnas (mismo patrón `DROP CONSTRAINT IF EXISTS` + `ADD
+  CONSTRAINT` para autocorregirse si esta rama ya había corrido con el
+  constraint viejo). También se agregó el borrado de
+  `cruces_solicitudes` (por cualquiera de los 2 usuarios involucrados) al
+  borrar una cuenta, antes de tocar `animales`.
+- **Probado de punta a punta contra la DB real de Railway**, incluido el
+  caso de riesgo que motivó el fix de arriba: pedir cruce siendo cría
+  (400), pedir y rechazar (no crea ningún animal), pedir y aceptar (cría
+  real con género/padres cruzados entre las 2 cuentas, genes heredados de
+  verdad), y **B (dueño del animal madre de la cría de A) borra su cuenta
+  -- confirmado que la cría de A sigue viva con `madre_id = NULL` y el
+  server sigue respondiendo 200**, no el crash que hubiera pasado sin el
+  fix de la FK.
+- Archivos tocados: `server.js` (`ensureSchema` con la tabla nueva y el
+  fix de FK, `esAdulto`/`EDAD_ADULTO_DIAS`,
+  `animalesAdultosDeAmigosPorEspecie`, `GET /casa` extendida, 2 rutas
+  nuevas, `POST /animales/:id/cruzar` con el chequeo de adultez, `POST
+  /ajustes/eliminar-cuenta`), `views/casa.ejs` (solicitudes pendientes,
+  selector de cruce con amigos, badge de adulto/cría).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

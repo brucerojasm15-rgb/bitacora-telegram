@@ -5067,6 +5067,23 @@ eliminación de ese repo/bot sin quedar huérfano.
   cruce, reusando `POST /animales/:id/solicitar-cruce-amigo` de
   `rama-cruzar-amigos` tal cual. Sin cambios de esquema. Ver la sección
   `rama-visitar-casa-amigo` para el detalle completo.
+- 2026-08-24 — merge de rama-login-lockscreen (1b18c40) → main vía PR
+  #91: sin conflictos. CI verde (ambos jobs). Desplegado en Railway.
+  **No es tarea del juego** -- pedido de diseño aparte: `/login` ahora se
+  siente como la pantalla de bloqueo de un sistema operativo (recuerda al
+  último usuario del dispositivo vía `localStorage`, muestra su planta
+  como avatar circular + un solo campo, PIN o contraseña según el método
+  real de la última sesión, en vez de pedir usuario+contraseña siempre).
+  El fondo "blur" reusa el aurora que ya existía. Sin dato cacheado, el
+  formulario completo de siempre queda intacto. **Bug real encontrado y
+  corregido antes de mergear** (por revisión, no por la prueba):
+  `POST /registro/email` nunca seteaba el método de login -- una cuenta
+  100% por email hubiera quedado cacheada pidiendo un PIN que nunca tuvo.
+  **Sin verificación visual en navegador real** (sin herramienta de
+  automatización disponible esta sesión) -- probado solo por HTTP/HTML
+  que el markup y los datos son correctos. Pendiente que el usuario lo
+  revise en vivo. Ver la sección `rama-login-lockscreen` para el detalle
+  completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

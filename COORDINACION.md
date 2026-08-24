@@ -2809,9 +2809,10 @@ cual, dentro de una transacción `BEGIN`/`COMMIT`/`ROLLBACK`:**
 
 ### rama-login-email
 - Estado: **mergeada a main vía PR #68 (2026-08-22), desplegada en
-  Railway**. Ver "Historial de merges a main". Pendiente antes de
-  anunciar a usuarios reales: `GMAIL_APP_PASSWORD` real en Railway (ver
-  esa misma entrada del historial).
+  Railway**. Ver "Historial de merges a main". ~~Pendiente antes de
+  anunciar a usuarios reales: `GMAIL_APP_PASSWORD` real en Railway~~ —
+  **✅ resuelto 2026-08-24**, ver el detalle en esa misma entrada del
+  historial.
 - Retomada en esta sesión: se hizo `git rebase origin/main` (3 conflictos
   triviales, todos por inserciones en el mismo punto de
   `COORDINACION.md`/`.env.example`/`server.js`, resueltos conservando
@@ -4430,6 +4431,22 @@ eliminación de ese repo/bot sin quedar huérfano.
   anunciar a usuarios reales: configurar `GMAIL_APP_PASSWORD` real en
   Railway (mismo patrón que `GROQ_API_KEY` antes) -- sin eso el reseteo
   de contraseña por email no envía el correo de verdad.
+  **✅ Resuelto 2026-08-24**: el usuario generó un App Password real
+  (myaccount.google.com/apppasswords) y lo pasó por chat -- configurado
+  `GMAIL_USER=brucerojasm15@gmail.com` + `GMAIL_APP_PASSWORD` en Railway
+  vía `railway variables --set` (CLI, no había dashboard a mano), más un
+  redeploy explícito (`railway redeploy`) para que el proceso ya corriendo
+  los tomara -- las variables de entorno no se recargan solas en un
+  proceso Node vivo. **Probado de punta a punta contra producción real**,
+  no asumido: registrada una cuenta descartable por email
+  (`brucerojasm15+ztest*@gmail.com`, alias `+` de Gmail -- llega a la
+  misma bandeja real del usuario para que la vea de verdad, no un email
+  inventado que rebota), pedido `/recuperar-email`, confirmado que no
+  quedó ningún error en los logs de Railway (`enviarEmailReseteo` solo
+  loggea en el `catch`, silencio = éxito), y la cuenta descartable borrada
+  después por la ruta real. **Queda pendiente que el usuario confirme
+  visualmente que el correo llegó a su bandeja** -- el chequeo de logs
+  dice que el envío no reventó, no que Gmail lo entregó de verdad.
 - 2026-08-22 — merge de rama-fix-doble-release (8af7422) → main vía PR
   #67: sin conflictos. CI verde. Commit de merge `d5aeff0`. Desplegado en
   Railway y verificado SUCCESS. Bug de crash (doble `client.release()`)

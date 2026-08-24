@@ -14,6 +14,8 @@ necesita su propia copia de `pendientes-web/.env` (ver `.env.example`).
 | `ACCESS_KEY` | Clave de acceso simple (legada, ver nota en `server.js`) | — |
 | `SESSION_SECRET` | Firma la cookie de sesión (login real) | — |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Notificaciones push del navegador | — |
+| `GMAIL_USER` | Cuenta Gmail que manda los correos (`brucerojasm15@gmail.com`) | 2026-08-24 |
+| `GMAIL_APP_PASSWORD` | App Password de esa cuenta (SMTP vía nodemailer) -- recuperación de contraseña por email (rama-login-email) | 2026-08-24 -- generado en myaccount.google.com/apppasswords, configurado vía `railway variables --set` (CLI, sin dashboard a mano) + `railway redeploy` explícito |
 
 Ninguna de estas se ha rotado nunca desde que se creó. No es urgente rotarlas
 salvo sospecha de filtración — pero si se rota `SESSION_SECRET`, todas las

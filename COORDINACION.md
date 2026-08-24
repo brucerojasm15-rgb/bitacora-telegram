@@ -5176,6 +5176,18 @@ eliminación de ese repo/bot sin quedar huérfano.
   (no `element.click()` programático) contra Neon. Verificado también en
   vivo contra producción tras el deploy. CI + test suite de integración
   (4/4) en verde.
+- 2026-08-24 — merge de rama-chat-visible (07a847f) → main vía PR #96:
+  sin conflictos. CI verde (ambos jobs). Desplegado en Render. Pedido
+  del usuario: "que el chat con amigos sea más visible" -- antes solo se
+  llegaba entrando a `/amigos` desde el menú de pantalla completa.
+  Solución: botón de chat en la barra superior fija (visible en toda la
+  app) con badge de mensajes sin leer, reusando `GET /notificaciones`
+  (ya existía completo, nunca conectado a ninguna vista -- su propio
+  comentario en `server.js` ya decía "pensado para... el menú de
+  navegación"). Contador 100% client-side (un fetch al cargar), sin
+  sumarle carga al middleware que corre en cada request logueado.
+  Probado con 2 cuentas reales + amistad + mensaje sin leer contra Neon,
+  confirmado visualmente con Chrome real (`puppeteer-core` local).
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

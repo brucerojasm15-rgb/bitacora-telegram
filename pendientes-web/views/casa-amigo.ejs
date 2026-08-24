@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: nombreAmigo ? ('Casa de ' + nombreAmigo) : 'Casa de un amigo' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'pata' }) %> Casa de <%= nombreAmigo || 'un amigo' %></h1>
+    <a class="btn-link" href="/amigos"><%- include('partials/icono', { nombre: 'flecha-izq' }) %> Volver a amigos</a>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else if (animales.length === 0) { %>
+      <p class="empty">Todavía no tiene ningún animal.</p>
+    <% } else { %>
+      <% animales.forEach((a) => { %>
+        <section class="meta-card <%= a.salud_estado !== 'sano' ? 'meta-inactiva' : '' %>">
+          <div class="meta-card-header">
+            <h2><%= a.nombre || ('Sin nombre (' + a.especie + ')') %><% if (a.es_legendario) { %> ✨<% } %></h2>
+            <span class="meta-estado-badge"><%= a.salud_estado %></span>
+          </div>
+          <p class="meta-progreso-texto">
+            <%= a.especie.charAt(0).toUpperCase() + a.especie.slice(1) %><% if (a.es_legendario) { %> — <strong>legendario</strong><% } %>
+            — <%= a.esAdulto ? 'adulto' : 'cría' %>
+          </p>
+          <p class="meta-progreso-texto">
+            <% Object.entries(a.alelosExpresados).filter(([locus]) => locus !== 'salud').forEach(([locus, alelo], i) => { %>
+              <% if (i > 0) { %> · <% } %><code><%= locus %>: <%= alelo %></code>
+            <% }) %>
+          </p>
+
+          <% const misCandidatos = (a.esAdulto && a.salud_estado !== 'fallecido') ? (misAnimalesPorEspecie[a.especie] || []) : []; %>
+          <% if (misCandidatos.length > 0) { %>
+            <form method="POST" class="meta-card-acciones form-cruce-amigo">
+              <input type="hidden" name="animal_amigo_id" value="<%= a.id %>">
+              <select name="mi_animal_id" aria-label="Cruzar con tu animal" required>
+                <% misCandidatos.forEach((m) => { %>
+                  <option value="<%= m.id %>"><%= m.nombre || ('Sin nombre #' + m.id) %></option>
+                <% }) %>
+              </select>
+              <button type="submit">Pedir cruce</button>
+            </form>
+          <% } %>
+        </section>
+      <% }) %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+<script>
+  // rama-visitar-casa-amigo: la ruta real es POST /animales/<mi_animal_id>/
+  // solicitar-cruce-amigo -- <mi_animal_id> va en la URL, no en el body,
+  // así que se arma la action justo antes de enviar según lo elegido en
+  // el <select>. Sin esto habría que duplicar la ruta para aceptar el id
+  // por body, y ya existe y está probada tal cual desde rama-cruzar-amigos.
+  document.querySelectorAll('.form-cruce-amigo').forEach((form) => {
+    form.addEventListener('submit', () => {
+      const miAnimalId = form.querySelector('select[name="mi_animal_id"]').value;
+      form.action = '/animales/' + miAnimalId + '/solicitar-cruce-amigo';
+    });
+  });
+</script>
+</body>
+</html>

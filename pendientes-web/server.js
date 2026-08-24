@@ -5188,6 +5188,57 @@ app.get('/casa', async (req, res) => {
   }
 });
 
+// rama-visitar-casa-amigo: vista de solo lectura -- nunca se exponen acá
+// las acciones privadas de cuidado (alimentar, nombrar, revivir, ampliar
+// la casa), solo mirar y, si corresponde, pedir un cruce. Reusa
+// `animalesDeUsuarioConGenes` tal cual (ya es genérica por usuarioId, no
+// hacía falta cambiar nada ahí).
+app.get('/casa/:usuarioId', async (req, res) => {
+  const usuarioIdVisitado = Number(req.params.usuarioId);
+  if (!Number.isInteger(usuarioIdVisitado)) return res.status(400).send('id inválido.');
+  if (usuarioIdVisitado === req.usuarioId) return res.redirect('/casa');
+  try {
+    const { rows: amistadRows } = await pool.query(
+      `SELECT 1 FROM amistades WHERE estado = 'aceptada' AND
+       ((usuario_a_id = $1 AND usuario_b_id = $2) OR (usuario_a_id = $2 AND usuario_b_id = $1))`,
+      [req.usuarioId, usuarioIdVisitado]
+    );
+    if (!amistadRows.length) {
+      return res.status(403).render('casa-amigo', {
+        nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, usuarioIdVisitado,
+        error: 'Ese usuario no es tu amigo.',
+      });
+    }
+    const [{ rows: usuarioRows }, animales, misAnimales] = await Promise.all([
+      pool.query('SELECT nombre_usuario FROM usuarios WHERE id = $1', [usuarioIdVisitado]),
+      animalesDeUsuarioConGenes(usuarioIdVisitado),
+      animalesDeUsuarioConGenes(req.usuarioId),
+    ]);
+    // Mis animales adultos, agrupados por especie -- para poder ofrecer,
+    // por cada animal adulto del amigo, un selector con CUÁLES de mis
+    // animales podrían cruzar (sin esto, habría que abrir mi propia casa
+    // aparte para saberlo).
+    const misAnimalesPorEspecie = {};
+    for (const a of misAnimales) {
+      if (!a.esAdulto) continue;
+      (misAnimalesPorEspecie[a.especie] = misAnimalesPorEspecie[a.especie] || []).push({ id: a.id, nombre: a.nombre });
+    }
+    res.render('casa-amigo', {
+      nombreAmigo: usuarioRows[0] ? usuarioRows[0].nombre_usuario : null,
+      animales,
+      misAnimalesPorEspecie,
+      usuarioIdVisitado,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando la casa de un amigo:', err.message);
+    res.status(500).render('casa-amigo', {
+      nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, usuarioIdVisitado,
+      error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
 // Adoptar: crea un animal nuevo SIN padres (genotipo sorteado). Repetible
 // mientras haya espacio en la casa -- es la forma de conseguir variedad
 // sin depender solo de la cría (que necesita 2 animales ya existentes).

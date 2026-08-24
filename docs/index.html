@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>zentIA -- despertando</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --fondo: #101418;
+    --tarjeta: #1a2028;
+    --texto: #eef2f6;
+    --acento: #7fd6a3;
+    --acento2: #f4c86b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    background: radial-gradient(circle at 50% 20%, #1c232c, var(--fondo));
+    color: var(--texto);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  .tarjeta {
+    max-width: 420px;
+    width: 100%;
+  }
+  .mascota {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 20px;
+    position: relative;
+    animation: flotar 2.4s ease-in-out infinite;
+  }
+  @keyframes flotar {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .mascota svg { width: 100%; height: 100%; display: block; }
+  .cola {
+    transform-origin: 80% 80%;
+    animation: mover-cola 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes mover-cola {
+    from { transform: rotate(-8deg); }
+    to { transform: rotate(14deg); }
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .mensaje {
+    min-height: 1.4em;
+    color: #b9c3cd;
+    font-size: 0.98rem;
+    margin: 0 0 24px;
+  }
+  .barra {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: #262f3a;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .barra-relleno {
+    height: 100%;
+    width: 12%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--acento), var(--acento2));
+    transition: width 1.2s ease;
+  }
+  .segundos {
+    font-size: 0.8rem;
+    color: #6d7885;
+  }
+  .enlace-directo {
+    display: inline-block;
+    margin-top: 22px;
+    font-size: 0.82rem;
+    color: #6d7885;
+  }
+  .enlace-directo a { color: #9fb0bf; }
+</style>
+</head>
+<body>
+  <div class="tarjeta">
+    <div class="mascota" aria-hidden="true">
+      <svg viewBox="0 0 100 100">
+        <ellipse class="cola" cx="78" cy="70" rx="14" ry="6" fill="#7fd6a3"/>
+        <ellipse cx="50" cy="58" rx="34" ry="26" fill="#7fd6a3"/>
+        <circle cx="34" cy="34" r="12" fill="#7fd6a3"/>
+        <circle cx="66" cy="34" r="12" fill="#7fd6a3"/>
+        <circle cx="34" cy="34" r="6" fill="#101418"/>
+        <circle cx="66" cy="34" r="6" fill="#101418"/>
+        <circle cx="42" cy="56" r="4" fill="#101418"/>
+        <circle cx="58" cy="56" r="4" fill="#101418"/>
+        <path d="M46 66 Q50 70 54 66" stroke="#101418" stroke-width="3" fill="none" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <h1>Despertando el servidor</h1>
+    <p class="mensaje" id="mensaje">Dándole de comer...</p>
+    <div class="barra"><div class="barra-relleno" id="barra"></div></div>
+    <p class="segundos" id="segundos">0s</p>
+    <p class="enlace-directo">¿Se está tardando mucho? <a href="https://bitacora-telegram.onrender.com" id="enlace-manual">Entrar directo</a></p>
+  </div>
+
+<script>
+  var DESTINO = 'https://bitacora-telegram.onrender.com';
+  var mensajes = [
+    'Dándole de comer...',
+    'Estirando las patas...',
+    'Abriendo los ojos...',
+    'Calentando motores...',
+    'Ya casi, un ratito más...',
+    'Preparando tus pendientes...',
+    'Últimos ajustes...'
+  ];
+  var elMensaje = document.getElementById('mensaje');
+  var elBarra = document.getElementById('barra');
+  var elSegundos = document.getElementById('segundos');
+  var inicio = Date.now();
+  var listo = false;
+
+  function actualizarProgreso() {
+    var s = Math.floor((Date.now() - inicio) / 1000);
+    elSegundos.textContent = s + 's';
+    var pct = Math.min(92, 12 + s * 1.8);
+    elBarra.style.width = pct + '%';
+    var idx = Math.min(mensajes.length - 1, Math.floor(s / 8));
+    elMensaje.textContent = mensajes[idx];
+  }
+
+  function irAlDestino() {
+    if (listo) return;
+    listo = true;
+    elBarra.style.width = '100%';
+    elMensaje.textContent = '¡Listo! Entrando...';
+    window.location.href = DESTINO;
+  }
+
+  function intentar() {
+    if (listo) return;
+    var img = new Image();
+    var terminado = false;
+    var vencer = setTimeout(function () {
+      if (!terminado) { terminado = true; programarSiguiente(); }
+    }, 5000);
+    img.onload = img.onerror = function () {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(vencer);
+      irAlDestino();
+    };
+    img.src = DESTINO + '/favicon.ico?t=' + Date.now();
+  }
+
+  function programarSiguiente() {
+    if (listo) return;
+    setTimeout(intentar, 2500);
+  }
+
+  setInterval(actualizarProgreso, 500);
+  intentar();
+</script>
+</body>
+</html>

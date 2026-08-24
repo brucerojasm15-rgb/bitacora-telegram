@@ -5693,6 +5693,77 @@ real, no se adivina una respuesta.
 
 ---
 
+## Incidente: caída de Railway y migración a Render + Neon (2026-08-24)
+
+**Qué pasó:** la cuenta de Railway se quedó sin método de pago. Railway
+mató el contenedor del servicio `bitacora-telegram` (SIGTERM) y bloqueó las
+conexiones nuevas a Postgres (`ECONNRESET` incluso en la URL pública). La
+app estuvo caída en producción varias horas ese mismo día.
+
+**Qué se hizo, en orden:**
+1. Diagnóstico con `railway status`/`railway logs` -- confirmado que era
+   falta de método de pago, no un bug de la app (el server sí arrancaba:
+   "Servidor corriendo en http://localhost:8080" antes del SIGTERM).
+2. Se investigaron alternativas de hosting **sin tarjeta** (Render, Glitch,
+   Fly.io, Koyeb, Cyclic, Vercel, Cloudflare Workers, Deno Deploy) -- ver
+   detalle completo en la sección de arriba, "Análisis de punto de
+   equilibrio", que motivó parte de esta comparación. Fly.io y Koyeb piden
+   tarjeta igual, Cyclic cerró en 2024. Se eligió **Render** (Web Service,
+   tier gratis, sin tarjeta, cero reescritura de código) sobre Vercel
+   (rápido pero su plan gratis prohíbe uso comercial, choca con la posible
+   suscripción del análisis de arriba) y Deno Deploy (rápido pero
+   compatibilidad con Express sin confirmar).
+3. Se recuperaron los datos desde el respaldo automático diario
+   (`.github/workflows/backup-db.yml`, corrió esa mañana a las 09:47 UTC
+   -- **se perdió lo que haya pasado entre esa hora y la caída**, no hay
+   forma de recuperar eso). Se restauraron en **Neon** (Postgres, tier
+   gratis, sin tarjeta) usando un workflow nuevo,
+   `.github/workflows/restore-db.yml` (primera vez que se prueba
+   restaurar un respaldo real -- cerraba un hueco pendiente anotado desde
+   que se creó el backup automático).
+4. **Hallazgo real, anotar para el futuro:** el connection string de Neon
+   con `-pooler` en el host (PgBouncer, modo transacción) no veía las
+   tablas recién creadas por `pg_restore` -- la conexión **directa** (sin
+   `-pooler`) sí. Se usa la directa como `DATABASE_URL` de producción.
+   Ver detalle en `SECRETS.md`.
+5. Se agregó `render.yaml` (Blueprint de Render, `rootDir: pendientes-web`,
+   variables como `sync: false`) y se cargaron las 8 variables reales por
+   la API de Render (`PUT /v1/services/{id}/env-vars`) con los valores que
+   todavía eran legibles en Railway pese al servicio caído.
+6. **Trampa encontrada:** el primer deploy del Blueprint corrió con las
+   variables vacías (el usuario no las llenó a mano) y quedó en
+   crash-loop (`Error: secret option required for sessions`) hasta que
+   Render lo marcó `update_failed` por timeout -- aunque el proceso llegó
+   a levantar bien una vez que las variables ya estaban cargadas. La
+   solución fue disparar un deploy limpio nuevo por API
+   (`POST /v1/services/{id}/deploys`) una vez confirmadas las variables;
+   ese sí quedó `live`.
+7. Se armó una pantalla de carga (`docs/index.html`, GitHub Pages, nunca se
+   duerme) para el cold-start de Render (~1 min tras 15 min sin tráfico)
+   -- hace polling contra `/favicon.ico` del servicio real y redirige
+   apenas responde, en vez de mostrar una pantalla en blanco. Hubo que
+   agregar `docs/.nojekyll` porque el build legacy de GitHub Pages
+   (Jekyll) fallaba solo sobre el HTML.
+
+**Estado final confirmado:**
+- App viva en `https://bitacora-telegram.onrender.com` (login renderiza
+  bien, 200 OK).
+- Link real para compartir/usar:
+  `https://brucerojasm15-rgb.github.io/bitacora-telegram/` (pantalla de
+  carga + redirect).
+- Datos verificados en Neon: 14 usuarios, 1165 ideas, 21 sesiones, y el
+  resto de tablas con conteos coherentes con la app real.
+- Railway quedó sin tocar más allá de esto (no se borró el proyecto, por
+  si hace falta rescatar algo después) -- ya no es donde vive nada de
+  producción.
+
+**Pendiente real que queda de este incidente:** confirmar con el usuario,
+usando la app en vivo (no solo curl), que el login, el registro y el flujo
+completo funcionan -- este incidente se resolvió a nivel infraestructura
+pero no hubo todavía un login real de prueba en el Render nuevo.
+
+---
+
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
 
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`

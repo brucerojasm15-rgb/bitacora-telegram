@@ -1535,6 +1535,35 @@ svg[viewBox="0 0 24 24"] {
   opacity: 0.75;
 }
 
+/* rama-patio-animado */
+.patio {
+  position: relative;
+  height: 180px;
+  border-radius: var(--radio, 16px);
+  background: linear-gradient(180deg, rgba(22, 163, 74, 0.08), rgba(22, 163, 74, 0.03));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.patio-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  pointer-events: none;
+  will-change: left, top, transform;
+}
+
+.patio-jugando {
+  animation: patio-wiggle 0.3s ease-in-out infinite alternate;
+}
+
+@keyframes patio-wiggle {
+  from { transform: rotate(-8deg) scale(1.1); }
+  to { transform: rotate(8deg) scale(1.1); }
+}
+
 @keyframes burbuja-entra {
   from {
     opacity: 0;

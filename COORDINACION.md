@@ -4021,20 +4021,52 @@ pagos reales hasta tener la info pendiente del punto 3 de arriba.
   `SESSION_SECRET` fijo de prueba, healthcheck de Postgres antes de correr
   nada.
 - **Probado localmente contra la DB real de Railway** (con SSL, sin
-  `DATABASE_SSL=false`) antes de pushear -- las 4 pruebas pasan y no
+  `DATABASE_SSL=false`) antes de cada push -- las 4 pruebas pasan y no
   quedan cuentas de prueba (`tsa*`/`tsb*`/`tsc*`) sin borrar al terminar.
-  **No se pudo probar localmente el camino exacto de CI** (el servicio
-  `postgres` efímero + `DATABASE_SSL=false`) por no haber Docker
-  disponible en esta laptop -- se valida con el run real de GitHub Actions
-  en el PR, revisando `gh pr checks` antes de mergear (no asumido en
-  verde).
+  **El camino exacto de CI (servicio `postgres` efímero + `DATABASE_SSL=
+  false`) no se pudo probar localmente** por no haber Docker disponible en
+  esta laptop -- se validó con 3 runs reales de GitHub Actions en el PR
+  (`gh pr checks`, nunca asumido en verde), y encontró **2 huecos reales
+  de infraestructura que nunca se habían notado, porque nunca se había
+  corrido `ensureSchema()` contra una Postgres genuinamente vacía**:
+  1. **La tabla `session` de `connect-pg-simple`** se crea con
+     `createTableIfMissing: true`, pero de forma perezosa en segundo
+     plano al inicializar el store -- contra una DB completamente nueva,
+     la primera request real (`POST /registro`) podía llegar antes de que
+     esa tabla existiera todavía, reventando con 500. En Railway nunca se
+     notó porque esa tabla ya existe ahí desde hace tiempo. Arreglado
+     creándola explícitamente en `ensureSchema()` (que siempre se espera
+     antes de `app.listen`), con el mismo esquema exacto que
+     `connect-pg-simple` usa por default -- `createTableIfMissing` queda
+     como red de seguridad redundante, ya no hace falta que gane ninguna
+     carrera.
+  2. **Mucho más significativo**: `pendientes`/`ideas`/`recordatorios`/
+     `hechos` -- las 4 tablas centrales de TODA la app -- **nunca tuvieron
+     su propio `CREATE TABLE` en `ensureSchema()`**. Existían en Railway
+     desde antes de este código (heredadas del bot de Telegram original
+     que precedió a esta app), así que cada `ALTER TABLE`/FK que las
+     referencia asumía en silencio que ya estaban ahí -- nadie lo notó en
+     meses de desarrollo porque la única DB real que existe (Railway) ya
+     las tenía. Confirmado real: si esta app se desplegara alguna vez
+     contra una Postgres nueva de cero (recuperación de desastre,
+     migración a otra DB, o exactamente este caso de CI), `ensureSchema()`
+     reventaba en el primer `ALTER TABLE pendientes`, **abortando en
+     cadena TODO lo que viene después en la función** (incluida la
+     columna `ia_especie` de `usuarios`) -- ni siquiera el registro de un
+     usuario nuevo funcionaba. Arreglado agregando el `CREATE TABLE IF NOT
+     EXISTS` de las 4, con el esquema exacto tomado de
+     `information_schema` contra la Railway real (no inventado). **Esto
+     no cambia nada para Railway** (`IF NOT EXISTS` es no-op ahí), pero
+     cierra un hueco real de "¿podemos arrancar esta app desde una DB
+     vacía?" que hasta hoy la respuesta silenciosa era no.
 - Archivos tocados: `pendientes-web/server.js` (SSL condicional del
-  `pool`), `pendientes-web/package.json` (script `test:integracion`),
-  `pendientes-web/scripts/test-helpers.js` (nuevo),
+  `pool`, tabla `session` + las 4 tablas centrales agregadas a
+  `ensureSchema()`), `pendientes-web/package.json` (script
+  `test:integracion`), `pendientes-web/scripts/test-helpers.js` (nuevo),
   `pendientes-web/test/integracion.test.js` (nuevo),
   `.github/workflows/ci.yml` (job nuevo).
-- No comiteado todavía -- se commitea y pushea junto con la actualización
-  de este mismo archivo.
+- **Confirmado en verde el run real de GitHub Actions** (job
+  `pruebas-integracion`, run `32754560834`) antes de mergear.
 
 ### rama-integracion
 - Estado: —

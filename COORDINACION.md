@@ -5147,7 +5147,35 @@ eliminación de ese repo/bot sin quedar huérfano.
   adopción de las 4 especies, markup verificado vía HTTP). **Mismo
   caveat que rama-login-lockscreen**: sin navegador real disponible esta
   sesión para ver la animación funcionando de verdad -- pendiente que el
-  usuario lo confirme en vivo.
+  usuario lo confirme en vivo. **Actualización, mismo día**: se encontró
+  la forma de controlar un Chrome real instalado en la máquina
+  (`puppeteer-core` + `executablePath` al Chrome local, sin descargar
+  nada) -- ver la entrada de `rama-fix-bloqueo-hidden` más abajo, que usó
+  esto para verificar tanto este patio como el lock-screen, y encontró un
+  bug real en el camino.
+- 2026-08-24 — merge de rama-fix-bloqueo-hidden (d56a7fa) → main vía PR
+  #95: sin conflictos. CI verde (ambos jobs). Desplegado en Render.
+  **Bug real en producción desde rama-login-lockscreen (PR #91, mergeada
+  el mismo día), encontrado recién ahora**: `.pantalla-bloqueo` tenía
+  `display: flex` con la misma especificidad que el `[hidden] { display:
+  none }` del user-agent stylesheet -- lo pisaba, igual que ya le había
+  pasado a `.tutorial-modal-overlay` antes. Efecto real, no cosmético: en
+  CUALQUIER dispositivo sin usuario cacheado (primera visita, navegación
+  privada, localStorage bloqueado), la pantalla de bloqueo seguía
+  cubriendo toda la pantalla y bloqueando los clicks reales sobre el
+  formulario clásico -- login roto de verdad para esos casos. Encontrado
+  al usar por primera vez esta sesión `puppeteer-core` contra un Chrome
+  ya instalado en la máquina (sin tool de navegador cargado, pero SÍ hay
+  Chrome local -- pedido explícito del usuario de "ábrelo tú directo" lo
+  que llevó a este descubrimiento). Fix idéntico al ya usado en
+  `.tutorial-modal-overlay`: `.pantalla-bloqueo[hidden] { display: none
+  }` explícito. Confirmado con capturas antes/después y
+  `elementFromPoint()` en el punto exacto del botón "Entrar" (antes:
+  `.bloqueo-avatar` interceptando; después: el input real), y con un
+  login end-to-end de punta a punta usando un click REAL de coordenadas
+  (no `element.click()` programático) contra Neon. Verificado también en
+  vivo contra producción tras el deploy. CI + test suite de integración
+  (4/4) en verde.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

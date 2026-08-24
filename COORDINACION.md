@@ -4729,6 +4729,22 @@ eliminación de ese repo/bot sin quedar huérfano.
   "chicas" pedidas hoy — quedan cerradas todas antes de retomar el juego
   grande (ver la sección "Ronda nueva (2026-08-24)"). Ver la sección
   `rama-pruebas-regresion` para el detalle completo.
+- 2026-08-24 — merge de rama-juego-fundacion (0894e1d) → main vía PR #86:
+  sin conflictos. CI verde (incluido el job `pruebas-integracion` sobre
+  DB efímera). Desplegado en Railway y verificado. Primer tramo de
+  implementación del juego (diseño previo en la sección "Diseño del
+  modelo de datos del juego" más abajo) — por etapas, confirmado con el
+  usuario: esquema + Casa (adoptar/alimentar/cruzar/revivir animales).
+  Plaza y el cron de salud/abandono quedan para una ronda aparte. Genética
+  mendeliana real (2 alelos por locus, herencia real de cada padre en una
+  cría, legendario emerge de 2+ rasgos raros expresados juntos, las
+  enfermedades genéticas usan el mismo mecanismo de herencia que el
+  color). Catálogos hardcodeados en JS, mismo patrón que
+  `IA_ESPECIES`/`LOGROS`. Nivel de jugador y capacidad de casa derivados
+  en vivo de la moneda acumulada. Probado contra la DB real incluyendo el
+  caso de riesgo real: borrar una cuenta con animales y una cría (relación
+  padre-hijo autorreferencial) no revienta el server. Ver la sección
+  `rama-juego-fundacion` para el detalle completo.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

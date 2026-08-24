@@ -16,7 +16,15 @@
      COORDINACION.md). Ahora es la ÚNICA barra fija de la app: "Casa"
      vuelve a /captura (la pantalla principal nueva, planta + Captura
      rápida), "Cuenta" abre el menú de usuario en pantalla completa
-     (`.menu-pantalla`, ver partials/nav.ejs). */
+     (`.menu-pantalla`, ver partials/nav.ejs).
+     rama-chat-visible: suma el botón de chat con amigos -- antes solo se
+     llegaba entrando a /amigos desde el menú de pantalla completa y
+     buscando el link de cada amigo, así que quedaba escondido. Usa
+     GET /notificaciones (ya existía, nunca se había conectado a nada --
+     ver el comentario de esa ruta en server.js) para el contador de sin
+     leer, poblado client-side (public/scripts.ejs de abajo), no server-
+     side -- evita sumarle una consulta más al middleware que corre en
+     CADA request logueado. */
   const datos = typeof barraSuperior !== 'undefined' ? barraSuperior : null;
 %>
 <% if (datos) { %>
@@ -37,6 +45,10 @@
         <span><%= datos.semillas %></span>
       </div>
     </div>
+    <a href="/amigos" class="barra-superior-boton barra-superior-chat" id="btn-chat-amigos" title="Chat con amigos" aria-label="Chat con amigos">
+      <%- include('icono', { nombre: 'chat' }) %>
+      <span class="barra-superior-badge" id="badge-chat-amigos" hidden></span>
+    </a>
     <button type="button" class="barra-superior-boton" id="btn-menu-usuario" aria-haspopup="true" aria-expanded="false" aria-controls="menu-pantalla" title="Menú" aria-label="Menú">
       <%- include('icono', { nombre: 'cuenta' }) %>
     </button>

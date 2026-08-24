@@ -329,6 +329,27 @@ svg[viewBox="0 0 24 24"] {
   height: 16px;
 }
 
+/* rama-chat-visible */
+.barra-superior-chat {
+  position: relative;
+}
+
+.barra-superior-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
 .barra-superior-planta {
   display: flex;
   align-items: center;

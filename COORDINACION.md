@@ -4627,6 +4627,74 @@ después.
 - No comiteado todavía -- se commitea y pushea junto con la actualización
   de este mismo archivo.
 
+### rama-login-lockscreen
+- Estado: lista para merge. **No es una tarea del juego** -- pedido de
+  diseño aparte del usuario (2026-08-24): que `/login` se sienta como la
+  pantalla de bloqueo de un sistema operativo (fondo blur + círculo de
+  perfil + un campo de contraseña abajo), recordando al último usuario
+  del dispositivo en vez de pedir usuario y contraseña siempre. Discutido
+  antes de construir (pregunta exploratoria + confirmación explícita del
+  usuario sobre el punto que más cambia el flujo real: recordar al último
+  usuario, no solo repintar el formulario).
+- **El "paisaje blur" ya existía** -- el fondo aurora (4 gradientes
+  radiales) que ya pinta `body` en toda la app desde `rama-interfaz-v2`
+  es exactamente ese efecto, no se duplicó nada nuevo ahí.
+- **Flujo**: cada página autenticada (`partials/scripts.ejs`, ya incluido
+  en todas) cachea en `localStorage` (`zentia_ultimo_usuario`) el nombre
+  de usuario, la especie de su planta (como avatar circular, mismo
+  criterio ya usado en el resto de la app: "la planta es la foto de
+  perfil"), y con qué MÉTODO entró esta sesión (`pin` o `email`, nuevo
+  `req.session.metodoLogin`, seteado en las 4 rutas de login/registro).
+  `GET /login` no cambia del lado servidor -- toda la decisión de mostrar
+  pantalla de bloqueo vs. formulario completo es client-side, leyendo ese
+  localStorage antes de pintar nada. Sin dato cacheado (primera vez en
+  el dispositivo, o localStorage bloqueado/vacío), el formulario completo
+  de siempre queda intacto, sin ningún cambio de comportamiento.
+- **Solo el campo que corresponde**: si el último método fue `pin`,
+  la pantalla de bloqueo muestra un campo de PIN (submit real a
+  `POST /login`, con el usuario ya precargado en un input oculto); si fue
+  `email`, muestra un campo de contraseña (submit real a
+  `POST /login/email`). Nunca pide el usuario/email a mano de nuevo.
+- **Bug real encontrado y corregido antes de mergear** (por revisión
+  propia, no por la prueba): `POST /registro/email` nunca seteaba
+  `metodoLogin` -- sin el fix, una cuenta 100% por email hubiera quedado
+  cacheada como método `pin` (el fallback), y la pantalla de bloqueo le
+  habría pedido un PIN que esa cuenta nunca tuvo (`pin_hash` queda NULL
+  en un registro por email). Corregido seteándolo explícito en las 4
+  rutas de alta de sesión (`/registro`, `/registro/email`, `/login`,
+  `/login/email`).
+- "¿No eres tú? Cambiar de usuario" limpia el cache y vuelve al
+  formulario completo -- necesario para una cuenta nueva en el mismo
+  dispositivo, o si alguien más lo usa. El logout NO limpia el cache a
+  propósito (mismo comportamiento que un lock screen real: cerrar sesión
+  vuelve a la pantalla de bloqueo de la MISMA cuenta, no a un selector).
+  Sacudida visual (`prefers-reduced-motion` respetado) si el servidor
+  devuelve error de PIN/contraseña incorrectos.
+- **Probado contra la DB real de Railway** (server-side, todo lo que se
+  puede probar sin un navegador real -- ver la nota de abajo): registro
+  por PIN cachea la especie elegida correctamente; registro por email
+  cachea `metodo: "email"` y el email real (confirmado el bug de arriba
+  ANTES del fix, y el fix confirmado después); login con PIN incorrecto
+  sigue devolviendo el error de siempre; login con PIN/email correctos
+  sigue funcionando igual que antes de esta rama, sin cambios de
+  comportamiento en los formularios clásicos.
+- **No se pudo verificar visualmente en un navegador real** -- esta
+  sesión no tiene una herramienta de automatización de navegador
+  disponible. Todo lo de arriba se probó por HTTP/HTML (que el markup
+  correcto se genera, que los datos correctos se inyectan), pero NO se
+  vio el resultado real (tamaños, blur, animación de sacudida, que el
+  círculo de la planta se vea bien). **Pendiente que el usuario lo
+  revise en vivo** antes de darlo por completamente terminado -- mismo
+  criterio que el resto de cambios visuales de este proyecto (ver
+  `feedback_ui_visual_signoff` en la memoria de la sesión).
+- Archivos tocados: `server.js` (`metodoLogin`/`emailUsuario` en
+  `res.locals`, seteo en las 4 rutas de alta de sesión), `views/login.ejs`
+  (pantalla de bloqueo nueva + script de decisión), `views/partials/
+  scripts.ejs` (script de cacheo en localStorage), `public/style.css`
+  (`.pantalla-bloqueo` y relacionadas).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

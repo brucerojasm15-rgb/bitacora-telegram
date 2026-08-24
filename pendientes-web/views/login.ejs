@@ -3,8 +3,55 @@
 <head>
 <%- include('partials/head', { titulo: 'Iniciar sesión' }) %>
 </head>
-<body>
-  <main class="login-main">
+<body class="body-bloqueo">
+  <!-- rama-login-lockscreen: pantalla de bloqueo estilo sistema operativo --
+       reloj + tu planta como avatar + un solo campo (PIN o contraseña,
+       según con qué entraste la última vez en este dispositivo). Oculta
+       por default (`hidden`) -- el script de más abajo la muestra SOLO si
+       encuentra un usuario cacheado en localStorage; si no hay nada
+       cacheado (primera vez en este dispositivo, o se limpió el
+       almacenamiento), esta sección nunca se muestra y se ve el
+       formulario completo de siempre sin ningún cambio. -->
+  <div id="pantalla-bloqueo" class="pantalla-bloqueo" hidden>
+    <div class="bloqueo-reloj" id="bloqueo-reloj" aria-hidden="true"></div>
+
+    <div class="bloqueo-avatar">
+      <% ['monstera', 'cactus', 'ficus', 'suculenta'].forEach((especie) => { %>
+        <div class="bloqueo-avatar-especie" data-especie="<%= especie %>" hidden>
+          <%- include('partials/planta', { especie, etapa: 3, tamano: 96, idSufijo: 'bloqueo-' + especie }) %>
+        </div>
+      <% }) %>
+    </div>
+    <p class="bloqueo-nombre" id="bloqueo-nombre"></p>
+
+    <% if (error) { %>
+      <p class="error bloqueo-error"><%= error %></p>
+    <% } %>
+
+    <form method="POST" action="/login" class="bloqueo-form" id="bloqueo-form-pin" hidden>
+      <input type="hidden" name="nombre_usuario" id="bloqueo-input-usuario">
+      <div class="bloqueo-campo">
+        <input type="password" name="pin" placeholder="PIN" inputmode="numeric" autocomplete="current-password" class="bloqueo-input" autofocus>
+        <button type="submit" class="bloqueo-boton-entrar" aria-label="Entrar" title="Entrar">→</button>
+      </div>
+    </form>
+
+    <form method="POST" action="/login/email" class="bloqueo-form" id="bloqueo-form-email" hidden>
+      <input type="hidden" name="email" id="bloqueo-input-email">
+      <div class="bloqueo-campo">
+        <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" class="bloqueo-input" autofocus>
+        <button type="submit" class="bloqueo-boton-entrar" aria-label="Entrar" title="Entrar">→</button>
+      </div>
+    </form>
+
+    <button type="button" id="bloqueo-cambiar-usuario" class="btn-link bloqueo-cambiar">¿No eres tú? Cambiar de usuario</button>
+  </div>
+
+  <!-- Formulario completo de siempre -- se oculta con `hidden` SOLO si la
+       pantalla de bloqueo se activa (ver script). Nunca se borra del DOM:
+       es el fallback real si localStorage falla/está vacío, y sigue
+       siendo la única vía para una cuenta nueva en este dispositivo. -->
+  <main class="login-main" id="login-form-completo">
     <div class="ilustracion-auth"><%- include('partials/monstera', { tamano: 72, idSufijo: 'login' }) %></div>
     <h1><%- include('partials/icono', { nombre: 'candado' }) %> Bitácora</h1>
 
@@ -61,6 +108,64 @@
         });
       });
     });
+  </script>
+
+  <script>
+    // rama-login-lockscreen: decide, ANTES de que se vea nada, si mostrar
+    // la pantalla de bloqueo o el formulario completo -- lee
+    // localStorage (escrito por partials/scripts.ejs en cada página
+    // logueada, nunca acá). Sin dato cacheado (o si viene corrupto), el
+    // formulario completo queda como estaba, sin tocar nada.
+    (function () {
+      let datos = null;
+      try {
+        datos = JSON.parse(localStorage.getItem('zentia_ultimo_usuario'));
+      } catch (err) {
+        datos = null;
+      }
+      if (!datos || !datos.nombreUsuario) return;
+
+      const bloqueo = document.getElementById('pantalla-bloqueo');
+      const formCompleto = document.getElementById('login-form-completo');
+
+      document.getElementById('bloqueo-nombre').textContent = datos.nombreUsuario;
+      const avatarEl = document.querySelector('.bloqueo-avatar-especie[data-especie="' + datos.especie + '"]')
+        || document.querySelector('.bloqueo-avatar-especie[data-especie="monstera"]');
+      if (avatarEl) avatarEl.hidden = false;
+
+      if (datos.metodo === 'email' && datos.email) {
+        document.getElementById('bloqueo-input-email').value = datos.email;
+        document.getElementById('bloqueo-form-email').hidden = false;
+      } else {
+        document.getElementById('bloqueo-input-usuario').value = datos.nombreUsuario;
+        document.getElementById('bloqueo-form-pin').hidden = false;
+      }
+
+      bloqueo.hidden = false;
+      formCompleto.hidden = true;
+
+      document.getElementById('bloqueo-cambiar-usuario').addEventListener('click', () => {
+        try { localStorage.removeItem('zentia_ultimo_usuario'); } catch (err) {}
+        bloqueo.hidden = true;
+        formCompleto.hidden = false;
+      });
+
+      function pintarReloj() {
+        const el = document.getElementById('bloqueo-reloj');
+        if (el) el.textContent = new Date().toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' });
+      }
+      pintarReloj();
+      setInterval(pintarReloj, 1000 * 15);
+
+      // Si el servidor mandó un error (PIN/contraseña incorrectos), la
+      // pantalla de bloqueo ya se está mostrando de nuevo con los campos
+      // vacíos -- "sacude" el panel para que se sienta como el rechazo de
+      // un lock screen real, no solo un mensaje de texto más.
+      if (document.querySelector('.bloqueo-error')) {
+        bloqueo.classList.add('bloqueo-rechazo');
+        setTimeout(() => bloqueo.classList.remove('bloqueo-rechazo'), 500);
+      }
+    })();
   </script>
 
 <%- include('partials/scripts') %>

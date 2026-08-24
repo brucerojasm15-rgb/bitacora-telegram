@@ -1,0 +1,34 @@
+<% arboles.forEach((arbol) => { %>
+  <div class="arbol-genealogico">
+    <% if (arbol.padre || arbol.madre) { %>
+      <div class="arbol-fila arbol-padres">
+        <% [arbol.madre, arbol.padre].filter(Boolean).forEach((p) => { %>
+          <div class="arbol-nodo <%= p.fallecido ? 'arbol-nodo-fallecido' : '' %>">
+            <img src="<%= p.imagen %>" alt="<%= p.especie %>" loading="lazy">
+            <span><%= p.nombre || ('Sin nombre #' + p.id) %><% if (p.nombreUsuario) { %> · <%= p.nombreUsuario %><% } %></span>
+          </div>
+        <% }) %>
+      </div>
+      <div class="arbol-linea"></div>
+    <% } %>
+
+    <div class="arbol-fila">
+      <div class="arbol-nodo arbol-nodo-memorial">
+        <img src="<%= arbol.imagen %>" alt="<%= arbol.especie %>" loading="lazy">
+        <span><%= arbol.nombre || ('Sin nombre #' + arbol.id) %> 🕊️</span>
+      </div>
+    </div>
+
+    <% if (arbol.hijos.length > 0) { %>
+      <div class="arbol-linea"></div>
+      <div class="arbol-fila arbol-hijos">
+        <% arbol.hijos.forEach((h) => { %>
+          <div class="arbol-nodo <%= h.fallecido ? 'arbol-nodo-fallecido' : '' %>">
+            <img src="<%= h.imagen %>" alt="<%= h.especie %>" loading="lazy">
+            <span><%= h.nombre || ('Sin nombre #' + h.id) %><% if (h.nombreUsuario) { %> · <%= h.nombreUsuario %><% } %></span>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+<% }) %>

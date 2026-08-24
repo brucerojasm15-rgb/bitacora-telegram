@@ -2292,6 +2292,30 @@ function esAdulto(fechaNacido) {
   return diasDesdeNacido >= EDAD_ADULTO_DIAS;
 }
 
+// rama-etapas-genealogia: 4 etapas visuales (bebé/adolescente/adulto/
+// anciano) puramente cosméticas -- NO tocan `esAdulto`/`EDAD_ADULTO_DIAS`
+// de arriba (el gate real de cría, ya en producción con animales reales).
+// `adulto` empieza exactamente en EDAD_ADULTO_DIAS a propósito, para que
+// "adulto" en esta escala visual sea siempre el mismo animal que ya cuenta
+// como adulto para criar -- nunca se separan. Umbrales de bebé/adolescente/
+// anciano son placeholder de balance, mismo criterio que el resto del
+// juego (ajustables sin romper nada más).
+const ETAPA_VIDA_DIAS = { bebe: 0, adolescente: 3, adulto: EDAD_ADULTO_DIAS, anciano: 60 };
+const ORDEN_ETAPAS_VIDA = ['bebe', 'adolescente', 'adulto', 'anciano'];
+
+function etapaVidaAnimal(fechaNacido) {
+  const diasDesdeNacido = (Date.now() - new Date(fechaNacido).getTime()) / (1000 * 60 * 60 * 24);
+  let etapa = ORDEN_ETAPAS_VIDA[0];
+  for (const nombre of ORDEN_ETAPAS_VIDA) {
+    if (diasDesdeNacido >= ETAPA_VIDA_DIAS[nombre]) etapa = nombre;
+  }
+  return etapa;
+}
+
+function imagenAnimal(especie, etapa) {
+  return `/animales/${especie}-${etapa}.png`;
+}
+
 function etapaPorMoneda(totalDeVida) {
   let indice = 0;
   for (let i = IA_UMBRAL_ETAPA.length - 1; i >= 0; i--) {
@@ -5172,7 +5196,70 @@ async function animalesDeUsuarioConGenes(usuarioId) {
     ...a,
     alelosExpresados: a.genotipo ? alelosExpresadosDe(a.genotipo) : {},
     esAdulto: esAdulto(a.nacido),
+    etapaVida: etapaVidaAnimal(a.nacido),
+    imagen: imagenAnimal(a.especie, etapaVidaAnimal(a.nacido)),
   }));
+}
+
+// rama-etapas-genealogia: árbol genealógico simple (1 nivel de padres +
+// 1 nivel de hijos) para un animal fallecido puntual -- se muestra "en la
+// pared" de la Casa solo si el animal fallecido tuvo padres o crías reales
+// (decisión explícita del usuario: no todo fallecido genera un memorial,
+// solo los que de verdad tienen lineage). padre_id/madre_id/hijos pueden
+// pertenecer a OTRO usuario (rama-cruzar-amigos) -- se resuelve el dueño
+// real de cada uno para mostrarlo con su nombre, mismo criterio que
+// animalesAdultosDeAmigosPorEspecie.
+async function arbolGenealogicoDeFallecidos(usuarioId) {
+  const { rows: fallecidos } = await pool.query(
+    `SELECT a.id, a.nombre, a.especie, a.nacido, a.padre_id, a.madre_id
+     FROM animales a
+     WHERE a.usuario_id = $1 AND a.eliminado = false AND a.salud_estado = 'fallecido'
+       AND (a.padre_id IS NOT NULL OR a.madre_id IS NOT NULL
+         OR EXISTS (SELECT 1 FROM animales h WHERE h.padre_id = a.id OR h.madre_id = a.id))
+     ORDER BY a.nacido DESC`,
+    [usuarioId]
+  );
+  if (fallecidos.length === 0) return [];
+
+  async function familiarConDueno(animalId) {
+    if (!animalId) return null;
+    const { rows } = await pool.query(
+      `SELECT a.id, a.nombre, a.especie, a.salud_estado, a.nacido, u.nombre_usuario
+       FROM animales a JOIN usuarios u ON u.id = a.usuario_id WHERE a.id = $1`,
+      [animalId]
+    );
+    if (rows.length === 0) return null;
+    const f = rows[0];
+    return {
+      id: f.id, nombre: f.nombre, especie: f.especie, nombreUsuario: f.nombre_usuario,
+      fallecido: f.salud_estado === 'fallecido',
+      imagen: imagenAnimal(f.especie, etapaVidaAnimal(f.nacido)),
+    };
+  }
+
+  const arboles = [];
+  for (const f of fallecidos) {
+    const { rows: hijos } = await pool.query(
+      `SELECT a.id, a.nombre, a.especie, a.salud_estado, a.nacido, u.nombre_usuario
+       FROM animales a JOIN usuarios u ON u.id = a.usuario_id
+       WHERE a.padre_id = $1 OR a.madre_id = $1 ORDER BY a.nacido ASC`,
+      [f.id]
+    );
+    arboles.push({
+      id: f.id,
+      nombre: f.nombre,
+      especie: f.especie,
+      imagen: imagenAnimal(f.especie, 'anciano'),
+      padre: await familiarConDueno(f.padre_id),
+      madre: await familiarConDueno(f.madre_id),
+      hijos: hijos.map((h) => ({
+        id: h.id, nombre: h.nombre, especie: h.especie, nombreUsuario: h.nombre_usuario,
+        fallecido: h.salud_estado === 'fallecido',
+        imagen: imagenAnimal(h.especie, etapaVidaAnimal(h.nacido)),
+      })),
+    });
+  }
+  return arboles;
 }
 
 // rama-cruzar-amigos: animales adultos de amigos ACEPTADOS de `usuarioId`,
@@ -5218,9 +5305,10 @@ function mensajePersonajeMain(perfil, animales) {
 
 app.get('/casa', async (req, res) => {
   try {
-    const [perfil, animales, solicitudesRecibidas] = await Promise.all([
+    const [perfil, animales, arbolesGenealogicos, solicitudesRecibidas] = await Promise.all([
       perfilJuegoDeUsuario(req.usuarioId),
       animalesDeUsuarioConGenes(req.usuarioId),
+      arbolGenealogicoDeFallecidos(req.usuarioId),
       pool.query(
         `SELECT cs.id, cs.animal_propio_id, cs.animal_ajeno_id, u.nombre_usuario AS solicitante_nombre,
                 ap.nombre AS nombre_animal_solicitante, ap.especie, aa.nombre AS nombre_mi_animal
@@ -5254,6 +5342,7 @@ app.get('/casa', async (req, res) => {
       edadAdultoDias: EDAD_ADULTO_DIAS,
       personajeMainNombre: PERSONAJE_MAIN_NOMBRE,
       personajeMain: mensajePersonajeMain(perfil, animales),
+      arbolesGenealogicos,
       nacio: Number(req.query.nacio) || null,
       error: null,
     });
@@ -5263,7 +5352,7 @@ app.get('/casa', async (req, res) => {
       especies: ESPECIES_ANIMAL, animales: [], candidatosPorEspecie: {}, solicitudesRecibidas: [],
       nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0,
       saldoMoneda: 0, costoProximoEspacio: 0, edadAdultoDias: EDAD_ADULTO_DIAS,
-      personajeMainNombre: PERSONAJE_MAIN_NOMBRE, personajeMain: null, nacio: null,
+      personajeMainNombre: PERSONAJE_MAIN_NOMBRE, personajeMain: null, arbolesGenealogicos: [], nacio: null,
       error: 'No se pudo leer la base de datos.',
     });
   }
@@ -5301,14 +5390,15 @@ app.get('/casa/:usuarioId', async (req, res) => {
     );
     if (!amistadRows.length) {
       return res.status(403).render('casa-amigo', {
-        nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, usuarioIdVisitado,
+        nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [], usuarioIdVisitado,
         error: 'Ese usuario no es tu amigo.',
       });
     }
-    const [{ rows: usuarioRows }, animales, misAnimales] = await Promise.all([
+    const [{ rows: usuarioRows }, animales, misAnimales, arbolesGenealogicos] = await Promise.all([
       pool.query('SELECT nombre_usuario FROM usuarios WHERE id = $1', [usuarioIdVisitado]),
       animalesDeUsuarioConGenes(usuarioIdVisitado),
       animalesDeUsuarioConGenes(req.usuarioId),
+      arbolGenealogicoDeFallecidos(usuarioIdVisitado),
     ]);
     // Mis animales adultos, agrupados por especie -- para poder ofrecer,
     // por cada animal adulto del amigo, un selector con CUÁLES de mis
@@ -5323,13 +5413,14 @@ app.get('/casa/:usuarioId', async (req, res) => {
       nombreAmigo: usuarioRows[0] ? usuarioRows[0].nombre_usuario : null,
       animales,
       misAnimalesPorEspecie,
+      arbolesGenealogicos,
       usuarioIdVisitado,
       error: null,
     });
   } catch (err) {
     console.error('Error consultando la casa de un amigo:', err.message);
     res.status(500).render('casa-amigo', {
-      nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, usuarioIdVisitado,
+      nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [], usuarioIdVisitado,
       error: 'No se pudo leer la base de datos.',
     });
   }

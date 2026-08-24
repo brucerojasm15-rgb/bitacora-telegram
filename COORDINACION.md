@@ -3901,6 +3901,34 @@ de Plaza) como su propio paso documentado acá ANTES de escribir
 worktree propio, nunca en el clone compartido; (c) NO tocar el modelo de
 pagos reales hasta tener la info pendiente del punto 3 de arriba.
 
+### rama-fix-metas-huerfanas
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): arreglar lo "chico" pendiente antes
+  de seguir con el juego grande. Este es el hueco documentado en la
+  sección `rama-chat-metas` (encontrado probando esa rama, no arreglado ahí
+  a propósito por estar fuera de su alcance).
+- **Qué se arregló**: `POST /ajustes/eliminar-cuenta` limpiaba
+  `metas_compartidas` sin participantes con `DELETE ... WHERE creado_por =
+  $1` -- solo cubre el caso en que quien se borra ES el creador actual. Si
+  el creador original ya se había borrado antes (dejando `creado_por =
+  NULL` porque en ese momento quedaban otros participantes) y después se
+  borran todos los participantes restantes, la fila quedaba huérfana para
+  siempre. Cambiado a `DELETE ... WHERE NOT EXISTS (SELECT 1 FROM
+  metas_compartidas_participantes WHERE meta_compartida_id =
+  metas_compartidas.id)` -- limpieza por orfandad real, ya no por quién
+  se está borrando en este momento. Como efecto colateral bueno, esto
+  también barre cualquier otra fila que ya hubiera quedado huérfana antes
+  de este fix (no hace falta una migración aparte).
+- **Probado contra la DB real de Railway**, reproduciendo el escenario
+  exacto documentado: usuario C crea una meta compartida con A, C se borra
+  primero (la fila sobrevive con `creado_por = NULL`, A sigue
+  participando), A se borra después (ahora sí queda sin participantes) --
+  confirmado que la fila desaparece del todo recién en ese segundo borrado,
+  sin errores.
+- Archivos tocados: `server.js` (`POST /ajustes/eliminar-cuenta`).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

@@ -11,6 +11,21 @@
     <% if (error) { %>
       <p class="error"><%= error %></p>
     <% } else { %>
+      <% if (personajeMain) { %>
+        <div class="personaje-guia">
+          <div class="personaje-guia-avatar"><%- include('partials/icono', { nombre: 'guia' }) %></div>
+          <div class="personaje-guia-globo">
+            <p class="personaje-guia-nombre"><%= personajeMainNombre %></p>
+            <p class="personaje-guia-texto"><%= personajeMain.texto %></p>
+            <% if (personajeMain.mostrarBoton) { %>
+              <form method="POST" action="/personaje-main/marcar-intro-visto">
+                <button type="submit">Entendido</button>
+              </form>
+            <% } %>
+          </div>
+        </div>
+      <% } %>
+
       <p class="count">
         Nivel <%= nivelJugador %> · Espacio: <%= animales.length %> / <%= capacidadCasa %> · <%- include('partials/icono', { nombre: 'moneda' }) %> <%= saldoMoneda %>
         <% if (nacio) { %> — <span class="notificacion">¡Nació un animal nuevo!</span><% } %>

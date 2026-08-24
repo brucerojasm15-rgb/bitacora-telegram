@@ -1,7 +1,7 @@
 {
-  "name": "Pendientes",
-  "short_name": "Pendientes",
-  "description": "Lista de pendientes personal",
+  "name": "zentIA",
+  "short_name": "zentIA",
+  "description": "Bitácora personal con IA compañera -- pendientes, ideas, recordatorios, amigos y un juego de mascotas, todo en una app.",
   "start_url": "/captura",
   "scope": "/",
   "display": "standalone",

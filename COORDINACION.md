@@ -4813,6 +4813,20 @@ eliminación de ese repo/bot sin quedar huérfano.
   caso de riesgo real: borrar una cuenta con animales y una cría (relación
   padre-hijo autorreferencial) no revienta el server. Ver la sección
   `rama-juego-fundacion` para el detalle completo.
+- 2026-08-24 — merge de rama-juego-plaza-salud (a83a08d) → main vía PR
+  #87: sin conflictos. CI verde (ambos jobs). Desplegado en Railway y
+  verificado. Segundo (y último planeado por ahora) tramo del juego --
+  cierra lo que `rama-juego-fundacion` dejó a propósito para después:
+  Plaza (alias anónimo, advertencia de privacidad obligatoria, solo
+  emojis validado server-side) y el cron diario de salud/abandono (escalada
+  real sano→enfermo→crítico→fallecido a 3/30/90 días sin alimentar, avisos
+  push solo desde nivel 11). `POST /animales/:id/alimentar` pasa de ser un
+  placeholder sin efecto a curar de verdad. Probado contra la DB real
+  simulando la escalada completa (3 corridas reales del cron) y el caso de
+  riesgo real: borrar una cuenta con un animal que pasó por cría +
+  enfermedades curadas + fallecido + revivido no revienta el server. Ver
+  la sección `rama-juego-plaza-salud` para el detalle completo. Con esto,
+  las 2 rondas de juego que el usuario pidió por etapas quedan cerradas.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

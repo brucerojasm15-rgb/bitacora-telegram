@@ -31,6 +31,15 @@
         <% if (nacio) { %> — <span class="notificacion">¡Nació un animal nuevo!</span><% } %>
       </p>
 
+      <% const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido'); %>
+      <% if (animalesVivos.length > 0) { %>
+        <div class="patio">
+          <% animalesVivos.forEach((a) => { %>
+            <img class="patio-avatar" data-lento="<%= a.salud_estado !== 'sano' ? '1' : '0' %>" src="<%= a.imagen %>" alt="<%= a.nombre || a.especie %> caminando">
+          <% }) %>
+        </div>
+      <% } %>
+
       <section class="ajustes-grupo">
         <h2>Ampliar la casa</h2>
         <p class="ajustes-nota">Subir de nivel también agranda la casa gratis -- esto es para conseguir espacio ya mismo.</p>
@@ -156,5 +165,6 @@
   </main>
 
 <%- include('partials/scripts') %>
+<script src="/patio.js" defer></script>
 </body>
 </html>

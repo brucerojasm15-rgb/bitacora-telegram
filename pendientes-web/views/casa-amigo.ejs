@@ -14,6 +14,15 @@
     <% } else if (animales.length === 0) { %>
       <p class="empty">Todavía no tiene ningún animal.</p>
     <% } else { %>
+      <% const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido'); %>
+      <% if (animalesVivos.length > 0) { %>
+        <div class="patio">
+          <% animalesVivos.forEach((a) => { %>
+            <img class="patio-avatar" data-lento="<%= a.salud_estado !== 'sano' ? '1' : '0' %>" src="<%= a.imagen %>" alt="<%= a.nombre || a.especie %> caminando">
+          <% }) %>
+        </div>
+      <% } %>
+
       <% animales.forEach((a) => { %>
         <section class="meta-card <%= a.salud_estado !== 'sano' ? 'meta-inactiva' : '' %>">
           <div class="meta-card-header meta-card-header-animal">
@@ -59,6 +68,7 @@
   </main>
 
 <%- include('partials/scripts') %>
+<script src="/patio.js" defer></script>
 <script>
   // rama-visitar-casa-amigo: la ruta real es POST /animales/<mi_animal_id>/
   // solicitar-cruce-amigo -- <mi_animal_id> va en la URL, no en el body,

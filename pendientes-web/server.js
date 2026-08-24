@@ -1638,6 +1638,73 @@ async function ensureSchema() {
       PRIMARY KEY (usuario_id, logro)
     )
   `);
+
+  // rama-juego-fundacion: primer tramo del juego (diseño completo en
+  // COORDINACION.md, "Diseño del modelo de datos del juego") -- Casa +
+  // animales + genética real. Plaza y el cron automático de
+  // salud/abandono quedan para una ronda aparte (decisión explícita del
+  // usuario, por etapas). `padre_id`/`madre_id` NULL = animal adoptado
+  // (genotipo sorteado por rarezaBase), no NULL = nacido de una cría real.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS animales (
+      id SERIAL PRIMARY KEY,
+      usuario_id INT REFERENCES usuarios(id),
+      especie TEXT NOT NULL,
+      nombre TEXT,
+      padre_id INT REFERENCES animales(id),
+      madre_id INT REFERENCES animales(id),
+      es_legendario BOOLEAN NOT NULL DEFAULT false,
+      nacido TIMESTAMPTZ DEFAULT now(),
+      salud_estado TEXT NOT NULL DEFAULT 'sano',
+      ultima_alimentacion TIMESTAMPTZ DEFAULT now(),
+      fallecido_en TIMESTAMPTZ,
+      eliminado BOOLEAN NOT NULL DEFAULT false
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_animales_usuario ON animales (usuario_id)
+  `);
+  // Genotipo: 2 alelos por locus por animal. `locus`/`alelo_1`/`alelo_2`
+  // son texto libre validado contra el catálogo GENES en la ruta, no con
+  // FK -- mismo criterio que `categoria` en `pendientes` (catálogo
+  // hardcodeado, nunca tuvo FK).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS animales_genes (
+      animal_id INT NOT NULL REFERENCES animales(id),
+      locus TEXT NOT NULL,
+      alelo_1 TEXT NOT NULL,
+      alelo_2 TEXT NOT NULL,
+      PRIMARY KEY (animal_id, locus)
+    )
+  `);
+  // Historial de enfermedades -- se guarda tanto la genética (diagnosticada
+  // al nacer) como, en la ronda futura, la de abandono. Queda historial
+  // aunque se cure, mismo espíritu que `historial_ediciones`.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS animales_enfermedades (
+      id SERIAL PRIMARY KEY,
+      animal_id INT NOT NULL REFERENCES animales(id),
+      enfermedad TEXT NOT NULL,
+      origen TEXT NOT NULL,
+      diagnosticada_en TIMESTAMPTZ DEFAULT now(),
+      curada_en TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_animales_enfermedades_animal ON animales_enfermedades (animal_id)
+  `);
+  // Estado simple de 1 fila por usuario, no amerita tabla aparte (mismo
+  // criterio que `saldo_moneda`/`ia_especie` ya existentes).
+  // `revividas_disponibles` empieza en 3 -- decisión confirmada
+  // explícitamente con el usuario: el límite es POR CUENTA de por vida,
+  // no por animal (refuerza que abandonar tiene consecuencia real, y dejar
+  // el gancho para vender revividas extra cuando se resuelva el modelo de
+  // pagos real).
+  await pool.query(`
+    ALTER TABLE usuarios
+      ADD COLUMN IF NOT EXISTS revividas_disponibles INT NOT NULL DEFAULT 3,
+      ADD COLUMN IF NOT EXISTS casa_espacios_comprados INT NOT NULL DEFAULT 0
+  `);
 }
 
 // Categorías sugeridas para clasificar pendientes (rama-categorias). Lista
@@ -1926,6 +1993,138 @@ const COSTO_IA_USD = 0;
 // avisar antes de llegar al tope real.
 const UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA = 10000;
 
+// rama-juego-fundacion (diseño completo en COORDINACION.md, sección
+// "Diseño del modelo de datos del juego"): catálogos hardcodeados, mismo
+// criterio que IA_ESPECIES/IA_ETAPAS arriba -- son contenido fijo, no
+// datos por usuario, no van en la DB.
+
+// Especie = plan corporal base para el arte (silueta). Lo "legendario" NO
+// sale de la especie (a diferencia de Happy Pets, decisión explícita del
+// usuario) -- sale de la combinación de genes de GENES más abajo.
+const ESPECIES_ANIMAL = ['gato', 'perro', 'conejo', 'ave'];
+
+// Cada gen es un "locus": un animal tiene 2 alelos por locus (uno
+// heredado de cada padre, herencia diploide real). `rarezaBase` es el
+// peso con el que un alelo se sortea para un animal SIN padres (adoptado,
+// no criado) -- entre dos padres reales, la cría hereda un alelo real de
+// cada uno (ver cruzarAnimales más abajo), `rarezaBase` no aplica ahí.
+// `dominante: true` es el que se expresa visualmente si el animal tiene
+// un alelo dominante y uno recesivo en ese locus (herencia mendeliana
+// simple). Números de `rarezaBase` son placeholder de balance -- ajustar
+// cuando haya datos reales de cuántos animales legendarios está saliendo.
+const GENES = {
+  color_base: {
+    tipo: 'visual',
+    alelos: {
+      marron: { rarezaBase: 40, dominante: true },
+      negro: { rarezaBase: 30, dominante: true },
+      blanco: { rarezaBase: 20, dominante: false },
+      dorado: { rarezaBase: 8, dominante: false },
+      iridiscente: { rarezaBase: 2, dominante: false },
+    },
+  },
+  patron: {
+    tipo: 'visual',
+    alelos: {
+      liso: { rarezaBase: 55, dominante: true },
+      manchado: { rarezaBase: 30, dominante: false },
+      rayado: { rarezaBase: 13, dominante: false },
+      estelar: { rarezaBase: 2, dominante: false },
+    },
+  },
+  brillo: {
+    tipo: 'visual',
+    alelos: {
+      normal: { rarezaBase: 92, dominante: true },
+      luminiscente: { rarezaBase: 8, dominante: false },
+    },
+  },
+  // Reusa EXACTAMENTE el mismo sistema de herencia que los genes visuales
+  // -- "probabilidad real de nacer con una condición heredada" es
+  // literalmente la matemática mendeliana (2 portadores → 25% real de
+  // cría afectada), no un dado aparte tirado a mano.
+  salud: {
+    tipo: 'salud',
+    alelos: {
+      sano: { rarezaBase: 85, dominante: true },
+      portador_debil: { rarezaBase: 15, dominante: false },
+    },
+  },
+};
+
+// Un animal es legendario si expresa 2+ de estos rasgos a la vez en la
+// misma cría -- emerge de la genética real, no de una tirada de rareza
+// fija aparte (decisión explícita del usuario).
+const RASGOS_LEGENDARIOS = { color_base: ['iridiscente'], patron: ['estelar'], brillo: ['luminiscente'] };
+const UMBRAL_RASGOS_PARA_LEGENDARIO = 2;
+
+// Niveles de jugador -- 15 niveles, curva creciente a propósito para que
+// nivel 11 (donde en una ronda futura se activan los avisos automáticos
+// de salud) se sienta como una meta real. Se derivan de
+// monedaAcumuladaDeVida(), NUNCA se guardan aparte (mismo criterio que
+// etapaPorMoneda/IA_UMBRAL_ETAPA de arriba, ya establecido por la tarea O
+// del backlog). Números placeholder de balance.
+const NIVEL_UMBRAL_MONEDA = [
+  0, 30, 80, 150, 250, 400, 600, 850, 1150, 1500, 1900, 2400, 3000, 3700, 4500,
+];
+
+function nivelJugadorPorMoneda(totalDeVida) {
+  let indice = 0;
+  for (let i = NIVEL_UMBRAL_MONEDA.length - 1; i >= 0; i--) {
+    if (totalDeVida >= NIVEL_UMBRAL_MONEDA[i]) { indice = i; break; }
+  }
+  return indice + 1; // 1-indexado, más natural para mostrarlo al usuario
+}
+
+// Capacidad de la casa: base + bono por nivel + lo comprado -- solo lo
+// comprado se guarda en la DB (`usuarios.casa_espacios_comprados`), el
+// resto se deriva en vivo de nivelJugador, mismo criterio anti-duplicación
+// que el resto del juego. Placeholder de balance.
+const CASA_CAPACIDAD_BASE = 3;
+const CASA_INCREMENTO_POR_NIVEL = 1;
+
+function capacidadCasa(nivelJugador, espaciosComprados) {
+  return CASA_CAPACIDAD_BASE + (nivelJugador - 1) * CASA_INCREMENTO_POR_NIVEL + espaciosComprados;
+}
+
+// Sortea un alelo por rarezaBase -- usado SOLO para animales sin padres
+// (adoptados). Suma de pesos, número random en ese rango, primer alelo
+// cuyo acumulado lo supera.
+function sortearAlelo(locus) {
+  const alelos = Object.entries(GENES[locus].alelos);
+  const total = alelos.reduce((suma, [, def]) => suma + def.rarezaBase, 0);
+  let punto = Math.random() * total;
+  for (const [nombre, def] of alelos) {
+    punto -= def.rarezaBase;
+    if (punto <= 0) return nombre;
+  }
+  return alelos[alelos.length - 1][0]; // fallback por redondeo de floats
+}
+
+// Determina si el genotipo completo de un animal (un alelo EXPRESADO por
+// locus, ya resuelto por dominancia) lo hace legendario -- 2+ rasgos de
+// RASGOS_LEGENDARIOS expresados a la vez.
+function esGenotipoLegendario(alelosExpresados) {
+  let cuenta = 0;
+  for (const [locus, rasgos] of Object.entries(RASGOS_LEGENDARIOS)) {
+    if (rasgos.includes(alelosExpresados[locus])) cuenta += 1;
+  }
+  return cuenta >= UMBRAL_RASGOS_PARA_LEGENDARIO;
+}
+
+// Herencia mendeliana simple: dado un locus, si alguno de los 2 alelos es
+// dominante, ese se expresa; si los 2 son recesivos pero iguales, se
+// expresa ese; si son 2 recesivos distintos, se expresa el primero
+// (orden arbitrario pero determinístico -- no afecta el balance, ambos
+// son recesivos frente a cualquier dominante presente en la población).
+function aleloExpresado(locus, alelo1, alelo2) {
+  const def1 = GENES[locus].alelos[alelo1];
+  const def2 = GENES[locus].alelos[alelo2];
+  if (def1 && def1.dominante) return alelo1;
+  if (def2 && def2.dominante) return alelo2;
+  return alelo1;
+}
+
 function etapaPorMoneda(totalDeVida) {
   let indice = 0;
   for (let i = IA_UMBRAL_ETAPA.length - 1; i >= 0; i--) {
@@ -1973,7 +2172,7 @@ async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = 
       : pool
           .query(
             `SELECT ia_especie, ia_skin, ia_nombre, ia_tema_extra, saldo_moneda,
-                    comodines_perdon_disponibles
+                    comodines_perdon_disponibles, revividas_disponibles, casa_espacios_comprados
              FROM usuarios WHERE id = $1`,
             [usuarioId]
           )
@@ -1987,6 +2186,13 @@ async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = 
   const [fila, totalDeVida, rachas, perfilIaRows] = await Promise.all(consultas);
   if (!fila) return null;
   const etapa = etapaPorMoneda(totalDeVida);
+  // rama-juego-fundacion: nivelJugador se calcula siempre (solo depende de
+  // totalDeVida, ya se pedía). revividasDisponibles/capacidadCasa solo si
+  // `fila` trae esas columnas -- el middleware global (barraSuperiorDeUsuario)
+  // pasa una `usuarioFila` más angosta que no las incluye porque el top bar
+  // no las muestra; no vale la pena sumarlas a esa consulta de cada request.
+  const nivelJugador = nivelJugadorPorMoneda(totalDeVida);
+  const tieneDatosCasa = fila.casa_espacios_comprados !== undefined;
   return {
     especie: fila.ia_especie || 'monstera',
     etapa,
@@ -1997,6 +2203,13 @@ async function perfilJuegoDeUsuario(usuarioId, { usuarioFila, incluirPerfilIa = 
     iaTemaExtra: fila.ia_tema_extra,
     comodinesDisponibles: fila.comodines_perdon_disponibles,
     rachaGeneral: rachas.get(usuarioId) || 0,
+    nivelJugador,
+    ...(tieneDatosCasa
+      ? {
+          revividasDisponibles: fila.revividas_disponibles,
+          capacidadCasa: capacidadCasa(nivelJugador, fila.casa_espacios_comprados),
+        }
+      : {}),
     ...(incluirPerfilIa ? { perfilIaResumen: perfilIaRows.rows[0] ? perfilIaRows.rows[0].resumen : '' } : {}),
   };
 }
@@ -4609,6 +4822,282 @@ app.post('/ia/usar-comodin', async (req, res) => {
   res.redirect('/ia');
 });
 
+// rama-juego-fundacion: Casa + animales -- primer tramo del juego (diseño
+// completo en COORDINACION.md). Plaza y el cron de salud/abandono quedan
+// para una ronda aparte a propósito (decisión explícita del usuario).
+
+// Sortea un genotipo completo (2 alelos por locus) para un animal sin
+// padres -- usa rarezaBase de GENES. Devuelve tanto el genotipo (para
+// guardar en animales_genes) como si resultó legendario.
+function generarGenotipoAdoptado() {
+  const genotipo = {};
+  for (const locus of Object.keys(GENES)) {
+    genotipo[locus] = [sortearAlelo(locus), sortearAlelo(locus)];
+  }
+  return genotipo;
+}
+
+// Cría real: 1 alelo real de cada padre por locus (herencia real, no
+// rarezaBase). Devuelve también qué locus de salud quedó con 2 alelos
+// recesivos (para registrar la enfermedad genética real, no un dado
+// aparte).
+function generarGenotipoDeCria(genesPadre, genesMadre) {
+  const genotipo = {};
+  for (const locus of Object.keys(GENES)) {
+    const delPadre = Math.random() < 0.5 ? genesPadre[locus].alelo_1 : genesPadre[locus].alelo_2;
+    const deLaMadre = Math.random() < 0.5 ? genesMadre[locus].alelo_1 : genesMadre[locus].alelo_2;
+    genotipo[locus] = [delPadre, deLaMadre];
+  }
+  return genotipo;
+}
+
+function alelosExpresadosDe(genotipo) {
+  const expresados = {};
+  for (const [locus, [a1, a2]] of Object.entries(genotipo)) {
+    expresados[locus] = aleloExpresado(locus, a1, a2);
+  }
+  return expresados;
+}
+
+async function insertarAnimal(client, { usuarioId, especie, nombre, padreId, madreId, genotipo }) {
+  const expresados = alelosExpresadosDe(genotipo);
+  const esLegendario = esGenotipoLegendario(expresados);
+  const { rows } = await client.query(
+    `INSERT INTO animales (usuario_id, especie, nombre, padre_id, madre_id, es_legendario)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [usuarioId, especie, nombre, padreId, madreId, esLegendario]
+  );
+  const animalId = rows[0].id;
+  for (const [locus, [a1, a2]] of Object.entries(genotipo)) {
+    await client.query(
+      'INSERT INTO animales_genes (animal_id, locus, alelo_1, alelo_2) VALUES ($1, $2, $3, $4)',
+      [animalId, locus, a1, a2]
+    );
+  }
+  // Enfermedad genética real: si el locus `salud` expresa el alelo
+  // recesivo (los 2 alelos son 'portador_debil'), la cría nace con la
+  // condición -- probabilidad real de la herencia mendeliana, no un dado
+  // aparte (ver el comentario largo en la definición de GENES).
+  if (expresados.salud === 'portador_debil') {
+    await client.query(
+      `INSERT INTO animales_enfermedades (animal_id, enfermedad, origen) VALUES ($1, $2, 'genetica')`,
+      [animalId, 'debilidad_congenita']
+    );
+  }
+  return { id: animalId, esLegendario };
+}
+
+async function animalesDeUsuarioConGenes(usuarioId) {
+  const { rows } = await pool.query(
+    `SELECT a.id, a.especie, a.nombre, a.es_legendario, a.salud_estado, a.nacido, a.ultima_alimentacion,
+            a.padre_id, a.madre_id,
+            json_object_agg(g.locus, json_build_array(g.alelo_1, g.alelo_2)) AS genotipo
+     FROM animales a
+     LEFT JOIN animales_genes g ON g.animal_id = a.id
+     WHERE a.usuario_id = $1 AND a.eliminado = false
+     GROUP BY a.id
+     ORDER BY a.nacido DESC`,
+    [usuarioId]
+  );
+  return rows.map((a) => ({
+    ...a,
+    alelosExpresados: a.genotipo ? alelosExpresadosDe(a.genotipo) : {},
+  }));
+}
+
+app.get('/casa', async (req, res) => {
+  try {
+    const [perfil, animales] = await Promise.all([
+      perfilJuegoDeUsuario(req.usuarioId),
+      animalesDeUsuarioConGenes(req.usuarioId),
+    ]);
+    res.render('casa', {
+      especies: ESPECIES_ANIMAL,
+      animales,
+      nivelJugador: perfil.nivelJugador,
+      capacidadCasa: perfil.capacidadCasa,
+      espaciosLibres: perfil.capacidadCasa - animales.length,
+      nacio: Number(req.query.nacio) || null,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando la casa:', err.message);
+    res.status(500).render('casa', {
+      especies: ESPECIES_ANIMAL, animales: [], nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0, nacio: null,
+      error: 'No se pudo leer la base de datos.',
+    });
+  }
+});
+
+// Adoptar: crea un animal nuevo SIN padres (genotipo sorteado). Repetible
+// mientras haya espacio en la casa -- es la forma de conseguir variedad
+// sin depender solo de la cría (que necesita 2 animales ya existentes).
+app.post('/casa/adoptar', async (req, res) => {
+  const especie = req.body.especie;
+  if (!ESPECIES_ANIMAL.includes(especie)) {
+    return res.status(400).send('Especie inválida.');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: contadorRows } = await client.query(
+      'SELECT COUNT(*)::int AS c FROM animales WHERE usuario_id = $1 AND eliminado = false',
+      [req.usuarioId]
+    );
+    const perfil = await perfilJuegoDeUsuario(req.usuarioId);
+    if (contadorRows[0].c >= perfil.capacidadCasa) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Tu casa ya está al límite de espacio.');
+    }
+    const genotipo = generarGenotipoAdoptado();
+    await insertarAnimal(client, {
+      usuarioId: req.usuarioId, especie, nombre: null, padreId: null, madreId: null, genotipo,
+    });
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error adoptando animal:', err.message);
+    return res.status(500).send('No se pudo adoptar el animal.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/casa');
+});
+
+app.post('/animales/:id/nombrar', async (req, res) => {
+  const id = Number(req.params.id);
+  const nombre = (req.body.nombre || '').trim().slice(0, 30) || null;
+  if (!Number.isInteger(id)) return res.status(400).send('id inválido.');
+  try {
+    await pool.query('UPDATE animales SET nombre = $1 WHERE id = $2 AND usuario_id = $3', [nombre, id, req.usuarioId]);
+  } catch (err) {
+    console.error('Error nombrando animal:', err.message);
+    return res.status(500).send('No se pudo renombrar.');
+  }
+  res.redirect('/casa');
+});
+
+// Alimentar: en esta ronda es informativo/preparatorio -- actualiza
+// `ultima_alimentacion`, que es lo que el cron de abandono de la ronda
+// futura va a leer para decidir si un animal se enferma. Sin ese cron
+// todavía, alimentar no tiene consecuencia visible más allá de la fecha,
+// a propósito (fundación, no la mecánica completa).
+app.post('/animales/:id/alimentar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).send('id inválido.');
+  try {
+    await pool.query(
+      `UPDATE animales SET ultima_alimentacion = now() WHERE id = $1 AND usuario_id = $2 AND eliminado = false`,
+      [id, req.usuarioId]
+    );
+  } catch (err) {
+    console.error('Error alimentando animal:', err.message);
+    return res.status(500).send('No se pudo alimentar.');
+  }
+  res.redirect('/casa');
+});
+
+// Cría real entre 2 animales del MISMO usuario (v1 -- cruzar con el animal
+// de un amigo queda para una ronda futura, decisión documentada en
+// COORDINACION.md). No consume espacio de la casa para validar (la cría
+// resultante sí lo hace, vía el mismo límite que /casa/adoptar).
+app.post('/animales/:id/cruzar', async (req, res) => {
+  const idPadre = Number(req.params.id);
+  const idMadre = Number(req.body.pareja_id);
+  if (!Number.isInteger(idPadre) || !Number.isInteger(idMadre) || idPadre === idMadre) {
+    return res.status(400).send('Elegí dos animales distintos.');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: padres } = await client.query(
+      `SELECT id, especie, usuario_id FROM animales
+       WHERE id = ANY($1::int[]) AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido'
+       FOR UPDATE`,
+      [[idPadre, idMadre], req.usuarioId]
+    );
+    if (padres.length !== 2) {
+      await client.query('ROLLBACK');
+      return res.status(403).send('Los dos animales deben ser tuyos, estar vivos, y existir.');
+    }
+    if (padres[0].especie !== padres[1].especie) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Solo se pueden cruzar animales de la misma especie.');
+    }
+    const { rows: contadorRows } = await client.query(
+      'SELECT COUNT(*)::int AS c FROM animales WHERE usuario_id = $1 AND eliminado = false',
+      [req.usuarioId]
+    );
+    const perfil = await perfilJuegoDeUsuario(req.usuarioId);
+    if (contadorRows[0].c >= perfil.capacidadCasa) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Tu casa ya está al límite de espacio -- no hay lugar para la cría.');
+    }
+    const { rows: genesRows } = await client.query(
+      'SELECT animal_id, locus, alelo_1, alelo_2 FROM animales_genes WHERE animal_id = ANY($1::int[])',
+      [[idPadre, idMadre]]
+    );
+    const genesPorAnimal = { [idPadre]: {}, [idMadre]: {} };
+    for (const g of genesRows) {
+      genesPorAnimal[g.animal_id][g.locus] = { alelo_1: g.alelo_1, alelo_2: g.alelo_2 };
+    }
+    const genotipoCria = generarGenotipoDeCria(genesPorAnimal[idPadre], genesPorAnimal[idMadre]);
+    const cria = await insertarAnimal(client, {
+      usuarioId: req.usuarioId, especie: padres[0].especie, nombre: null,
+      padreId: idPadre, madreId: idMadre, genotipo: genotipoCria,
+    });
+    await client.query('COMMIT');
+    return res.redirect(`/casa?nacio=${cria.id}`);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error cruzando animales:', err.message);
+    return res.status(500).send('No se pudo cruzar a los animales.');
+  } finally {
+    client.release();
+  }
+});
+
+// Revivir: 3 veces POR CUENTA de por vida (decisión confirmada
+// explícitamente con el usuario), no por animal. Deja al animal en
+// 'critico' (no 'sano' directo) -- revivir no es gratis ni perfecto.
+// Nota: sin el cron de abandono (ronda futura), ningún animal llega solo
+// a 'fallecido' todavía -- esta ruta queda lista mientras tanto.
+app.post('/animales/:id/revivir', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).send('id inválido.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: usuarioRows } = await client.query(
+      'SELECT revividas_disponibles FROM usuarios WHERE id = $1 FOR UPDATE',
+      [req.usuarioId]
+    );
+    if (!usuarioRows[0] || usuarioRows[0].revividas_disponibles <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('No te quedan revividas disponibles.');
+    }
+    const { rows: animalRows } = await client.query(
+      `UPDATE animales SET salud_estado = 'critico', fallecido_en = NULL
+       WHERE id = $1 AND usuario_id = $2 AND salud_estado = 'fallecido'
+       RETURNING id`,
+      [id, req.usuarioId]
+    );
+    if (!animalRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Ese animal no está fallecido.');
+    }
+    await client.query('UPDATE usuarios SET revividas_disponibles = revividas_disponibles - 1 WHERE id = $1', [req.usuarioId]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error reviviendo animal:', err.message);
+    return res.status(500).send('No se pudo revivir al animal.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/casa');
+});
+
 // rama-ajustes (Ronda — pulido y detalles de producto): decisiones
 // documentadas en COORDINACION.md — "nombre visible" es nombre_usuario
 // (no un campo nuevo), cambiar de especie no reinicia la etapa (se
@@ -4980,6 +5469,23 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     // rama-logros: mismo motivo que las 2 tablas de arriba --
     // logros_desbloqueados.usuario_id tampoco tiene ON DELETE CASCADE.
     await client.query('DELETE FROM logros_desbloqueados WHERE usuario_id = $1', [usuarioId]);
+
+    // rama-juego-fundacion: animales_enfermedades y animales_genes primero
+    // (referencian animal_id sin ON DELETE CASCADE), animales al final --
+    // en una sola sentencia que borra TODOS los animales del usuario a la
+    // vez, así que las referencias propias entre padre_id/madre_id (cría
+    // v1 es siempre entre animales del MISMO usuario, nunca cruza cuentas)
+    // no revientan por FK: Postgres valida las referencias contra el
+    // estado de la tabla al final de la sentencia, no fila por fila.
+    await client.query(
+      `DELETE FROM animales_enfermedades WHERE animal_id IN (SELECT id FROM animales WHERE usuario_id = $1)`,
+      [usuarioId]
+    );
+    await client.query(
+      `DELETE FROM animales_genes WHERE animal_id IN (SELECT id FROM animales WHERE usuario_id = $1)`,
+      [usuarioId]
+    );
+    await client.query('DELETE FROM animales WHERE usuario_id = $1', [usuarioId]);
 
     // 16. rama-login-email: tokens de reseteo de contraseña propios --
     // `reseteos_password.usuario_id` no tenía ON DELETE CASCADE, así que

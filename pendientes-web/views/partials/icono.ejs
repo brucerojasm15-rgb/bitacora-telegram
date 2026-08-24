@@ -66,6 +66,9 @@ const ICONOS = {
   casa: '<path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"></path><path d="M9.5 20v-6h5v6"></path>',
   // rama-logros: icono nuevo para Logros, mismo estilo -- copa/trofeo.
   trofeo: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"></path><path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4"></path>',
+  // rama-juego-fundacion: icono nuevo para Casa/animales -- huella (pata),
+  // mismo estilo lucide/outline 24x24 que el resto.
+  pata: '<circle cx="12" cy="16" r="3.2"></circle><circle cx="6.5" cy="10" r="1.8"></circle><circle cx="17.5" cy="10" r="1.8"></circle><circle cx="9.5" cy="6.5" r="1.6"></circle><circle cx="14.5" cy="6.5" r="1.6"></circle>',
 };
 const nombreIcono = (typeof nombre !== 'undefined' && ICONOS[nombre]) ? nombre : null;
 %><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><%- nombreIcono ? ICONOS[nombreIcono] : '' %></svg>

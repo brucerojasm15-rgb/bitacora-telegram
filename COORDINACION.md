@@ -4360,6 +4360,72 @@ después.
 - **Confirmado en verde el run real de GitHub Actions** (job
   `pruebas-integracion`, run `32754560834`) antes de mergear.
 
+### rama-juego-fundacion
+- Estado: lista para merge.
+- Pedido por el usuario (2026-08-24): primer tramo de implementación del
+  juego, siguiendo el diseño ya escrito en "Diseño del modelo de datos del
+  juego" (sección de arriba). **Por etapas, confirmado explícitamente con
+  el usuario**: esta rama es esquema + Casa (adoptar, alimentar, cruzar,
+  revivir) -- Plaza y el cron automático de salud/abandono quedan para una
+  ronda aparte a propósito.
+- **Qué se construyó**, siguiendo el diseño casi literal:
+  1. Tablas nuevas (`animales`, `animales_genes`, `animales_enfermedades`)
+     + columnas en `usuarios` (`revividas_disponibles` default 3,
+     `casa_espacios_comprados` default 0) en `ensureSchema()`.
+  2. Catálogos hardcodeados en JS (`ESPECIES_ANIMAL`, `GENES` con sus
+     alelos y `rarezaBase`, `RASGOS_LEGENDARIOS`, `NIVEL_UMBRAL_MONEDA`),
+     mismo patrón que `IA_ESPECIES`/`LOGROS` -- ninguna tabla de catálogo.
+  3. `nivelJugadorPorMoneda()` y `capacidadCasa()`, ambas puras, derivadas
+     de `monedaAcumuladaDeVida()` -- `perfilJuegoDeUsuario()` extendido
+     con `nivelJugador` (siempre) y `revividasDisponibles`/`capacidadCasa`
+     (solo si el caller pasó las columnas nuevas, para no sumarle una
+     columna a la consulta del middleware global que arma la barra
+     superior en CADA request logueada).
+  4. Herencia mendeliana real: `sortearAlelo` (animales adoptados, sin
+     padres, por `rarezaBase`), `generarGenotipoDeCria` (1 alelo real de
+     cada padre por locus), `aleloExpresado` (dominancia simple),
+     `esGenotipoLegendario` (2+ rasgos marcados como legendarios
+     expresados a la vez). El locus `salud` reusa el mismo mecanismo: si
+     la cría hereda 2 alelos `portador_debil`, nace con
+     `debilidad_congenita` real en `animales_enfermedades` -- no hay un
+     dado aparte para "enfermedad genética", es la misma matemática que
+     los rasgos visuales.
+  5. Rutas: `GET /casa`, `POST /casa/adoptar` (repetible mientras haya
+     espacio), `POST /animales/:id/nombrar`, `POST /animales/:id/alimentar`
+     (solo actualiza `ultima_alimentacion`, sin consecuencia todavía --
+     eso es el cron de la ronda futura), `POST /animales/:id/cruzar`
+     (mismo usuario, misma especie, valida espacio libre ANTES de crear
+     la cría), `POST /animales/:id/revivir` (exige
+     `revividas_disponibles > 0`, dormida hasta que exista el cron --
+     nada muere solo todavía, se probó forzando el estado a mano).
+  6. Vista `views/casa.ejs` (reusa `.meta-card`/`.ajustes-form` ya
+     existentes, sin CSS nuevo) + tile "Casa" nueva en el menú
+     (`partials/nav.ejs`, ícono `pata` nuevo en `partials/icono.ejs`).
+  7. `POST /ajustes/eliminar-cuenta` extendida: borra
+     `animales_enfermedades`/`animales_genes`/`animales` del usuario, en
+     ese orden. `animales.padre_id`/`madre_id` son auto-referencia (cría
+     v1 siempre entre animales del MISMO usuario) -- confirmado que un
+     solo `DELETE ... WHERE usuario_id = $1` borrando padre e hijo A LA
+     VEZ no revienta por FK (Postgres valida contra el estado final de la
+     sentencia, no fila por fila).
+- **Probado de punta a punta contra la DB real de Railway**, incluido el
+  caso de riesgo real (no solo el camino feliz): adoptar hasta el límite
+  de la casa (3/3) y confirmar que un 4to falla; cruzar con la casa llena
+  (falla) y con espacio libre (funciona); **confirmado que cada alelo de
+  una cría real viene de verdad de uno de los dos padres** (no de
+  `rarezaBase`, que es solo para animales adoptados); revivir un animal
+  forzado a `fallecido` a mano (pasa a `critico`, resta 1 revivida) y que
+  revivir un animal vivo falla; y el caso que más importaba -- **borrar
+  una cuenta con animales Y una cría real (relación padre-hijo) no
+  revienta el server**, confirmado con el server respondiendo 200
+  después.
+- Archivos tocados: `server.js` (`ensureSchema`, catálogos, funciones de
+  genética, `perfilJuegoDeUsuario`, 6 rutas nuevas, `POST
+  /ajustes/eliminar-cuenta`), `views/casa.ejs` (nueva),
+  `views/partials/nav.ejs`, `views/partials/icono.ejs` (ícono `pata`).
+- No comiteado todavía -- se commitea y pushea junto con la actualización
+  de este mismo archivo.
+
 ### rama-integracion
 - Estado: —
 - Última acción: —

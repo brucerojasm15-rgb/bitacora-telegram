@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Casa' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'pata' }) %> Casa</h1>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+      <p class="count">
+        Nivel <%= nivelJugador %> · Espacio: <%= animales.length %> / <%= capacidadCasa %>
+        <% if (nacio) { %> — <span class="notificacion">¡Nació un animal nuevo!</span><% } %>
+      </p>
+
+      <% if (espaciosLibres > 0) { %>
+        <section class="ajustes-grupo">
+          <h2>Adoptar un animal</h2>
+          <p class="ajustes-nota">Cada animal adoptado tiene rasgos sorteados al azar. Para intentar combinaciones raras, cruzá dos animales que ya tengas.</p>
+          <form method="POST" action="/casa/adoptar" class="ajustes-form">
+            <label for="adoptar-especie">Especie</label>
+            <select name="especie" id="adoptar-especie" required>
+              <% especies.forEach((e) => { %>
+                <option value="<%= e %>"><%= e.charAt(0).toUpperCase() + e.slice(1) %></option>
+              <% }) %>
+            </select>
+            <button type="submit">Adoptar</button>
+          </form>
+        </section>
+      <% } else { %>
+        <p class="empty">Tu casa está al límite de espacio -- sube de nivel o consigue más espacio para adoptar o cruzar animales nuevos.</p>
+      <% } %>
+
+      <% if (animales.length === 0) { %>
+        <p class="empty">Todavía no tienes ningún animal. Adoptá el primero arriba.</p>
+      <% } else { %>
+        <% animales.forEach((a) => { %>
+          <section class="meta-card <%= a.salud_estado !== 'sano' ? 'meta-inactiva' : '' %>">
+            <div class="meta-card-header">
+              <h2><%= a.nombre || ('Sin nombre (' + a.especie + ')') %><% if (a.es_legendario) { %> ✨<% } %></h2>
+              <span class="meta-estado-badge"><%= a.salud_estado %></span>
+            </div>
+            <p class="meta-progreso-texto">
+              <%= a.especie.charAt(0).toUpperCase() + a.especie.slice(1) %><% if (a.es_legendario) { %> — <strong>legendario</strong><% } %>
+              <% if (a.padre_id || a.madre_id) { %> — nacido de cría<% } else { %> — adoptado<% } %>
+            </p>
+            <p class="meta-progreso-texto">
+              <% Object.entries(a.alelosExpresados).filter(([locus]) => locus !== 'salud').forEach(([locus, alelo], i) => { %>
+                <% if (i > 0) { %> · <% } %><code><%= locus %>: <%= alelo %></code>
+              <% }) %>
+            </p>
+
+            <form method="POST" action="/animales/<%= a.id %>/nombrar" class="meta-card-acciones">
+              <input type="text" name="nombre" placeholder="Ponle un nombre" value="<%= a.nombre || '' %>" maxlength="30" style="width:auto;display:inline-block;">
+              <button type="submit">Guardar nombre</button>
+            </form>
+
+            <% if (a.salud_estado === 'fallecido') { %>
+              <form method="POST" action="/animales/<%= a.id %>/revivir" class="meta-card-acciones">
+                <button type="submit"><%- include('partials/icono', { nombre: 'llama' }) %> Revivir</button>
+              </form>
+            <% } else { %>
+              <form method="POST" action="/animales/<%= a.id %>/alimentar" class="meta-card-acciones">
+                <button type="submit">Alimentar</button>
+              </form>
+              <% const parejas = animales.filter((otro) => otro.id !== a.id && otro.especie === a.especie && otro.salud_estado !== 'fallecido'); %>
+              <% if (parejas.length > 0) { %>
+                <form method="POST" action="/animales/<%= a.id %>/cruzar" class="meta-card-acciones">
+                  <select name="pareja_id" aria-label="Cruzar con" required>
+                    <% parejas.forEach((p) => { %>
+                      <option value="<%= p.id %>"><%= p.nombre || ('Sin nombre #' + p.id) %></option>
+                    <% }) %>
+                  </select>
+                  <button type="submit">Cruzar</button>
+                </form>
+              <% } %>
+            <% } %>
+          </section>
+        <% }) %>
+      <% } %>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

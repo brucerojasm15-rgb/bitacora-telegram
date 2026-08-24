@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'Metas cumplidas' }) %>
+</head>
+<body>
+  <main>
+<%- include('partials/nav') %>
+    <h1><%- include('partials/icono', { nombre: 'grafico' }) %> Metas cumplidas</h1>
+    <a class="btn-link" href="/chat?amistad_id=<%= amistadId %>"><%- include('partials/icono', { nombre: 'flecha-izq' }) %> Volver al chat</a>
+
+    <% if (error) { %>
+      <p class="error"><%= error %></p>
+    <% } else { %>
+      <section class="ajustes-grupo">
+        <h2>Metas personales completadas</h2>
+        <ul class="chat-stats-comparacion">
+          <li>Tú: <strong><%= propiasCompletadas %></strong></li>
+          <li><%= amigoNombre %>: <strong><%= amigoCompletadas %></strong></li>
+        </ul>
+      </section>
+
+      <section class="ajustes-grupo">
+        <h2><%- include('partials/icono', { nombre: 'personas' }) %> Metas compartidas cumplidas juntos</h2>
+        <% if (compartidasJuntos.length === 0) { %>
+          <p class="empty">Todavía no completaron ninguna meta compartida juntos.</p>
+        <% } else { %>
+          <% compartidasJuntos.forEach((m) => { %>
+            <section class="meta-card">
+              <div class="meta-card-header">
+                <h2><%= m.titulo %></h2>
+                <span class="meta-estado-badge">completada</span>
+              </div>
+              <p class="meta-progreso-texto"><%= m.valor_actual %> / <%= m.valor_objetivo %><%= m.tipo_metrica ? ' ' + m.tipo_metrica : '' %></p>
+            </section>
+          <% }) %>
+        <% } %>
+      </section>
+    <% } %>
+  </main>
+
+<%- include('partials/scripts') %>
+</body>
+</html>

@@ -1323,6 +1323,45 @@ async function ensureSchema() {
       leido BOOLEAN DEFAULT false
     )
   `);
+  // rama-chat-metas: un mensaje puede además "adjuntar" una meta (propia o
+  // compartida) en vez de ser solo texto -- se guardan como columnas
+  // nullable en la misma fila en vez de una tabla aparte, mismo criterio
+  // pragmático que ya usa el resto de la app para adjuntos opcionales (ej.
+  // `asignado_a` en pendientes). Nunca las dos a la vez -- lo garantiza el
+  // código de POST /mensajes/meta, no una constraint (mismo estilo que el
+  // resto del esquema, que no usa CHECK constraints en ningún lado).
+  // ON DELETE SET NULL a propósito: la meta referenciada puede pertenecer a
+  // un usuario que NO es ninguno de los dos de esta amistad (ej. X crea una
+  // meta compartida con A, A la comparte en su chat con B; si X borra su
+  // cuenta, POST /ajustes/eliminar-cuenta borra `metas_compartidas` por
+  // `creado_por` sin tocar el chat A-B) -- sin SET NULL, ese DELETE
+  // reventaría con violación de FK (mismo patrón de bug ya atrapado 3 veces
+  // en este proyecto, ver rama-perfil-juego/rama-recapitulacion-diaria en
+  // COORDINACION.md). La vista (chat.ejs) ya maneja el caso NULL mostrando
+  // "Esta meta ya no existe."
+  await pool.query(`
+    ALTER TABLE mensajes
+      ADD COLUMN IF NOT EXISTS meta_personal_id INT,
+      ADD COLUMN IF NOT EXISTS meta_compartida_id INT
+  `);
+  // Constraints agregadas aparte (no inline en el ADD COLUMN de arriba) y
+  // siempre re-declaradas DROP+ADD: así, si esta rama corrió antes en este
+  // mismo Postgres con la versión sin ON DELETE SET NULL, el próximo
+  // arranque la corrige sola en vez de quedar con el FK viejo para siempre
+  // (ADD COLUMN IF NOT EXISTS no vuelve a tocar una columna que ya existe).
+  await pool.query(`ALTER TABLE mensajes DROP CONSTRAINT IF EXISTS mensajes_meta_personal_id_fkey`);
+  await pool.query(`ALTER TABLE mensajes ADD CONSTRAINT mensajes_meta_personal_id_fkey FOREIGN KEY (meta_personal_id) REFERENCES metas(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE mensajes DROP CONSTRAINT IF EXISTS mensajes_meta_compartida_id_fkey`);
+  await pool.query(`ALTER TABLE mensajes ADD CONSTRAINT mensajes_meta_compartida_id_fkey FOREIGN KEY (meta_compartida_id) REFERENCES metas_compartidas(id) ON DELETE SET NULL`);
+  // rama-chat-metas (optimización, pedida explícitamente por el usuario --
+  // "quiero que sea veloz"): GET /chat filtra por amistad_id y ordena por
+  // fecha en cada apertura del chat -- sin este índice, Postgres hace un
+  // seq scan completo de `mensajes` que solo va a doler más a medida que
+  // se acumulen conversaciones. Mismo patrón que el índice ya existente de
+  // mensajes_ia (usuario_id, fecha).
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_mensajes_amistad_fecha ON mensajes (amistad_id, fecha)
+  `);
   // rama-chat-general: sala única para todos los usuarios, sin amistad_id
   // de por medio (decisión documentada en COORDINACION.md).
   await pool.query(`
@@ -4850,30 +4889,57 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
 app.get('/chat', async (req, res) => {
   const amistadId = Number(req.query.amistad_id);
   const buscar = (req.query.buscar || '').trim();
+  const vacio = { mensajes: [], amistadId: null, error: null, usuarioId: req.usuarioId, buscar, amigoId: null, misMetas: [], misMetasCompartidas: [] };
   if (!Number.isInteger(amistadId)) {
-    return res.render('chat', { mensajes: [], amistadId: null, error: null, usuarioId: req.usuarioId, buscar });
+    return res.render('chat', vacio);
   }
   try {
     const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
     if (!pertenece) {
-      return res.status(403).render('chat', { mensajes: [], amistadId: null, error: 'No tienes acceso a esta conversación.', usuarioId: req.usuarioId, buscar });
+      return res.status(403).render('chat', { ...vacio, error: 'No tienes acceso a esta conversación.' });
     }
-    const params = [amistadId];
+    // rama-chat-metas: se necesita el id del amigo (no solo saber que
+    // pertenezco a la amistad) para el link a /chat/estadisticas y para
+    // futuros usos -- una sola fila, ya se validó arriba que pertenezco.
+    const { rows: filaAmistad } = await pool.query(
+      'SELECT usuario_a_id, usuario_b_id FROM amistades WHERE id = $1',
+      [amistadId]
+    );
+    const amigoId = filaAmistad.length
+      ? (filaAmistad[0].usuario_a_id === req.usuarioId ? filaAmistad[0].usuario_b_id : filaAmistad[0].usuario_a_id)
+      : null;
+
+    const params = [amistadId, req.usuarioId];
     // rama-fix-chat-visual: se suma el JOIN a usuarios para traer el nombre
     // real del autor -- antes la vista mostraba "Usuario " + autor_id (el
     // ID interno crudo) porque esta consulta nunca lo trajo. Mismo patrón
     // que ya usa GET /chat-general (`u.nombre_usuario AS autor_nombre`,
     // LEFT JOIN por si la cuenta del autor ya no existe).
-    let consulta = `SELECT m.id, m.amistad_id, m.autor_id, m.texto, m.fecha, m.leido, u.nombre_usuario AS autor_nombre
+    // rama-chat-metas: se suman los LEFT JOIN a metas/metas_compartidas
+    // para poder renderizar una "meta-card" en vez de texto plano cuando
+    // el mensaje adjunta una meta -- mp/mc quedan NULL si el mensaje es de
+    // texto normal. mcp_yo solo existe para saber si YO ya participo en la
+    // meta compartida adjuntada (para mostrar u ocultar el botón "Unirme").
+    let consulta = `SELECT m.id, m.amistad_id, m.autor_id, m.texto, m.fecha, m.leido, u.nombre_usuario AS autor_nombre,
+        m.meta_personal_id, mp.titulo AS mp_titulo, mp.valor_actual AS mp_actual, mp.valor_objetivo AS mp_objetivo, mp.tipo_metrica AS mp_metrica, mp.estado AS mp_estado,
+        m.meta_compartida_id, mc.titulo AS mc_titulo, mc.valor_actual AS mc_actual, mc.valor_objetivo AS mc_objetivo, mc.tipo_metrica AS mc_metrica, mc.estado AS mc_estado,
+        (mcp_yo.usuario_id IS NOT NULL) AS mc_ya_participo
        FROM mensajes m
        LEFT JOIN usuarios u ON u.id = m.autor_id
+       LEFT JOIN metas mp ON mp.id = m.meta_personal_id
+       LEFT JOIN metas_compartidas mc ON mc.id = m.meta_compartida_id
+       LEFT JOIN metas_compartidas_participantes mcp_yo ON mcp_yo.meta_compartida_id = m.meta_compartida_id AND mcp_yo.usuario_id = $2
        WHERE m.amistad_id = $1`;
     if (buscar) {
       params.push(`%${buscar}%`);
       consulta += ` AND m.texto ILIKE $${params.length}`;
     }
     consulta += ' ORDER BY m.fecha ASC';
-    const { rows } = await pool.query(consulta, params);
+    const [{ rows }, { rows: misMetas }, misMetasCompartidas] = await Promise.all([
+      pool.query(consulta, params),
+      pool.query('SELECT id, titulo, estado FROM metas WHERE usuario_id = $1 ORDER BY creado DESC', [req.usuarioId]),
+      metasCompartidasDeUsuario(req.usuarioId),
+    ]);
     // Se capturan los mensajes ANTES de marcarlos como leídos, para que la
     // vista todavía pueda mostrar cuáles llegaron sin leer en esta apertura
     // del chat. Solo se marcan los mensajes del OTRO usuario: los propios no
@@ -4882,10 +4948,10 @@ app.get('/chat', async (req, res) => {
       'UPDATE mensajes SET leido = true WHERE amistad_id = $1 AND autor_id != $2 AND leido = false',
       [amistadId, req.usuarioId]
     );
-    res.render('chat', { mensajes: rows, amistadId, error: null, usuarioId: req.usuarioId, buscar });
+    res.render('chat', { mensajes: rows, amistadId, error: null, usuarioId: req.usuarioId, buscar, amigoId, misMetas, misMetasCompartidas });
   } catch (err) {
     console.error('Error consultando mensajes:', err.message);
-    res.status(500).render('chat', { mensajes: [], amistadId, error: 'No se pudo leer la base de datos.', usuarioId: req.usuarioId, buscar });
+    res.status(500).render('chat', { ...vacio, amistadId, error: 'No se pudo leer la base de datos.' });
   }
 });
 
@@ -4924,9 +4990,16 @@ app.get('/notificaciones', async (req, res) => {
   }
 });
 
+// rama-chat-metas (optimización pedida por el usuario -- "quiero que sea
+// veloz"): si el cliente pide JSON (fetch desde chat.js), responde con el
+// mensaje recién creado en vez de forzar una recarga completa de /chat --
+// el formulario plano sigue funcionando igual (progressive enhancement,
+// mismo espíritu que `data-carga-manual` en partials/scripts.ejs) para
+// quien tenga JS desactivado.
 app.post('/mensajes', async (req, res) => {
   const amistadId = Number(req.body.amistad_id);
   const texto = (req.body.texto || '').trim();
+  const quiereJson = (req.get('accept') || '').includes('application/json');
   if (!Number.isInteger(amistadId)) {
     return res.status(400).send('amistad_id inválido');
   }
@@ -4938,15 +5011,154 @@ app.post('/mensajes', async (req, res) => {
     if (!pertenece) {
       return res.status(403).send('No tienes acceso a esta conversación.');
     }
-    await pool.query(
-      'INSERT INTO mensajes (amistad_id, autor_id, texto, fecha, leido) VALUES ($1, $2, $3, now(), false)',
+    const { rows } = await pool.query(
+      'INSERT INTO mensajes (amistad_id, autor_id, texto, fecha, leido) VALUES ($1, $2, $3, now(), false) RETURNING id, fecha',
       [amistadId, req.usuarioId, texto]
     );
+    if (quiereJson) {
+      return res.json({ id: rows[0].id, fecha: rows[0].fecha, texto, autorId: req.usuarioId });
+    }
   } catch (err) {
     console.error('Error creando mensaje:', err.message);
+    if (quiereJson) return res.status(500).json({ error: 'No se pudo enviar el mensaje.' });
     return res.status(500).send('No se pudo enviar el mensaje.');
   }
   res.redirect('/chat?amistad_id=' + amistadId);
+});
+
+// rama-chat-metas: comparte una meta propia (personal) o una meta
+// compartida en la que participo como un mensaje especial dentro del chat
+// de una amistad -- el texto es solo un resumen legible (para que
+// búsqueda de texto y notificaciones sigan funcionando sin cambios), la
+// vista renderiza la meta-card real a partir de meta_personal_id/
+// meta_compartida_id (ver GET /chat). Nunca las dos columnas a la vez.
+app.post('/mensajes/meta', async (req, res) => {
+  const amistadId = Number(req.body.amistad_id);
+  const metaTipo = req.body.meta_tipo;
+  const metaId = Number(req.body.meta_id);
+  if (!Number.isInteger(amistadId) || !Number.isInteger(metaId) || !['personal', 'compartida'].includes(metaTipo)) {
+    return res.status(400).send('Datos inválidos.');
+  }
+  try {
+    const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
+    if (!pertenece) {
+      return res.status(403).send('No tienes acceso a esta conversación.');
+    }
+    if (metaTipo === 'personal') {
+      // Solo se puede compartir una meta PROPIA -- nunca la de otro usuario,
+      // aunque el id se adivine.
+      const { rows } = await pool.query('SELECT titulo FROM metas WHERE id = $1 AND usuario_id = $2', [metaId, req.usuarioId]);
+      if (!rows.length) return res.status(403).send('Esa meta no es tuya.');
+      await pool.query(
+        'INSERT INTO mensajes (amistad_id, autor_id, texto, meta_personal_id, fecha, leido) VALUES ($1, $2, $3, $4, now(), false)',
+        [amistadId, req.usuarioId, `📎 Meta: ${rows[0].titulo}`, metaId]
+      );
+    } else {
+      // Solo se puede compartir una meta compartida en la que YA participo.
+      const { rows } = await pool.query(
+        `SELECT mc.titulo FROM metas_compartidas mc
+         JOIN metas_compartidas_participantes p ON p.meta_compartida_id = mc.id AND p.usuario_id = $2
+         WHERE mc.id = $1`,
+        [metaId, req.usuarioId]
+      );
+      if (!rows.length) return res.status(403).send('No participas en esa meta compartida.');
+      await pool.query(
+        'INSERT INTO mensajes (amistad_id, autor_id, texto, meta_compartida_id, fecha, leido) VALUES ($1, $2, $3, $4, now(), false)',
+        [amistadId, req.usuarioId, `📎 Meta compartida: ${rows[0].titulo}`, metaId]
+      );
+    }
+  } catch (err) {
+    console.error('Error compartiendo meta en el chat:', err.message);
+    return res.status(500).send('No se pudo compartir la meta.');
+  }
+  res.redirect('/chat?amistad_id=' + amistadId);
+});
+
+// rama-chat-metas: unirse a una meta compartida recibida como meta-card en
+// el chat. Requisito de confianza (decisión documentada acá, no hay
+// pedido explícito del usuario sobre el criterio exacto): quien se quiere
+// unir tiene que ser amigo aceptado de quien CREÓ la meta -- mismo modelo
+// de confianza que ya usa el resto de la app (nunca abrir una acción a
+// cualquier usuario logueado solo porque adivinó un id). No hace falta
+// ser amigo de TODOS los participantes, solo del creador.
+app.post('/metas/compartida/:id/unirme', async (req, res) => {
+  const metaId = Number(req.params.id);
+  const amistadId = Number(req.body.amistad_id);
+  if (!Number.isInteger(metaId)) return res.status(400).send('id inválido.');
+  try {
+    const { rows } = await pool.query('SELECT creado_por, estado FROM metas_compartidas WHERE id = $1', [metaId]);
+    if (!rows.length) return res.status(404).send('Meta compartida no encontrada.');
+    const { creado_por: creadoPor, estado } = rows[0];
+    if (estado !== 'activa') return res.status(400).send('Esa meta ya no está activa.');
+    let esAmigoDelCreador = creadoPor === req.usuarioId;
+    if (!esAmigoDelCreador) {
+      const { rows: amistadConCreador } = await pool.query(
+        `SELECT 1 FROM amistades WHERE estado = 'aceptada' AND
+         ((usuario_a_id = $1 AND usuario_b_id = $2) OR (usuario_a_id = $2 AND usuario_b_id = $1))`,
+        [req.usuarioId, creadoPor]
+      );
+      esAmigoDelCreador = amistadConCreador.length > 0;
+    }
+    if (!esAmigoDelCreador) return res.status(403).send('No puedes unirte a esta meta.');
+    await pool.query(
+      'INSERT INTO metas_compartidas_participantes (meta_compartida_id, usuario_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [metaId, req.usuarioId]
+    );
+  } catch (err) {
+    console.error('Error uniéndose a meta compartida:', err.message);
+    return res.status(500).send('No se pudo unir a la meta.');
+  }
+  res.redirect(Number.isInteger(amistadId) ? '/chat?amistad_id=' + amistadId : '/metas');
+});
+
+// rama-chat-metas: "ventana de estadísticas" pedida explícitamente por el
+// usuario -- metas cumplidas entre los dos amigos de esta amistad. Cuenta
+// personales de cada quien por separado (mismo espíritu que la racha
+// comparable de /amigos: solo el número, no el detalle de cada meta
+// personal del otro) y lista las metas COMPARTIDAS completadas en las que
+// ambos participan juntos (esas sí con título, porque ya son compartidas
+// por definición).
+app.get('/chat/estadisticas', async (req, res) => {
+  const amistadId = Number(req.query.amistad_id);
+  if (!Number.isInteger(amistadId)) return res.status(400).send('amistad_id inválido.');
+  try {
+    const pertenece = await usuarioPerteneceAmistad(req.usuarioId, amistadId);
+    if (!pertenece) return res.status(403).send('No tienes acceso a esta conversación.');
+    const { rows: filaAmistad } = await pool.query('SELECT usuario_a_id, usuario_b_id FROM amistades WHERE id = $1', [amistadId]);
+    const amigoId = filaAmistad[0].usuario_a_id === req.usuarioId ? filaAmistad[0].usuario_b_id : filaAmistad[0].usuario_a_id;
+    const [{ rows: conteos }, { rows: amigoFila }, { rows: compartidasJuntos }] = await Promise.all([
+      pool.query(
+        `SELECT usuario_id, COUNT(*)::int AS completadas FROM metas
+         WHERE estado = 'completada' AND usuario_id IN ($1, $2) GROUP BY usuario_id`,
+        [req.usuarioId, amigoId]
+      ),
+      pool.query('SELECT nombre_usuario FROM usuarios WHERE id = $1', [amigoId]),
+      pool.query(
+        `SELECT mc.id, mc.titulo, mc.valor_actual, mc.valor_objetivo, mc.tipo_metrica
+         FROM metas_compartidas mc
+         WHERE mc.estado = 'completada'
+           AND EXISTS (SELECT 1 FROM metas_compartidas_participantes WHERE meta_compartida_id = mc.id AND usuario_id = $1)
+           AND EXISTS (SELECT 1 FROM metas_compartidas_participantes WHERE meta_compartida_id = mc.id AND usuario_id = $2)
+         ORDER BY mc.id DESC`,
+        [req.usuarioId, amigoId]
+      ),
+    ]);
+    const propiasCompletadas = conteos.find((c) => c.usuario_id === req.usuarioId)?.completadas || 0;
+    const amigoCompletadas = conteos.find((c) => c.usuario_id === amigoId)?.completadas || 0;
+    res.render('chat-estadisticas', {
+      amistadId,
+      amigoNombre: amigoFila[0]?.nombre_usuario || 'tu amigo',
+      propiasCompletadas,
+      amigoCompletadas,
+      compartidasJuntos,
+      error: null,
+    });
+  } catch (err) {
+    console.error('Error consultando estadísticas de chat:', err.message);
+    res.status(500).render('chat-estadisticas', {
+      amistadId, amigoNombre: '', propiasCompletadas: 0, amigoCompletadas: 0, compartidasJuntos: [], error: 'No se pudo leer la base de datos.',
+    });
+  }
 });
 
 // rama-chat-general: sala única para todos los usuarios registrados, sin

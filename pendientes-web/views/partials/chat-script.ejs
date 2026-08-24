@@ -1,0 +1,61 @@
+<script>
+// rama-chat-metas (optimización pedida por el usuario -- "quiero que sea
+// veloz"): intercepta el envío de texto para no recargar toda la página
+// -- solo corre en /chat cuando existe #form-mensaje. Si algo falla (JS
+// desactivado, fetch rechazado), el <form> sigue siendo un POST normal
+// con su action/method reales, así que degrada sin romper nada.
+(function () {
+  const form = document.getElementById('form-mensaje');
+  if (!form) return;
+  const lista = document.getElementById('lista-mensajes');
+  const input = document.getElementById('input-mensaje');
+
+  form.addEventListener('submit', async (ev) => {
+    const texto = input.value.trim();
+    if (!texto) return;
+    ev.preventDefault();
+    const boton = form.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const respuesta = await fetch('/mensajes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        body: new URLSearchParams({ amistad_id: form.dataset.amistadId, texto }),
+      });
+      if (!respuesta.ok) throw new Error('respuesta no ok');
+      const datos = await respuesta.json();
+
+      const vacio = document.getElementById('chat-vacio');
+      if (vacio) vacio.remove();
+
+      const li = document.createElement('li');
+      li.className = 'mensaje-propio';
+      const spanTexto = document.createElement('span');
+      spanTexto.className = 'texto';
+      spanTexto.textContent = datos.texto;
+      const spanFecha = document.createElement('span');
+      spanFecha.className = 'fecha';
+      spanFecha.textContent = new Date(datos.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' });
+      const spanVisto = document.createElement('span');
+      spanVisto.className = 'visto';
+      spanVisto.title = 'Enviado';
+      spanVisto.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>';
+      spanFecha.appendChild(spanVisto);
+      li.appendChild(spanTexto);
+      li.appendChild(spanFecha);
+      if (lista) {
+        lista.appendChild(li);
+        li.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+      input.value = '';
+      input.focus();
+    } catch (err) {
+      // Si el fetch falla de verdad (no un rechazo del servidor con JSON),
+      // se cae al envío normal del formulario -- nunca se pierde el mensaje.
+      form.submit();
+    } finally {
+      boton.disabled = false;
+    }
+  });
+})();
+</script>

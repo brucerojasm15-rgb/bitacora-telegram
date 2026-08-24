@@ -11,17 +11,18 @@
     <% if (!amistadId) { %>
       <p class="empty">Indica una amistad con <code>?amistad_id=</code> para ver la conversación.</p>
     <% } else { %>
-      <form method="GET" action="/chat" class="filtro-rango">
-        <input type="hidden" name="amistad_id" value="<%= amistadId %>">
-        <input type="text" name="buscar" value="<%= buscar %>" placeholder="Buscar mensajes...">
-        <button type="submit">Buscar</button>
-        <% if (buscar) { %><a href="/chat?amistad_id=<%= amistadId %>" class="btn-link">Limpiar</a><% } %>
-      </form>
+      <div class="chat-acciones-top">
+        <form method="GET" action="/chat" class="filtro-rango">
+          <input type="hidden" name="amistad_id" value="<%= amistadId %>">
+          <input type="text" name="buscar" value="<%= buscar %>" placeholder="Buscar mensajes...">
+          <button type="submit">Buscar</button>
+          <% if (buscar) { %><a href="/chat?amistad_id=<%= amistadId %>" class="btn-link">Limpiar</a><% } %>
+        </form>
+        <a class="btn-link" href="/chat/estadisticas?amistad_id=<%= amistadId %>"><%- include('partials/icono', { nombre: 'grafico' }) %> Metas cumplidas</a>
+      </div>
 
       <% if (error) { %>
         <p class="error"><%= error %></p>
-      <% } else if (mensajes.length === 0) { %>
-        <p class="empty"><%= buscar ? 'Ningún mensaje coincide con "' + buscar + '".' : 'Todavía no hay mensajes en esta conversación.' %></p>
       <% } else { %>
         <%
           const sinLeerPrevios = mensajes.filter((m) => !m.leido && m.autor_id !== usuarioId).length;
@@ -31,13 +32,46 @@
             <%- include('partials/icono', { nombre: 'campana' }) %> Tenías <%= sinLeerPrevios %> mensaje<%= sinLeerPrevios === 1 ? '' : 's' %> sin leer. Se marcaron como leídos al abrir el chat.
           </p>
         <% } %>
-        <ul class="chat-mensajes">
+        <ul class="chat-mensajes" id="lista-mensajes">
+          <% if (mensajes.length === 0) { %>
+            <li class="empty" id="chat-vacio"><%= buscar ? 'Ningún mensaje coincide con "' + buscar + '".' : 'Todavía no hay mensajes en esta conversación.' %></li>
+          <% } %>
           <% mensajes.forEach((m) => {
             const esMio = m.autor_id === usuarioId;
           %>
             <li class="<%= esMio ? 'mensaje-propio' : 'mensaje-otro' %>">
               <% if (!esMio) { %><span class="autor"><%= m.autor_nombre || ('Usuario ' + m.autor_id) %></span><% } %>
-              <span class="texto"><%= m.texto %></span>
+              <% if (m.meta_personal_id || m.meta_compartida_id) { %>
+                <%
+                  const esCompartida = !!m.meta_compartida_id;
+                  const titulo = esCompartida ? m.mc_titulo : m.mp_titulo;
+                  const actual = esCompartida ? m.mc_actual : m.mp_actual;
+                  const objetivo = esCompartida ? m.mc_objetivo : m.mp_objetivo;
+                  const metrica = esCompartida ? m.mc_metrica : m.mp_metrica;
+                  const estadoMeta = esCompartida ? m.mc_estado : m.mp_estado;
+                  const porcentaje = titulo && objetivo > 0 ? Math.min(100, Math.round((actual / objetivo) * 100)) : 0;
+                %>
+                <% if (!titulo) { %>
+                  <span class="texto meta-card-chat-borrada">Esta meta ya no existe.</span>
+                <% } else { %>
+                  <div class="meta-card meta-card-chat">
+                    <div class="meta-card-header">
+                      <h2><%- include('partials/icono', { nombre: 'meta' }) %> <%= titulo %></h2>
+                      <span class="meta-estado-badge"><%= estadoMeta %></span>
+                    </div>
+                    <p class="meta-progreso-texto"><%= actual %> / <%= objetivo %><%= metrica ? ' ' + metrica : '' %> (<%= porcentaje %>%)</p>
+                    <div class="meta-progreso-barra"><div class="meta-progreso-relleno" style="width: <%= porcentaje %>%"></div></div>
+                    <% if (esCompartida && !m.mc_ya_participo && estadoMeta === 'activa') { %>
+                      <form method="POST" action="/metas/compartida/<%= m.meta_compartida_id %>/unirme" class="meta-card-acciones">
+                        <input type="hidden" name="amistad_id" value="<%= amistadId %>">
+                        <button type="submit">Unirme a esta meta</button>
+                      </form>
+                    <% } %>
+                  </div>
+                <% } %>
+              <% } else { %>
+                <span class="texto"><%= m.texto %></span>
+              <% } %>
               <span class="fecha">
                 <%= new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) %>
                 <% if (!esMio && !m.leido) { %>
@@ -51,14 +85,46 @@
         </ul>
       <% } %>
 
-      <form method="POST" action="/mensajes" class="nuevo">
-        <input type="hidden" name="amistad_id" value="<%= amistadId %>">
-        <input type="text" name="texto" placeholder="Escribe un mensaje..." required>
-        <button type="submit">Enviar</button>
-      </form>
+      <% if (!error) { %>
+        <form method="POST" action="/mensajes" class="nuevo" id="form-mensaje" data-amistad-id="<%= amistadId %>">
+          <input type="hidden" name="amistad_id" value="<%= amistadId %>">
+          <input type="text" name="texto" id="input-mensaje" placeholder="Escribe un mensaje..." required autocomplete="off">
+          <button type="submit">Enviar</button>
+        </form>
+
+        <% if (misMetas.length > 0 || misMetasCompartidas.length > 0) { %>
+          <details class="chat-compartir-meta">
+            <summary><%- include('partials/icono', { nombre: 'meta' }) %> Compartir una meta en el chat</summary>
+            <form method="POST" action="/mensajes/meta">
+              <input type="hidden" name="amistad_id" value="<%= amistadId %>">
+              <select name="meta_ref" required onchange="this.form.meta_tipo.value=this.value.split(':')[0]; this.form.meta_id.value=this.value.split(':')[1];">
+                <option value="" selected disabled>Elegí una meta...</option>
+                <% if (misMetas.length > 0) { %>
+                  <optgroup label="Mis metas">
+                    <% misMetas.forEach((m) => { %>
+                      <option value="personal:<%= m.id %>"><%= m.titulo %> (<%= m.estado %>)</option>
+                    <% }) %>
+                  </optgroup>
+                <% } %>
+                <% if (misMetasCompartidas.length > 0) { %>
+                  <optgroup label="Metas compartidas">
+                    <% misMetasCompartidas.forEach((m) => { %>
+                      <option value="compartida:<%= m.id %>"><%= m.titulo %> (<%= m.estado %>)</option>
+                    <% }) %>
+                  </optgroup>
+                <% } %>
+              </select>
+              <input type="hidden" name="meta_tipo">
+              <input type="hidden" name="meta_id">
+              <button type="submit">Compartir</button>
+            </form>
+          </details>
+        <% } %>
+      <% } %>
     <% } %>
   </main>
 
 <%- include('partials/scripts') %>
+<%- include('partials/chat-script') %>
 </body>
 </html>

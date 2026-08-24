@@ -26,6 +26,27 @@
         </form>
       </section>
 
+      <% if (solicitudesRecibidas.length > 0) { %>
+        <section class="ajustes-grupo">
+          <h2>Solicitudes de cruce</h2>
+          <% solicitudesRecibidas.forEach((s) => { %>
+            <p class="ajustes-nota">
+              <strong><%= s.solicitante_nombre %></strong> quiere cruzar su
+              <%= s.nombre_animal_solicitante || ('animal #' + s.animal_propio_id) %> (<%= s.especie %>)
+              con tu <%= s.nombre_mi_animal || ('animal #' + s.animal_ajeno_id) %>.
+            </p>
+            <form method="POST" action="/cruces-solicitudes/<%= s.id %>/responder" class="meta-card-acciones">
+              <input type="hidden" name="respuesta" value="aceptar">
+              <button type="submit">Aceptar</button>
+            </form>
+            <form method="POST" action="/cruces-solicitudes/<%= s.id %>/responder" class="meta-card-acciones">
+              <input type="hidden" name="respuesta" value="rechazar">
+              <button type="submit">Rechazar</button>
+            </form>
+          <% }) %>
+        </section>
+      <% } %>
+
       <% if (espaciosLibres > 0) { %>
         <section class="ajustes-grupo">
           <h2>Adoptar un animal</h2>
@@ -56,6 +77,7 @@
             <p class="meta-progreso-texto">
               <%= a.especie.charAt(0).toUpperCase() + a.especie.slice(1) %><% if (a.es_legendario) { %> — <strong>legendario</strong><% } %>
               <% if (a.padre_id || a.madre_id) { %> — nacido de cría<% } else { %> — adoptado<% } %>
+              — <%= a.esAdulto ? 'adulto' : `cría (adulto a los ${edadAdultoDias} días desde que nació)` %>
             </p>
             <p class="meta-progreso-texto">
               <% Object.entries(a.alelosExpresados).filter(([locus]) => locus !== 'salud').forEach(([locus, alelo], i) => { %>
@@ -76,16 +98,29 @@
               <form method="POST" action="/animales/<%= a.id %>/alimentar" class="meta-card-acciones">
                 <button type="submit">Alimentar</button>
               </form>
-              <% const parejas = animales.filter((otro) => otro.id !== a.id && otro.especie === a.especie && otro.salud_estado !== 'fallecido'); %>
-              <% if (parejas.length > 0) { %>
-                <form method="POST" action="/animales/<%= a.id %>/cruzar" class="meta-card-acciones">
-                  <select name="pareja_id" aria-label="Cruzar con" required>
-                    <% parejas.forEach((p) => { %>
-                      <option value="<%= p.id %>"><%= p.nombre || ('Sin nombre #' + p.id) %></option>
-                    <% }) %>
-                  </select>
-                  <button type="submit">Cruzar</button>
-                </form>
+              <% if (a.esAdulto) { %>
+                <% const parejas = animales.filter((otro) => otro.id !== a.id && otro.especie === a.especie && otro.salud_estado !== 'fallecido' && otro.esAdulto); %>
+                <% if (parejas.length > 0) { %>
+                  <form method="POST" action="/animales/<%= a.id %>/cruzar" class="meta-card-acciones">
+                    <select name="pareja_id" aria-label="Cruzar con" required>
+                      <% parejas.forEach((p) => { %>
+                        <option value="<%= p.id %>"><%= p.nombre || ('Sin nombre #' + p.id) %></option>
+                      <% }) %>
+                    </select>
+                    <button type="submit">Cruzar</button>
+                  </form>
+                <% } %>
+                <% const candidatosAmigos = candidatosPorEspecie[a.especie] || []; %>
+                <% if (candidatosAmigos.length > 0) { %>
+                  <form method="POST" action="/animales/<%= a.id %>/solicitar-cruce-amigo" class="meta-card-acciones">
+                    <select name="animal_amigo_id" aria-label="Cruzar con el animal de un amigo" required>
+                      <% candidatosAmigos.forEach((c) => { %>
+                        <option value="<%= c.id %>"><%= c.nombre_usuario %>: <%= c.nombre || ('Sin nombre #' + c.id) %></option>
+                      <% }) %>
+                    </select>
+                    <button type="submit">Pedir cruce con amigo</button>
+                  </form>
+                <% } %>
               <% } %>
             <% } %>
           </section>

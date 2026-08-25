@@ -5188,6 +5188,21 @@ eliminación de ese repo/bot sin quedar huérfano.
   sumarle carga al middleware que corre en cada request logueado.
   Probado con 2 cuentas reales + amistad + mensaje sin leer contra Neon,
   confirmado visualmente con Chrome real (`puppeteer-core` local).
+- 2026-08-24 — merge de rama-logo-nuevo (0256e96) → main vía PR #97: sin
+  conflictos. CI verde. Desplegado en Render. Pedido del usuario: logo
+  nuevo "innovador", generado con "cualquier herramienta que lo haga
+  bien". Se probó pollinations.ai (misma API gratis usada para las
+  ilustraciones de animales) para explorar conceptos, pero el resultado
+  final es un SVG hecho a mano (silueta hoja-en-forma-de-llama) porque
+  el generador seguía metiendo sombreado 3D/gradientes pese al prompt
+  "flat vector icon" -- un logo necesita silueta nítida a 16px (favicon),
+  no una ilustración con detalle que se pierde a ese tamaño. Verificado
+  con Chrome real a 200/64/32/16px antes de aplicar. De paso, corregido
+  un residuo de branding pre-zentIA nunca actualizado: 6 vistas de auth
+  (login/registro/recuperar x3/código de recuperación) todavía
+  mostraban "🔒 Bitácora", y `manifest.json` (name/short_name/
+  description, lo que ve el usuario al instalar como PWA) más
+  `apple-mobile-web-app-title` seguían diciendo "Pendientes".
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

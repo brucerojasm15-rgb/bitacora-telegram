@@ -32,11 +32,23 @@
     max-width: 420px;
     width: 100%;
   }
-  .mascota {
+  .mascota-envoltura {
     width: 120px;
     height: 120px;
     margin: 0 auto 20px;
     position: relative;
+  }
+  .mascota-brillo {
+    position: absolute;
+    inset: -20px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(47, 227, 154, 0.35), transparent 70%);
+    filter: blur(6px);
+  }
+  .mascota {
+    position: relative;
+    width: 100%;
+    height: 100%;
     animation: flotar 2.4s ease-in-out infinite;
   }
   @keyframes flotar {
@@ -93,18 +105,24 @@
 </head>
 <body>
   <div class="tarjeta">
-    <div class="mascota" aria-hidden="true">
-      <svg viewBox="0 0 100 100">
-        <ellipse class="cola" cx="78" cy="70" rx="14" ry="6" fill="#7fd6a3"/>
-        <ellipse cx="50" cy="58" rx="34" ry="26" fill="#7fd6a3"/>
-        <circle cx="34" cy="34" r="12" fill="#7fd6a3"/>
-        <circle cx="66" cy="34" r="12" fill="#7fd6a3"/>
-        <circle cx="34" cy="34" r="6" fill="#101418"/>
-        <circle cx="66" cy="34" r="6" fill="#101418"/>
-        <circle cx="42" cy="56" r="4" fill="#101418"/>
-        <circle cx="58" cy="56" r="4" fill="#101418"/>
-        <path d="M46 66 Q50 70 54 66" stroke="#101418" stroke-width="3" fill="none" stroke-linecap="round"/>
-      </svg>
+    <div class="mascota-envoltura">
+      <div class="mascota-brillo" aria-hidden="true"></div>
+      <div class="mascota" aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <ellipse class="cola" cx="78" cy="70" rx="14" ry="6" fill="#2fe39a"/>
+          <ellipse cx="50" cy="58" rx="34" ry="26" fill="#2fe39a"/>
+          <circle cx="34" cy="34" r="12" fill="#2fe39a"/>
+          <circle cx="66" cy="34" r="12" fill="#2fe39a"/>
+          <ellipse cx="40" cy="48" rx="14" ry="9" fill="#a7f3d4" opacity="0.55"/>
+          <circle cx="42" cy="60" r="5" fill="#f4c86b" opacity="0.85"/>
+          <circle cx="58" cy="60" r="5" fill="#f4c86b" opacity="0.85"/>
+          <circle cx="34" cy="34" r="6" fill="#0b3d2a"/>
+          <circle cx="66" cy="34" r="6" fill="#0b3d2a"/>
+          <circle cx="42" cy="56" r="4" fill="#0b3d2a"/>
+          <circle cx="58" cy="56" r="4" fill="#0b3d2a"/>
+          <path d="M46 66 Q50 70 54 66" stroke="#0b3d2a" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
     </div>
     <h1>Despertando el servidor</h1>
     <p class="mensaje" id="mensaje">Dándole de comer...</p>

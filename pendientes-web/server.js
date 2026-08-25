@@ -1258,28 +1258,6 @@ async function ensureSchema() {
       usuario_id INT REFERENCES usuarios(id)
     )
   `);
-  // rama-metas-rutinarias: recordatorio que se repite todos los días a una
-  // hora fija, asignado por una persona a otra dentro de una amistad (ej.
-  // "papá le pide a hijo alimentar a la tortuga todos los días a las 8am").
-  // `amistad_id ON DELETE CASCADE` es a propósito -- cuando una cuenta se
-  // borra, `POST /ajustes/eliminar-cuenta` ya hace
-  // `DELETE FROM amistades WHERE id = ANY(...)` explícito para esa
-  // amistad, así que esta tabla se limpia sola sin tener que acordarse de
-  // agregar un DELETE más ahí (mismo bug class de FK-al-borrar-cuenta que
-  // ya se encontró varias veces esta sesión -- acá se evita de raíz).
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS recordatorios_rutinarios (
-      id SERIAL PRIMARY KEY,
-      texto TEXT NOT NULL,
-      hora TIME NOT NULL,
-      creado_por INT REFERENCES usuarios(id),
-      asignado_a INT REFERENCES usuarios(id),
-      amistad_id INT REFERENCES amistades(id) ON DELETE CASCADE,
-      activo BOOLEAN NOT NULL DEFAULT true,
-      creado TIMESTAMPTZ NOT NULL DEFAULT now(),
-      ultimo_aviso DATE
-    )
-  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS hechos (
       id SERIAL PRIMARY KEY,
@@ -1438,6 +1416,31 @@ async function ensureSchema() {
     ALTER TABLE amistades
       ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'pendiente',
       ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT now()
+  `);
+  // rama-metas-rutinarias: recordatorio que se repite todos los días a una
+  // hora fija, asignado por una persona a otra dentro de una amistad (ej.
+  // "papá le pide a hijo alimentar a la tortuga todos los días a las 8am").
+  // Tiene que ir DESPUÉS de `amistades` (mismo bug ya documentado en
+  // rama-pruebas-regresion: un `REFERENCES` a una tabla que todavía no
+  // existe en un Postgres vacío revienta ensureSchema() entero -- se
+  // encontró contra CI, no contra Neon, porque ahí `amistades` ya existía
+  // de antes; corregido moviéndolo acá). `amistad_id ON DELETE CASCADE`
+  // es a propósito -- `POST /ajustes/eliminar-cuenta` ya hace
+  // `DELETE FROM amistades WHERE id = ANY(...)` explícito para esa
+  // amistad, así que esta tabla se limpia sola sin tener que acordarse de
+  // agregar un DELETE más ahí.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recordatorios_rutinarios (
+      id SERIAL PRIMARY KEY,
+      texto TEXT NOT NULL,
+      hora TIME NOT NULL,
+      creado_por INT REFERENCES usuarios(id),
+      asignado_a INT REFERENCES usuarios(id),
+      amistad_id INT REFERENCES amistades(id) ON DELETE CASCADE,
+      activo BOOLEAN NOT NULL DEFAULT true,
+      creado TIMESTAMPTZ NOT NULL DEFAULT now(),
+      ultimo_aviso DATE
+    )
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS mensajes (

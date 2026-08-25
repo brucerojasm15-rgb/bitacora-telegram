@@ -1750,6 +1750,14 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE usuario_accesorios DROP CONSTRAINT IF EXISTS usuario_accesorios_usuario_id_fkey`);
   await pool.query(`ALTER TABLE usuario_accesorios ADD CONSTRAINT usuario_accesorios_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE`);
   await pool.query(`ALTER TABLE animales ADD COLUMN IF NOT EXISTS accesorio TEXT`);
+  // rama-minijuego-jugar: "interacción activa del jugador con la mascota"
+  // del análisis vs. Happy Pets (punto 5) -- hasta ahora el patio era
+  // 100% ambiental, sin nada que el usuario hiciera directamente CON un
+  // animal puntual más allá de Alimentar/Cruzar/Nombrar/Revivir/Regalar.
+  // `ultimo_jugado` (por animal, no por cuenta) es lo único nuevo en
+  // schema -- un timestamp simple para acotar la recompensa a 1 vez por
+  // día por animal, sin tabla nueva.
+  await pool.query(`ALTER TABLE animales ADD COLUMN IF NOT EXISTS ultimo_jugado TIMESTAMPTZ`);
   // rama-temas-patio: "Casa personalizable visualmente" del análisis vs.
   // Happy Pets -- mismo patrón exacto que usuario_accesorios (desbloqueo
   // por cuenta, aplicado con ON DELETE CASCADE desde el arranque esta
@@ -2104,6 +2112,15 @@ const MONEDA_POR_IDEA_CAPTURADA = 2;
 const MONEDA_BONUS_RACHA_DIARIA = 5;
 const UMBRAL_RACHA_BONUS_DIAS = 3;
 const PROTOCOLO_MONEDA_DIARIA_VERSION = 1;
+// rama-minijuego-jugar: mismo orden de magnitud que MONEDA_POR_IDEA_
+// CAPTURADA/MONEDA_POR_PENDIENTE_PROPIO -- deliberadamente NO variable
+// según el puntaje que manda el cliente (nunca confiar en un número de
+// currency que viene del navegador), y acotado a 1 vez por animal por
+// día calendario Lima además del tope diario compartido de pagarMoneda()
+// -- jugar de verdad requiere atención real cada vez, no es "grindear el
+// juego mismo" sin límite (mismo criterio que ya se respeta en toda la
+// economía del juego).
+const MONEDA_POR_MINIJUEGO = 3;
 
 async function rachaTareasAsignadas(client, usuarioId) {
   const { rows } = await client.query(
@@ -5422,7 +5439,7 @@ async function insertarAnimal(client, { usuarioId, especie, nombre, padreId, mad
 async function animalesDeUsuarioConGenes(usuarioId) {
   const { rows } = await pool.query(
     `SELECT a.id, a.especie, a.nombre, a.es_legendario, a.salud_estado, a.nacido, a.ultima_alimentacion,
-            a.padre_id, a.madre_id, a.accesorio,
+            a.padre_id, a.madre_id, a.accesorio, a.ultimo_jugado,
             json_object_agg(g.locus, json_build_array(g.alelo_1, g.alelo_2)) AS genotipo
      FROM animales a
      LEFT JOIN animales_genes g ON g.animal_id = a.id
@@ -5437,6 +5454,7 @@ async function animalesDeUsuarioConGenes(usuarioId) {
     esAdulto: esAdulto(a.nacido),
     etapaVida: etapaVidaAnimal(a.nacido),
     imagen: imagenAnimal(a.especie, etapaVidaAnimal(a.nacido)),
+    puedeJugarHoy: !a.ultimo_jugado || formatearDiaLima(a.ultimo_jugado) !== formatearDiaLima(new Date()),
   }));
 }
 
@@ -5993,6 +6011,51 @@ app.post('/animales/:id/alimentar', async (req, res) => {
   // haga la reunión una vez al cargar, sin importar rivalidades, antes de
   // volver al deambular normal.
   res.redirect('/casa?comida=1');
+});
+
+// rama-minijuego-jugar: mini-juego de reflejos client-side
+// (public/minijuego.js) -- esta ruta solo registra que se jugó de verdad
+// y paga la recompensa fija, nunca confía en un puntaje que mande el
+// cliente para calcular moneda. JSON (no redirect) porque el cliente ya
+// está en medio del modal del mini-juego cuando llama esto.
+app.post('/animales/:id/jugar', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT ultimo_jugado FROM animales
+       WHERE id = $1 AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido' FOR UPDATE`,
+      [id, req.usuarioId]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Ese animal no existe o no es tuyo.' });
+    }
+    const ultimo = rows[0].ultimo_jugado;
+    const yaJugoHoy = ultimo && formatearDiaLima(ultimo) === formatearDiaLima(new Date());
+    if (yaJugoHoy) {
+      await client.query('ROLLBACK');
+      return res.json({ jugado: false, monedaGanada: 0, mensaje: 'Ya jugaste con este animal hoy -- vuelve mañana.' });
+    }
+    await client.query('UPDATE animales SET ultimo_jugado = now() WHERE id = $1', [id]);
+    const monedaGanada = await pagarMoneda(client, req.usuarioId, MONEDA_POR_MINIJUEGO, 'mini_juego', null);
+    await client.query('COMMIT');
+    res.json({
+      jugado: true,
+      monedaGanada,
+      mensaje: monedaGanada > 0
+        ? `¡Jugaron juntos! Ganaste ${monedaGanada} moneda${monedaGanada === 1 ? '' : 's'}.`
+        : '¡Jugaron juntos! Ya llegaste al tope de moneda de hoy, pero valió la pena igual.',
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error jugando con el animal:', err.message);
+    return res.status(500).json({ error: 'No se pudo registrar el juego.' });
+  } finally {
+    client.release();
+  }
 });
 
 // Cría real entre 2 animales del MISMO usuario (v1 -- cruzar con el animal

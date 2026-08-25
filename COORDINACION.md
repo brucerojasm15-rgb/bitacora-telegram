@@ -5883,6 +5883,80 @@ pero no hubo todavía un login real de prueba en el Render nuevo.
 
 ---
 
+## Análisis: qué le falta al juego vs. Happy Pets (2026-08-24, pedido por el usuario)
+
+**Solo análisis, nada de esto está construido ni comprometido a construirse
+todavía** — inventario honesto de qué hay hoy vs. qué suele tener un juego
+de mascotas tipo Happy Pets, para decidir con datos qué sigue.
+
+### Ya construido (funcional, en producción)
+
+- **Mascotas reales con genética mendeliana**: 4 especies, herencia real de
+  2 alelos por gen, "legendario" emerge de la genética (no un dado aparte).
+- **4 etapas de vida visuales** (bebé/adolescente/adulto/anciano), con
+  ilustración propia por especie/etapa.
+- **Cuidado con consecuencia real**: alimentar, enfermedad por abandono
+  (sano→enfermo→crítico→fallecido en días reales), revivir (3 por cuenta,
+  no por mascota).
+- **Cría**: entre animales propios y entre amigos (con consentimiento),
+  solo adultos.
+- **Casa**: espacio limitado, ampliable con nivel o con moneda.
+- **Patio animado**: los animales deambulan y juegan solos (Etapa 1, sin
+  rivalidad todavía).
+- **Pared de la familia**: memorial genealógico cuando fallece un animal
+  con lineage real.
+- **Plaza**: espacio social anónimo, emoji-only.
+- **Visitar la casa de un amigo** (solo lectura + pedir cruce).
+- **Personaje guía** ("Zen"): narrador/tutorial contextual.
+- **Logros**: 9 insignias derivadas de datos reales, sin economía.
+- **Economía real, no inflada**: la moneda sale de actividad real
+  (pendientes/ideas/metas completadas), no de grindear el juego mismo.
+- **Nivel de jugador** (15 niveles) derivado de la moneda de por vida.
+- **Amigos, chat 1-a-1 y chat general, metas compartidas**.
+
+### Lo que un Happy Pets típico tiene y esto NO (todavía)
+
+1. **Cosméticos / personalización visual.** Ni de los animales (accesorios,
+   colores fuera de lo genético) ni de la Casa (decoración, fondos). Era
+   una de las 4 candidatas originales de la tarea O — nunca construida.
+2. **Rivalidad y dinámica social entre mascotas.** Diseñada (Gato↔Ave,
+   Perro↔Conejo + rasgo genético, reconciliación antes de cruzar) pero sin
+   construir — Etapa 2 del patio, ya en el Backlog.
+3. **Eventos temporales/estacionales.** Nada por tiempo limitado -- otra de
+   las 4 candidatas originales, sin diseñar en detalle.
+4. **Intercambio/regalo directo entre amigos** (animales o items, sin pasar
+   por cría). Última de las 4 candidatas originales, sin construir.
+5. **Interacción activa del jugador con la mascota** (tocarla, jugar un
+   mini-juego con ella) — hoy el patio es ambiental/automático, el usuario
+   no interactúa directamente con el animal más allá de Alimentar/Cruzar/
+   Nombrar/Revivir.
+6. **Casa visualmente personalizable** — hoy "Casa" es un contador de
+   espacio + tarjetas de animales, no una escena decorable.
+7. **Sumidero de moneda a largo plazo.** Pasado cierto nivel/casa
+   ampliada, no hay mucho más en qué gastar moneda acumulada — los
+   cosméticos (punto 1) serían el sumidero natural si se construyen.
+8. **Recompensa por regresar diario más allá de la racha existente**
+   (ej. "bonus del día 7 seguido", cofre diario) — la racha ya premia
+   consistencia, pero no hay nada tipo calendario de regalos.
+9. **Moneda premium / compras reales.** Bloqueado a propósito en la
+   suscripción opcional (ver el análisis de punto de equilibrio más
+   arriba) hasta resolver el tema fiscal/regulatorio en Perú.
+
+### Lectura honesta
+
+Lo construido hasta ahora es la **fundación mecánica** (genética real,
+salud real, cría real, economía real) — la parte que un Happy Pets
+genérico normalmente NO tiene (ellos usan rareza fija, no genética real, y
+economía inflada por publicidad/compras). Lo que falta es sobre todo
+**capas de personalización y contenido repetible** (cosméticos, eventos,
+intercambio, mini-juegos) — más rápidas de construir individualmente, pero
+son varias piezas, no una sola. Candidato razonable para la próxima ronda,
+dado que ya está diseñado en parte: **cosméticos**, porque además conecta
+directo con una de las 3 ideas de la suscripción opcional (cosméticos
+exclusivos/anticipados) sin comprometerse a esa suscripción todavía.
+
+---
+
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
 
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`

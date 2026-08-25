@@ -1507,6 +1507,77 @@ svg[viewBox="0 0 24 24"] {
   background: var(--glass-bg, rgba(255, 255, 255, 0.08));
 }
 
+/* rama-cosmeticos */
+.animal-imagen-envoltura {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.animal-accesorio-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg-elevated);
+}
+
+.animal-accesorio-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tienda-accesorios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.tienda-accesorio-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm, 10px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  min-width: 90px;
+  text-align: center;
+}
+
+.tienda-accesorio-icono {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tienda-accesorio-icono svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tienda-accesorio-nombre {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.tienda-accesorio-comprado {
+  font-size: 0.75rem;
+  color: var(--text-muted, var(--text));
+}
+
 .pared-familia {
   margin-top: 1rem;
 }

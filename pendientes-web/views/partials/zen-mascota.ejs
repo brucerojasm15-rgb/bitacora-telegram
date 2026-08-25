@@ -1,0 +1,27 @@
+<%
+// rama-rediseno-casa: mismo personaje/paleta que la pantalla de carga de
+// GitHub Pages (docs/index.html) -- antes Zen era solo un ícono de
+// brújula genérico dentro de un círculo, sin presencia real de
+// personaje. Autocontenido (glow + SVG propios), se incluye con
+// { tamano: 56 } opcional (default 56, mismo tamaño que el avatar viejo).
+const tamanoMascota = typeof tamano !== 'undefined' ? tamano : 56;
+%>
+<div class="zen-mascota-envoltura" style="width:<%= tamanoMascota %>px;height:<%= tamanoMascota %>px;">
+  <div class="zen-mascota-brillo"></div>
+  <div class="zen-mascota">
+    <svg viewBox="0 0 100 100">
+      <ellipse cx="78" cy="70" rx="14" ry="6" fill="#2fe39a"/>
+      <ellipse cx="50" cy="58" rx="34" ry="26" fill="#2fe39a"/>
+      <circle cx="34" cy="34" r="12" fill="#2fe39a"/>
+      <circle cx="66" cy="34" r="12" fill="#2fe39a"/>
+      <ellipse cx="40" cy="48" rx="14" ry="9" fill="#a7f3d4" opacity="0.55"/>
+      <circle cx="42" cy="60" r="5" fill="#f4c86b" opacity="0.85"/>
+      <circle cx="58" cy="60" r="5" fill="#f4c86b" opacity="0.85"/>
+      <circle cx="34" cy="34" r="6" fill="#0b3d2a"/>
+      <circle cx="66" cy="34" r="6" fill="#0b3d2a"/>
+      <circle cx="42" cy="56" r="4" fill="#0b3d2a"/>
+      <circle cx="58" cy="56" r="4" fill="#0b3d2a"/>
+      <path d="M46 66 Q50 70 54 66" stroke="#0b3d2a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
+</div>

@@ -21,6 +21,10 @@
         localStorage.setItem('zentia_ultimo_usuario', JSON.stringify({
           nombreUsuario,
           especie: <%- JSON.stringify(typeof barraSuperior !== 'undefined' && barraSuperior ? barraSuperior.especie : 'monstera') %>,
+          // rama-fix-skin-planta: para que el lock-screen también muestre
+          // el skin comprado, no solo la especie -- ver login.ejs, aplica
+          // los colores client-side sobre el SVG ya renderizado.
+          skin: <%- JSON.stringify(typeof barraSuperior !== 'undefined' && barraSuperior ? barraSuperior.skin : 'clasico') %>,
           metodo: metodoFinal,
           email: metodoFinal === 'email' ? email : null,
         }));

@@ -6176,6 +6176,68 @@ exclusivos/anticipados) sin comprometerse a esa suscripción todavía.
 
 ---
 
+## Idea nueva (2026-08-25): onboarding cinemático guiado por Zen + "vidriera" de la visión del juego
+
+Propuesta por el usuario tras ver la prueba del rig de criaturas SVG (ver
+más abajo, sección de rig de criaturas). Todavía **NO construida** —
+capturada acá tal como se entendió, a confirmar/corregir antes de
+empezar. Dos piezas separadas:
+
+**1. Momento de onboarding guiado por Zen.** Reutiliza el mecanismo YA
+existente de `public/tutorial.js` (`.tutorial-resaltado`, el glow que
+señala un control real — ver la sección `rama-tutorial-multicapitulo`)
+en vez de inventar uno nuevo: Zen encuadra/resalta visualmente el botón
+que lleva a la Casa (donde están los animales), como parte del onboarding.
+El pedido explícito del usuario es que el mensaje de Zen en ese momento
+conecte el mundo del juego con el resto de la app de forma explícita —
+"una introducción a un mundo totalmente nuevo, vinculado a tus objetivos
+de vida, y organización en familia con recordatorios" — algo que hoy
+`PERSONAJE_MAIN_MENSAJES.intro` (ver más arriba en `server.js`) NO dice
+todavía (solo menciona "conectar con amigos", no metas ni recordatorios
+familiares). Mecánicamente esa conexión ya existe (metas compartidas,
+recordatorios rutinarios en el chat) — lo que falta es que el guion de
+Zen lo diga.
+
+**2. Pantalla "vidriera" de la visión del juego.** Interacción: cuenta
+regresiva antes de que el botón se pueda clickear (genera anticipación),
+al hacer click se transiciona a una pantalla nueva. Confirmado con el
+usuario: el contenido es un **mini-roadmap real**, no solo ambiente/hype
+— mecánicas YA construidas (genética real, cría, salud/abandono real,
+rivalidad, cosméticos, casa personalizable, regalos entre amigos,
+mini-juegos activos, eventos temporales) mostradas como ítems "cargados"
+(✓), y lo que viene después como "cargando..." — la idea siendo mostrar
+la ambición real del proyecto, no una lista vacía.
+
+**Decisión de diseño pendiente de confirmar**: esta pantalla NO debería
+reemplazar la pantalla de "Despertando el servidor" de GitHub Pages
+(`docs/index.html`) — esa existe con un propósito puramente técnico
+(disimular el cold-start real de Render), y mezclarle contenido de
+marketing/hype arriesga hacer que la espera técnica se sienta más larga
+o confusa. Se interpretó como una pantalla NUEVA y separada, disparada
+desde el momento de onboarding con Zen (o accesible de nuevo después) —
+a confirmar con el usuario antes de construir.
+
+**Pregunta legal del usuario, respondida**: no hay problema legal en que
+el juego se *parezca* a Happy Pets en género/mecánicas/ambición de
+calidad — géneros y conceptos de juego no son propiedad de nadie (mismo
+principio que Tamagotchi/Neopets/Pou coexisten). Lo que SÍ sería
+problemático es copiar literalmente su código, sus assets de arte, su
+marca/nombre/logo, o textos/UI específicos palabra por palabra — nada de
+eso está en juego acá, todo el código/arte de zentIA es propio. Ver
+también la sección de protección de idea más arriba (2026-08-24) para el
+resto del razonamiento ya dado sobre esto.
+
+**Sobre "arma un equipo total o herramientas"**: existe la posibilidad de
+orquestar la construcción con múltiples subagentes en paralelo (una
+herramienta de "Workflow" disponible en esta sesión) para tareas grandes,
+pero requiere que el usuario lo pida explícitamente (o use la palabra
+"ultracode") — no se activa por default. Para el tamaño de esta idea
+(onboarding + 1 pantalla nueva) probablemente no hace falta; sí podría
+tener sentido para el rig completo de criaturas SVG en las 16
+combinaciones especie×etapa si el usuario quiere acelerarlo.
+
+---
+
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
 
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`

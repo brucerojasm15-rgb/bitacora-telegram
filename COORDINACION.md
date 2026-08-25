@@ -5250,6 +5250,53 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-regalar-animales (bb36251) → main vía PR
+  #104: sin conflictos. CI verde. Desplegado en Render, `status: live`
+  confirmado (commit `7d7f2dd`). Cierra el punto 4 del análisis vs. Happy
+  Pets ("intercambio/regalo directo entre amigos"). Acotado
+  deliberadamente a solo animales (no accesorios/items) y a un regalo
+  unidireccional con aceptación del destinatario -- no un trueque
+  negociado -- mismo criterio de UX que `rama-cruzar-amigos` (evitar el
+  problema de "me llenaron la casa de mascotas no pedidas"). Tabla
+  `regalos_solicitudes`, misma forma exacta que `cruces_solicitudes`
+  (donante, destinatario, animal, estado, resuelto_en), colocada
+  correctamente DESPUÉS de `cruces_solicitudes` en `ensureSchema()`
+  desde el principio (lección de `rama-metas-rutinarias` ya aplicada de
+  raíz, confirmado con `test:integracion` 4/4 contra Postgres vacío en
+  el primer intento). Sin `ON DELETE CASCADE` (mismo criterio que
+  `cruces_solicitudes`) -- `DELETE` explícito agregado en
+  `POST /ajustes/eliminar-cuenta`. Al aceptar, solo se reasigna
+  `animales.usuario_id` -- no se crea un animal nuevo, así que
+  accesorio, genotipo y `padre_id`/`madre_id` viajan intactos con el
+  animal. Probado de punta a punta contra Neon con 3 cuentas
+  descartables: regalo aceptado (ownership transferida, atributos
+  preservados, verificado por SQL directo), regalo rechazado (ownership
+  sin cambios), intento de regalar un animal ajeno (403), intento de
+  regalar a alguien que no es amigo (403), borrado de cuenta con
+  solicitud pendiente tanto como donante como destinatario (ninguna
+  revienta, la solicitud se limpia sola). El deploy anterior
+  (`faff89b`, PR #103) había quedado marcado `update_failed` en Render
+  -- mismo patrón de timeout de escaneo de puerto ya documentado en PR
+  #99/#98 (no un bug real: el deploy siguiente, con este merge encima,
+  quedó `live` limpio en ~19 min).
+- 2026-08-25 — merge de rama-temas-patio (faff89b) → main vía PR #103:
+  sin conflictos. CI verde. Desplegado en Render -- el deploy de este
+  commit específico quedó `update_failed` por el timeout de escaneo de
+  puerto ya conocido (ver la entrada de rama-regalar-animales arriba
+  para la confirmación de que no fue un bug real). Cierra el punto 6 del
+  análisis vs. Happy Pets ("Casa visualmente personalizable"). Mismo
+  patrón exacto que `rama-cosmeticos` (accesorios) pero a nivel de toda
+  la Casa: 3 temas comprables (playa, nieve, noche) + "pasto"
+  gratis/default (el fondo que ya existía), 40 monedas cada uno,
+  desbloqueo por cuenta vía `usuarios.tema_patio` + tabla
+  `usuario_temas_patio` con `ON DELETE CASCADE` desde el arranque (no
+  como fix posterior, esa lección ya se había aprendido 3 veces esta
+  sesión). Visible también al visitar la casa de un amigo, de solo
+  lectura. Probado con Chrome real contra Neon: tema "noche" comprado y
+  equipado, captura de pantalla confirmando el fondo oscuro con
+  estrellas sobre el patio real (`data-tema="noche"` + `background-
+  image` real, no solo el atributo). Borrar una cuenta con un tema
+  comprado no crashea. CI + `test:integracion` (4/4) en verde.
 - 2026-08-25 — merge de rama-fix-skin-planta (96b9462) → main vía PR
   #102: sin conflictos. CI verde. Desplegado en Render, `status: live`
   confirmado. Arregla el hueco real encontrado en rama-cosmeticos: el
@@ -6029,25 +6076,27 @@ de mascotas tipo Happy Pets, para decidir con datos qué sigue.
 
 ### Lo que un Happy Pets típico tiene y esto NO (todavía)
 
-1. **Cosméticos / personalización visual.** Ni de los animales (accesorios,
-   colores fuera de lo genético) ni de la Casa (decoración, fondos). Era
-   una de las 4 candidatas originales de la tarea O — nunca construida.
-2. **Rivalidad y dinámica social entre mascotas.** Diseñada (Gato↔Ave,
-   Perro↔Conejo + rasgo genético, reconciliación antes de cruzar) pero sin
-   construir — Etapa 2 del patio, ya en el Backlog.
+1. ~~**Cosméticos / personalización visual.**~~ ✅ Cerrado 2026-08-25:
+   accesorios de animal (`rama-cosmeticos`, PR #100) + skin de la planta
+   (`rama-fix-skin-planta`, PR #102) + temas de fondo del patio
+   (`rama-temas-patio`, PR #103).
+2. ~~**Rivalidad y dinámica social entre mascotas.**~~ ✅ Cerrado
+   2026-08-25 (`rama-rivalidades`, PR #101) — Etapa 2 del patio.
 3. **Eventos temporales/estacionales.** Nada por tiempo limitado -- otra de
-   las 4 candidatas originales, sin diseñar en detalle.
-4. **Intercambio/regalo directo entre amigos** (animales o items, sin pasar
-   por cría). Última de las 4 candidatas originales, sin construir.
+   las 4 candidatas originales, sin diseñar en detalle. Pendiente de que
+   el usuario especifique qué tipo de evento quiere antes de diseñarlo.
+4. ~~**Intercambio/regalo directo entre amigos.**~~ ✅ Cerrado 2026-08-25
+   (`rama-regalar-animales`, PR #104) — acotado a animales, regalo
+   unidireccional con aceptación del destinatario.
 5. **Interacción activa del jugador con la mascota** (tocarla, jugar un
    mini-juego con ella) — hoy el patio es ambiental/automático, el usuario
    no interactúa directamente con el animal más allá de Alimentar/Cruzar/
-   Nombrar/Revivir.
-6. **Casa visualmente personalizable** — hoy "Casa" es un contador de
-   espacio + tarjetas de animales, no una escena decorable.
+   Nombrar/Revivir/Regalar. **Siguiente candidato de esta ronda.**
+6. ~~**Casa visualmente personalizable.**~~ ✅ Cerrado 2026-08-25
+   (`rama-temas-patio`, PR #103).
 7. **Sumidero de moneda a largo plazo.** Pasado cierto nivel/casa
    ampliada, no hay mucho más en qué gastar moneda acumulada — los
-   cosméticos (punto 1) serían el sumidero natural si se construyen.
+   cosméticos (punto 1, ya construidos) son ahora el sumidero natural.
 8. **Recompensa por regresar diario más allá de la racha existente**
    (ej. "bonus del día 7 seguido", cofre diario) — la racha ya premia
    consistencia, pero no hay nada tipo calendario de regalos.
@@ -6075,6 +6124,16 @@ exclusivos/anticipados) sin comprometerse a esa suscripción todavía.
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
+- [x] **"Seguir hasta tener las características de Happy Pets"** (pedido
+  2026-08-25, instrucción abierta del usuario tras el análisis vs. Happy
+  Pets). Orden ejecutado simple-a-complejo: cosméticos (`rama-cosmeticos`
+  PR #100 + `rama-fix-skin-planta` PR #102) → rivalidad (`rama-
+  rivalidades` PR #101, ver entrada de abajo) → casa personalizable
+  (`rama-temas-patio` PR #103) → intercambio/regalo (`rama-regalar-
+  animales` PR #104). **Siguiente en la fila**: mini-juegos activos
+  (interacción directa del jugador con la mascota). **Eventos
+  temporales queda deliberadamente sin tomar** -- el usuario todavía no
+  especificó qué tipo de evento quiere, necesario antes de diseñarlo.
 - [x] **Etapa 2 del patio animado — rivalidad entre animales** (agregado
   2026-08-24) — tomada por `rama-rivalidades`, PR #101, mergeada y
   desplegada 2026-08-25. Etapa 1 (deambular + jugar, sin rivalidad) ya

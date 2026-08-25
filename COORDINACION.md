@@ -5250,6 +5250,37 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-eventos-temporales (2b40ce8) → main vía PR
+  #106: sin conflictos. CI verde. Cierra el último punto pendiente del
+  análisis vs. Happy Pets ("eventos temporales/estacionales") —
+  confirmado con el usuario que quería eventos ligados a fechas reales
+  próximas ("los eventos que van a venir próximos a estas fechas"), no
+  algo inventado suelto. Catálogo hardcodeado `EVENTOS_TEMPORALES`
+  (mismo criterio que `GENES`/`ACCESORIOS_DISPONIBLES`/etc.): Día de la
+  Primavera (23-30 sept, tema de patio), Halloween (25 oct-1 nov,
+  accesorio "sombrero de bruja"), Navidad (15-26 dic, accesorio "gorro
+  navideño"). **Decisión de diseño clave**: reutiliza el sistema de
+  cosméticos ya existente (accesorio o tema de patio) en vez de
+  inventar un tercer tipo de ítem — solo agrega la restricción de FECHA
+  a la compra (`eventoActivoAhora()`/`esItemEventoComprableAhora()`).
+  Los ítems de evento NO están en `ACCESORIOS_DISPONIBLES`/
+  `TEMAS_PATIO_DISPONIBLES` (esas listas son "siempre comprables") pero
+  quedan equipables para siempre una vez comprados, igual que cualquier
+  otro cosmético — la ownership ya probada en la DB no necesita
+  re-validar la fecha para equipar. `GET /casa` muestra el evento
+  activo con botón de compra, o si ninguno está activo, el próximo como
+  teaser ("Próximo evento: X — disponible desde..."). **Sin cambios de
+  schema** — catálogo 100% JS, mismo principio anti-duplicación del
+  resto del juego. Probado contra Neon moviendo temporalmente las
+  fechas de Primavera para incluir el día de la prueba (revertidas
+  antes de commitear, confirmado con `grep` antes del commit): compra
+  exitosa durante la ventana activa, rechazo de comprar un ítem de OTRO
+  evento todavía no activo (400), equipar, borrado de cuenta con el
+  ítem comprado (no crashea, mismo `ON DELETE CASCADE` ya existente).
+  Con las fechas reales restauradas, se confirmó el teaser cuando
+  ningún evento está activo. **Con este PR, el análisis completo vs.
+  Happy Pets del 2026-08-24 queda cerrado** — todos los puntos
+  construidos.
 - 2026-08-25 — merge de rama-minijuego-jugar (249ac0a) → main vía PR
   #105: sin conflictos. CI verde. Cierra el punto 5 del análisis vs.
   Happy Pets ("interacción activa del jugador con la mascota") -- hasta
@@ -6109,9 +6140,9 @@ de mascotas tipo Happy Pets, para decidir con datos qué sigue.
    (`rama-temas-patio`, PR #103).
 2. ~~**Rivalidad y dinámica social entre mascotas.**~~ ✅ Cerrado
    2026-08-25 (`rama-rivalidades`, PR #101) — Etapa 2 del patio.
-3. **Eventos temporales/estacionales.** Nada por tiempo limitado -- otra de
-   las 4 candidatas originales, sin diseñar en detalle. Pendiente de que
-   el usuario especifique qué tipo de evento quiere antes de diseñarlo.
+3. ~~**Eventos temporales/estacionales.**~~ ✅ Cerrado 2026-08-25
+   (`rama-eventos-temporales`, PR #106) — eventos ligados a fechas
+   reales del calendario (confirmado con el usuario).
 4. ~~**Intercambio/regalo directo entre amigos.**~~ ✅ Cerrado 2026-08-25
    (`rama-regalar-animales`, PR #104) — acotado a animales, regalo
    unidireccional con aceptación del destinatario.
@@ -6157,11 +6188,14 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   rivalidades` PR #101, ver entrada de abajo) → casa personalizable
   (`rama-temas-patio` PR #103) → intercambio/regalo (`rama-regalar-
   animales` PR #104) → mini-juegos activos (`rama-minijuego-jugar` PR
-  #105). **Con esto, el análisis vs. Happy Pets queda cerrado excepto
-  eventos temporales**, deliberadamente sin tomar -- el usuario
-  todavía no especificó qué tipo de evento quiere, necesario antes de
-  diseñarlo. Sumidero de moneda a largo plazo (punto 7) también queda
-  resuelto de facto por los cosméticos ya construidos.
+  #105) → eventos temporales (`rama-eventos-temporales` PR #106, tras
+  confirmar con el usuario que quería eventos ligados a fechas reales
+  próximas). **Con esto, el análisis completo vs. Happy Pets del
+  2026-08-24 queda cerrado — todos los puntos construidos.** Sumidero
+  de moneda a largo plazo (punto 7) también queda resuelto de facto por
+  los cosméticos ya construidos. Próximo paso: sin item específico en
+  cola — consultar con el usuario qué sigue (más eventos a futuro, un
+  segundo evento por temporada, o una dirección distinta).
 - [x] **Etapa 2 del patio animado — rivalidad entre animales** (agregado
   2026-08-24) — tomada por `rama-rivalidades`, PR #101, mergeada y
   desplegada 2026-08-25. Etapa 1 (deambular + jugar, sin rivalidad) ya

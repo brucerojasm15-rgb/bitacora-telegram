@@ -16,7 +16,7 @@
            saludo usa res.locals.nombreUsuario, expuesto por el mismo
            middleware global de server.js que ya arma barraSuperior. -->
       <section class="inicio-hero">
-        <%- include('partials/planta', { especie: barraSuperior.especie, etapa: barraSuperior.etapa, tamano: 140, idSufijo: 'inicio' }) %>
+        <%- include('partials/planta', { especie: barraSuperior.especie, etapa: barraSuperior.etapa, tamano: 140, idSufijo: 'inicio', skin: barraSuperior.skin }) %>
         <p class="inicio-saludo">Hola<%= typeof nombreUsuario !== 'undefined' && nombreUsuario ? ', ' + nombreUsuario : '' %> 👋</p>
       </section>
     <% } %>

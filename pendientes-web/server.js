@@ -317,6 +317,7 @@ async function barraSuperiorDeUsuario(usuarioId, usuarioFila) {
     etapa: perfil.etapa.indice,
     semillas: perfil.saldoMoneda,
     racha: perfil.rachaGeneral,
+    skin: perfil.iaSkin,
   };
 }
 
@@ -2124,6 +2125,20 @@ const IA_COSTO_SKIN = 30;
 const IA_COSTO_COMODIN_PERDON = 40;
 const IA_COSTO_TEMA_EXTRA = 60;
 const IA_SKINS_DISPONIBLES = ['clasico', 'alegre', 'zen', 'nocturno'];
+
+// rama-fix-skin-planta: hueco real encontrado en rama-cosmeticos (2026-08-25)
+// -- ia_skin se guardaba en la DB al comprar (IA_COSTO_SKIN, 30 monedas)
+// pero NUNCA se le pasaba a partials/planta.ejs en ninguna de las 6 vistas
+// que la incluyen, así que pagar por un skin no cambiaba nada visual desde
+// que existe la tienda. Colores por skin -- recolorean `--accent`/`--tono`
+// SOLO para ese render puntual de la planta (custom properties inline en
+// el <svg>), sin tocar el tema claro/oscuro global de la app.
+const SKIN_COLORES = {
+  clasico: { accent: '#16A34A', tono: '#D4A574' },
+  alegre: { accent: '#F59E0B', tono: '#FBBF24' },
+  zen: { accent: '#0EA5E9', tono: '#7DD3FC' },
+  nocturno: { accent: '#7C3AED', tono: '#A78BFA' },
+};
 const IA_TEMAS_EXTRA_DISPONIBLES = ['atardecer', 'lluvia'];
 
 // rama-ia-companera-fase2-v2 (tarea 9 del roadmap): IA conversacional real

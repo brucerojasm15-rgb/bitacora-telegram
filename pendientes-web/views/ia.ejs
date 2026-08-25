@@ -14,7 +14,7 @@
 
       <section class="ia-tarjeta">
         <div class="ia-ilustracion ia-etapa-transicion">
-          <%- include('partials/planta', { especie, etapa: etapa.indice, tamano: 140, idSufijo: 'ia-principal' }) %>
+          <%- include('partials/planta', { especie, etapa: etapa.indice, tamano: 140, idSufijo: 'ia-principal', skin: skinActual }) %>
         </div>
         <div class="ia-info">
           <form method="POST" action="/ia/nombre" class="ia-nombre-form">

@@ -131,7 +131,23 @@
       document.getElementById('bloqueo-nombre').textContent = datos.nombreUsuario;
       const avatarEl = document.querySelector('.bloqueo-avatar-especie[data-especie="' + datos.especie + '"]')
         || document.querySelector('.bloqueo-avatar-especie[data-especie="monstera"]');
-      if (avatarEl) avatarEl.hidden = false;
+      if (avatarEl) {
+        avatarEl.hidden = false;
+        // rama-fix-skin-planta: el SVG se renderiza en el servidor sin
+        // saber el skin (esta página es pública, antes de loguear) -- se
+        // aplica acá con los mismos 4 colores que partials/planta.ejs.
+        const SKINS_PLANTA = {
+          alegre: { accent: '#F59E0B', tono: '#FBBF24' },
+          zen: { accent: '#0EA5E9', tono: '#7DD3FC' },
+          nocturno: { accent: '#7C3AED', tono: '#A78BFA' },
+        };
+        const colorSkin = SKINS_PLANTA[datos.skin];
+        const svgEl = avatarEl.querySelector('svg');
+        if (colorSkin && svgEl) {
+          svgEl.style.setProperty('--accent', colorSkin.accent);
+          svgEl.style.setProperty('--tono', colorSkin.tono);
+        }
+      }
 
       if (datos.metodo === 'email' && datos.email) {
         document.getElementById('bloqueo-input-email').value = datos.email;

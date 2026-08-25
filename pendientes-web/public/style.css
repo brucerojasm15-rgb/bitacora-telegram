@@ -2140,6 +2140,60 @@ tr.fila-saliendo {
   text-align: center;
 }
 
+/* rama-mundo-caminable: 2 accesos fijos a los costados de la pantalla
+   principal (/captura) -- izquierda Herramientas, derecha Juego. Fijos al
+   viewport (no al flujo del contenido) para que queden siempre visibles
+   sin competir por espacio con el formulario de Captura rápida, que sigue
+   centrado como antes. */
+.captura-lateral {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.5rem;
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 600;
+  z-index: 5;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.captura-lateral:hover,
+.captura-lateral[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.captura-lateral svg {
+  width: 20px;
+  height: 20px;
+}
+
+.captura-lateral-izq { left: 10px; }
+.captura-lateral-der { right: 10px; }
+
+/* En pantallas angostas de verdad (celular) los iconos laterales se
+   superponen fácil al formulario de Captura rápida (max-width: 480px
+   pero centrado, ver .captura-form) -- se corren a las esquinas
+   superiores en vez de los costados verticales para no tapar el texto. */
+@media (max-width: 560px) {
+  .captura-lateral {
+    top: auto;
+    bottom: auto;
+    transform: none;
+  }
+  .captura-lateral-izq { top: 4.5rem; left: 8px; }
+  .captura-lateral-der { top: 4.5rem; right: 8px; }
+}
+
 .inicio-saludo {
   margin: 0;
   font-family: var(--display);
@@ -3135,4 +3189,86 @@ tr.fila-saliendo {
 .evento-banner {
   border: 1px solid var(--accent);
   background: var(--accent-soft, var(--bg-elevated));
+}
+
+/* rama-mundo-caminable: prototipo del mundo caminable (/mundo). El canvas
+   real se dimensiona por JS (public/mundo.js, ajustarTamano()) -- este
+   CSS solo define el contenedor y el prompt flotante de "Entrar a X". */
+.mundo-main {
+  max-width: none;
+}
+
+.mundo-ayuda {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+}
+
+.mundo-canvas-wrap {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #bfe6c4;
+}
+
+#mundo-canvas {
+  display: block;
+  touch-action: none;
+}
+
+.mundo-prompt {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+
+.mundo-prompt button {
+  pointer-events: auto;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+}
+
+.mundo-mas {
+  margin-top: 1rem;
+}
+
+.mundo-mas summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.mundo-mas-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.mundo-mas-lista a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.mundo-mas-lista a svg {
+  width: 15px;
+  height: 15px;
 }

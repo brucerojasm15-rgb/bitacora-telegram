@@ -21,10 +21,18 @@
 
      Se elimina el reordenado adaptativo por uso (`zentia_nav_uso` de
      rama-nav-rediseno): la app de referencia no lo hace y una grilla fija
-     no tiene el mismo problema de espacio que una barra angosta. */
+     no tiene el mismo problema de espacio que una barra angosta.
+
+     rama-mundo-caminable: esta grilla pasa a ser solo "Herramientas" --
+     los 6 items del "juego" (Mi planta, Hablar con tu planta, Mercado,
+     Logros, Casa, Plaza) se sacaron de acá y ahora viven en /mundo (mapa
+     caminable nuevo, ver views/mundo.ejs + public/mundo.js), reachable
+     desde el ícono nuevo al costado derecho de /captura. El ícono
+     "Cuenta" de la barra superior sigue abriendo ESTA grilla (ya
+     filtrada) sin cambios. */
 %>
 <%- include('barra-superior') %>
-  <div class="menu-pantalla" id="menu-pantalla" role="menu" aria-label="Menú" hidden>
+  <div class="menu-pantalla" id="menu-pantalla" role="menu" aria-label="Herramientas" hidden>
     <div class="menu-pantalla-cerrar">
       <button type="button" id="btn-menu-cerrar" aria-label="Cerrar menú">
         <%- include('icono', { nombre: 'x' }) %>
@@ -70,37 +78,6 @@
       <a href="/tutorial" class="menu-pantalla-item" role="menuitem">
         <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'guia' }) %></span>
         <span>Tutorial<% if (typeof tutorialCapitulosPendientes !== 'undefined' && tutorialCapitulosPendientes > 0) { %> <span class="no-leido" title="Capítulos pendientes">●</span><% } %></span>
-      </a>
-      <a href="/ia" class="menu-pantalla-item" role="menuitem">
-        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'planta' }) %></span>
-        <span>Mi planta</span>
-      </a>
-      <!-- rama-ia-companera-fase2-v2 (tarea 9 del roadmap): chat real con la
-           planta -- mismo patrón de item que el resto de esta grilla. -->
-      <a href="/ia/chat" class="menu-pantalla-item" role="menuitem">
-        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'chat' }) %></span>
-        <span>Hablar con tu planta<% if (typeof iaChatSinLeer !== 'undefined' && iaChatSinLeer) { %> <span class="no-leido" title="Mensaje nuevo">●</span><% } %></span>
-      </a>
-      <a href="/ia#tienda" class="menu-pantalla-item" role="menuitem">
-        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'moneda' }) %></span>
-        <span>Mercado</span>
-      </a>
-      <!-- rama-logros: primera mecánica nueva del "juego" (de las 4
-           candidatas de la tarea O) -- sin badge de no-leído, el toast
-           de más abajo ya cumple ese rol al desbloquear. -->
-      <a href="/logros" class="menu-pantalla-item" role="menuitem">
-        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'trofeo' }) %></span>
-        <span>Logros</span>
-      </a>
-      <!-- rama-juego-fundacion: primer tramo del juego (diseño en
-           COORDINACION.md) -- Casa con tus animales. -->
-      <a href="/casa" class="menu-pantalla-item" role="menuitem">
-        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'pata' }) %></span>
-        <span>Casa</span>
-      </a>
-      <a href="/plaza" class="menu-pantalla-item" role="menuitem">
-        <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'emoji_carita' }) %></span>
-        <span>Plaza</span>
       </a>
       <a href="/ajustes" class="menu-pantalla-item" role="menuitem">
         <span class="menu-pantalla-item-icono"><%- include('icono', { nombre: 'ajustes' }) %></span>

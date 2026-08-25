@@ -5677,6 +5677,19 @@ function mensajePersonajeMain(perfil, animales) {
   return { texto: PERSONAJE_MAIN_MENSAJES.consejo, mostrarBoton: false };
 }
 
+// rama-mundo-caminable: prototipo chico y aislado del "mundo caminable"
+// (ver COORDINACION.md, "Visión grande 2026-08-25" -- decisión confirmada
+// de que TODA la app se convierte en esto, empezando por un prototipo).
+// Esta ruta no necesita datos propios -- res.locals.barraSuperior/
+// nombreUsuario ya llegan por el middleware global (mismo criterio que
+// /captura). Todo el juego real (avatar, cámara, edificios) es 100%
+// client-side en public/mundo.js; caminar hasta un edificio simplemente
+// navega a la ruta real que ya existe (/casa, /plaza), nunca reescribe
+// esas páginas.
+app.get('/mundo', (req, res) => {
+  res.render('mundo', {});
+});
+
 app.get('/casa', async (req, res) => {
   try {
     const [perfil, animales, arbolesGenealogicos, accesoriosComprados, temasComprados, temaPatioActualRows, solicitudesRecibidas, amigosAceptados, solicitudesRegaloRecibidas] = await Promise.all([

@@ -6476,6 +6476,98 @@ scoping antes de construir, como se hizo con rivalidades/regalos/mini-
 juegos/eventos), y dejar la cámara estilo Pokémon como una decisión
 aparte y consciente, no una tarea más de la lista.
 
+### Prototipo del mundo caminable — EN PROGRESO, sin terminar de probar (`rama-mundo-caminable`)
+
+Sesión 2026-08-25: el usuario pidió separar la navegación (pantalla
+principal = Captura rápida, con 2 iconos fijos a los costados: izquierda
+"Herramientas" — el menú de siempre, ya filtrado a solo los 12 accesos
+que no son del juego —, derecha "Juego") Y, al preguntar qué construir
+para el acceso al Juego, eligió explícitamente arrancar YA el prototipo
+del mundo caminable (Canvas 2D) en vez de solo un menú de páginas
+existentes — ver la sección "Visión grande" de arriba para el diseño ya
+confirmado que esto continúa.
+
+**Construido (worktree `../worktrees/rama-mundo-caminable`, branch
+`rama-mundo-caminable`, commiteado, NO mergeado a `main`, NO pusheado
+todavía):**
+- `public/mundo.js` (nuevo): motor Canvas 2D vanilla JS — avatar que
+  camina (flechas/WASD, o arrastre táctil como joystick virtual), cámara
+  que sigue centrada y clampeada a los bordes del mapa, 2 edificios de
+  prueba (Casa → `/casa`, Plaza → `/plaza`, ambas rutas reales ya
+  existentes) con detección de cercanía que muestra un botón real del DOM
+  ("Entrar a X") — Enter/Espacio en desktop o el botón hacen la
+  navegación. Mismo criterio que el resto del proyecto: sin build tool,
+  sin dependencias nuevas.
+- `views/mundo.ejs` (nuevo) + ruta `GET /mundo` en `server.js`: sin datos
+  propios (reusa `res.locals.barraSuperior` del middleware global). Trae
+  un `<details>` "Más del juego" con links directos a Mi planta/Hablar
+  con tu planta/Mercado/Logros — los 4 accesos del juego que NO entraron
+  como edificio en este prototipo (a propósito, ver "Visión grande" de
+  arriba: 1-2 edificios de prueba nomás por ahora), para no perder
+  alcance mientras no tengan su propio edificio.
+- `views/partials/nav.ejs`: `.menu-pantalla` pasa a ser solo
+  "Herramientas" — se sacaron los 6 accesos del juego (Mi planta, Hablar
+  con tu planta, Mercado, Logros, Casa, Plaza), documentado en el propio
+  comment de arriba del archivo.
+- `views/captura.ejs` + `public/style.css`: 2 botones fijos a los
+  costados (`.captura-lateral-izq/-der`), reposicionados a las esquinas
+  superiores en mobile angosto (`@media max-width: 560px`) para no tapar
+  el formulario de Captura rápida.
+- `views/partials/scripts.ejs`: el listener que abre `.menu-pantalla` ya
+  no depende de un único id (`btn-menu-usuario`) — se enganchan todos los
+  elementos con la clase compartida `.abre-menu-herramientas` (el botón
+  de siempre en la barra superior + el ícono lateral nuevo).
+- 2 iconos nuevos en `views/partials/icono.ejs`: `herramientas` (llave) y
+  `mapa`.
+
+**Idea nueva mencionada de paso (NO construida, solo para no perderla):**
+el usuario dijo que Logros a futuro debería estar vinculado a metas
+cumplidas que la IA identifique como "buen logro" para dar una insignia
+— con un problema abierto sin resolver todavía: cómo verificar que algo
+se hizo de verdad y no es una mentira del usuario. Es una evolución de
+Logros, no bloquea nada de lo de arriba.
+
+**Probado — SOLO el motor Canvas, de forma aislada (harness HTML+JS
+suelto fuera del repo, sirviendo `public/mundo.js` real sobre un server
+estático descartable, NO la app completa):** movimiento con
+flechas/WASD confirmado (dispatch de `KeyboardEvent` real con
+`bubbles:true` sobre `window`), cámara siguiendo y clampeando en el
+borde del mapa confirmado visualmente, el prompt "Entrar a Casa"
+aparece con el texto correcto al acercarse Y desaparece al alejarse
+(confirmado leyendo `#mundo-prompt.hidden` del DOM real, no
+solo mirando pantalla). **Nota para la próxima sesión**: `window.__debug`
+u otra variable global seteada por el propio script de la página NO es
+legible desde `javascript_tool` en esta herramienta (mundo aislado /
+"isolated world" de la extensión) — leer siempre el DOM real
+(`element.hidden`, `.style`, `.textContent`) para verificar estado, nunca
+una variable JS de la página.
+
+**NO probado todavía — esto es lo que falta antes de poder mergear:**
+1. **Nada de esto se probó dentro de la app real** (con sesión real,
+   `barraSuperior` real, `/captura` con los 2 botones nuevos renderizados,
+   navegar de verdad a `/mundo`, tocar "Entrar a Casa" y confirmar que
+   aterriza en `/casa` andando). `npm run ci` (sintaxis/plantillas) SÍ
+   pasa limpio.
+2. **Bloqueador real**: no hay forma de levantar el server local contra
+   una base de datos válida en esta sesión — el `.env` del clon principal
+   sigue apuntando al Postgres viejo de Railway (`metro.proxy.rlwy.net`,
+   dado de baja en la migración del 2026-08-24, ver más arriba). Hace
+   falta la connection string **directa** (no `-pooler`) de Neon actual
+   para `DATABASE_URL` — pedírsela al usuario o sacarla del dashboard de
+   Render (Environment del servicio `bitacora-telegram`) antes de poder
+   probar end-to-end.
+3. Controles táctiles (arrastre) sin probar en absoluto, ni en desktop
+   simulando touch ni en un celular real.
+4. Sign-off visual del usuario: cero (ver
+   [[feedback_ui_visual_signoff]] -- no saltarse este paso solo porque el
+   motor Canvas ya se probó aislado).
+
+**Para retomar**: el worktree con todo el código ya escrito sigue en
+`../worktrees/rama-mundo-caminable`. Próximos pasos en orden: conseguir
+`DATABASE_URL` real → `npm install` si hace falta → levantar
+`node server.js` local → probar de punta a punta con un navegador real
+(Claude in Chrome) → sign-off visual del usuario → recién ahí mergear.
+
 ---
 
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)

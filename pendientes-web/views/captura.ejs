@@ -19,6 +19,19 @@
         <%- include('partials/planta', { especie: barraSuperior.especie, etapa: barraSuperior.etapa, tamano: 140, idSufijo: 'inicio', skin: barraSuperior.skin }) %>
         <p class="inicio-saludo">Hola<%= typeof nombreUsuario !== 'undefined' && nombreUsuario ? ', ' + nombreUsuario : '' %> 👋</p>
       </section>
+      <!-- rama-mundo-caminable: 2 iconos fijos a los costados de la
+           pantalla principal, pedidos explícitamente por el usuario --
+           izquierda abre Herramientas (mismo panel de siempre, ya
+           filtrado a solo esos 12 accesos), derecha entra al mundo
+           caminable nuevo (el "juego", totalmente aparte). -->
+      <button type="button" class="captura-lateral captura-lateral-izq abre-menu-herramientas" aria-haspopup="true" aria-expanded="false" aria-controls="menu-pantalla" title="Herramientas" aria-label="Herramientas">
+        <%- include('partials/icono', { nombre: 'herramientas' }) %>
+        <span>Herramientas</span>
+      </button>
+      <a href="/mundo" class="captura-lateral captura-lateral-der" title="Juego" aria-label="Juego">
+        <%- include('partials/icono', { nombre: 'mapa' }) %>
+        <span>Juego</span>
+      </a>
     <% } %>
     <h1><%- include('partials/icono', { nombre: 'rayo' }) %> Captura rápida</h1>
     <p class="count">Escribe lo que sea y elige qué es antes de guardarlo.</p>

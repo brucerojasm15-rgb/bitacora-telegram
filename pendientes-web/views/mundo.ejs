@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<%- include('partials/head', { titulo: 'El mundo' }) %>
+</head>
+<body class="mundo-body">
+  <main class="mundo-main">
+<%- include('partials/nav') %>
+    <!-- rama-mundo-caminable: prototipo chico y aislado (ver
+         COORDINACION.md). El mapa/avatar/cámara son 100% client-side
+         (public/mundo.js) -- este EJS solo pone el <canvas> y los 2
+         puntos de salida por si el JS no carga (accesibilidad + fallback
+         sin conexión a los edificios ya construidos que no entraron en
+         el prototipo). -->
+    <p class="mundo-ayuda">
+      Movete con las flechas o WASD (o arrastrá el dedo en el mapa). Acercate a
+      un edificio y tocá "Entrar".
+    </p>
+    <div class="mundo-canvas-wrap">
+      <canvas id="mundo-canvas" aria-label="Mapa caminable"></canvas>
+      <div id="mundo-prompt" class="mundo-prompt" hidden>
+        <button type="button" id="mundo-prompt-btn"></button>
+      </div>
+    </div>
+    <details class="mundo-mas">
+      <summary>Más del juego</summary>
+      <div class="mundo-mas-lista">
+        <a href="/ia"><%- include('partials/icono', { nombre: 'planta' }) %> Mi planta</a>
+        <a href="/ia/chat"><%- include('partials/icono', { nombre: 'chat' }) %> Hablar con tu planta</a>
+        <a href="/ia#tienda"><%- include('partials/icono', { nombre: 'moneda' }) %> Mercado</a>
+        <a href="/logros"><%- include('partials/icono', { nombre: 'trofeo' }) %> Logros</a>
+      </div>
+    </details>
+  </main>
+  <script src="/mundo.js"></script>
+<%- include('partials/scripts') %>
+</body>
+</html>

@@ -128,22 +128,27 @@
     // Escape). Con guardia por si algún día una vista no incluye el
     // partial de nav.
     (function () {
-      const btnAbrir = document.getElementById('btn-menu-usuario');
+      // rama-mundo-caminable: puede haber más de un botón que abra este
+      // mismo panel (el de siempre en la barra superior, más el nuevo
+      // ícono lateral de /captura) -- se enganchan todos los que traigan
+      // la clase compartida `.abre-menu-herramientas` en vez de asumir un
+      // único id.
+      const botonesAbrir = Array.from(document.querySelectorAll('.abre-menu-herramientas'));
       const btnCerrar = document.getElementById('btn-menu-cerrar');
       const panel = document.getElementById('menu-pantalla');
-      if (!btnAbrir || !btnCerrar || !panel) return;
+      if (botonesAbrir.length === 0 || !btnCerrar || !panel) return;
 
       function abrir() {
         panel.hidden = false;
-        btnAbrir.setAttribute('aria-expanded', 'true');
+        botonesAbrir.forEach((b) => b.setAttribute('aria-expanded', 'true'));
       }
 
       function cerrar() {
         panel.hidden = true;
-        btnAbrir.setAttribute('aria-expanded', 'false');
+        botonesAbrir.forEach((b) => b.setAttribute('aria-expanded', 'false'));
       }
 
-      btnAbrir.addEventListener('click', abrir);
+      botonesAbrir.forEach((b) => b.addEventListener('click', abrir));
       btnCerrar.addEventListener('click', cerrar);
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !panel.hidden) cerrar();

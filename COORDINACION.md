@@ -6359,7 +6359,48 @@ empezar).
     propio, no copiado) avanza por un mapa — "casi el mismo mecanismo"
     que los juegos clásicos de Pokémon en tercera persona.
 
-### Lectura honesta (recomendación, no decisión tomada)
+### Decisión confirmada (2026-08-25): TODA la app se convierte en el mundo caminable
+
+Tras la "Lectura honesta" de abajo (escrita ANTES de esta decisión —
+se deja como contexto histórico de la primera evaluación, no se borra),
+se le preguntó al usuario si quería el motor solo para el minijuego de
+veterinario o para toda la app. **Eligió toda la app** — con una razón
+nueva y clave que reencuadra el punto 11 completo: quiere que jugar
+revele que el juego puede usarse como un asistente tipo **Jarvis**. Eso
+conecta directo con Zen (el guía, `PERSONAJE_MAIN_NOMBRE`) — Zen deja de
+ser solo un narrador de tutorial y pasa a ser una presencia ambiental
+dentro del mundo, la voz del "Jarvis" del juego.
+
+**Insight de arquitectura que hace esto viable** (no fue obvio hasta
+pensarlo con el usuario): "todo se convierte en el mundo" NO tiene que
+significar reescribir Chat/Metas/Ajustes/Plaza desde cero como objetos
+de un motor de juego. Hoy `.menu-pantalla` (rama-inicio-planta, PR #73)
+es una grilla de íconos — tocás uno, navegás a esa página EJS ya
+construida y probada. La idea es reemplazar SOLO esa grilla por un mapa
+Canvas caminable: el avatar camina, la cámara lo sigue, y cada función
+existente es un "edificio" en el mapa. **Caminar hasta un edificio y
+entrar simplemente navega a la página real que ya existe** (Chat, Metas,
+Ajustes, Plaza, etc. no se tocan, cero riesgo de romper nada ya
+probado) — lo único que cambia es CÓMO se llega ahí. Los únicos lugares
+con gameplay de verdad nuevo dentro del mapa son 2: el **patio** (ya
+semi-animado desde `rama-patio-animado`/`rama-patio-paso`, ahora con
+movimiento real de jugador en vez de animales deambulando solos) y el
+**veterinario callejero** (punto 2 de esta lista, gameplay de búsqueda
+real, nuevo de punta a punta).
+
+**Plan propuesto, todavía NO iniciado** (el usuario pidió documentar y
+guardar, no construir todavía): empezar con un prototipo chico y
+aislado — mapa Canvas + avatar caminando + cámara que sigue + 1 o 2
+edificios de prueba conectados a rutas reales — para validar que se
+siente bien ANTES de conectar TODAS las funciones existentes. Decisión
+técnica tentativa (a confirmar al empezar): Canvas 2D plano (no WebGL,
+sería sobre-ingeniería para un mapa 2D top-down), vanilla JS sin
+framework (mismo criterio que el resto de la app — nunca se introdujo
+React/Vue/etc. en esta base de código), controles por flechas en
+desktop y algún control táctil (d-pad/swipe) en mobile ya que la app es
+mobile-first (PWA instalable, `rama-instalar-app`).
+
+### Lectura honesta (recomendación, no decisión tomada — escrita ANTES de la decisión confirmada de arriba)
 
 Estas 11 piezas tienen niveles de esfuerzo MUY distintos, y conviene no
 tratarlas como un solo proyecto:

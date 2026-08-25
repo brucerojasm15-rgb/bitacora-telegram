@@ -1835,6 +1835,28 @@ async function ensureSchema() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_cruces_solicitudes_destinatario ON cruces_solicitudes (destinatario_id, estado)
   `);
+  // rama-regalar-animales: "intercambio/regalo directo entre amigos, sin
+  // pasar por cría" del análisis vs. Happy Pets. Regalo unidireccional
+  // (no trueque/negociación -- alcance deliberadamente más chico) con
+  // aceptación real del destinatario, mismo patrón exacto que
+  // cruces_solicitudes (misma tabla hermana, sin ON DELETE CASCADE a
+  // propósito -- se limpia con el mismo DELETE explícito en
+  // POST /ajustes/eliminar-cuenta, ver más abajo, consistente con cómo
+  // ya se limpia cruces_solicitudes).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS regalos_solicitudes (
+      id SERIAL PRIMARY KEY,
+      donante_id INT REFERENCES usuarios(id),
+      destinatario_id INT REFERENCES usuarios(id),
+      animal_id INT REFERENCES animales(id),
+      estado TEXT NOT NULL DEFAULT 'pendiente',
+      creado TIMESTAMPTZ DEFAULT now(),
+      resuelto_en TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_regalos_solicitudes_destinatario ON regalos_solicitudes (destinatario_id, estado)
+  `);
   // Estado simple de 1 fila por usuario, no amerita tabla aparte (mismo
   // criterio que `saldo_moneda`/`ia_especie` ya existentes).
   // `revividas_disponibles` empieza en 3 -- decisión confirmada
@@ -5564,7 +5586,7 @@ function mensajePersonajeMain(perfil, animales) {
 
 app.get('/casa', async (req, res) => {
   try {
-    const [perfil, animales, arbolesGenealogicos, accesoriosComprados, temasComprados, temaPatioActualRows, solicitudesRecibidas] = await Promise.all([
+    const [perfil, animales, arbolesGenealogicos, accesoriosComprados, temasComprados, temaPatioActualRows, solicitudesRecibidas, amigosAceptados, solicitudesRegaloRecibidas] = await Promise.all([
       perfilJuegoDeUsuario(req.usuarioId),
       animalesDeUsuarioConGenes(req.usuarioId),
       arbolGenealogicoDeFallecidos(req.usuarioId),
@@ -5582,6 +5604,16 @@ app.get('/casa', async (req, res) => {
          JOIN animales aa ON aa.id = cs.animal_ajeno_id
          WHERE cs.destinatario_id = $1 AND cs.estado = 'pendiente'
          ORDER BY cs.creado DESC`,
+        [req.usuarioId]
+      ).then((r) => r.rows),
+      amigosAceptadosDe(req.usuarioId),
+      pool.query(
+        `SELECT rs.id, rs.animal_id, u.nombre_usuario AS donante_nombre, a.nombre AS nombre_animal, a.especie
+         FROM regalos_solicitudes rs
+         JOIN usuarios u ON u.id = rs.donante_id
+         JOIN animales a ON a.id = rs.animal_id
+         WHERE rs.destinatario_id = $1 AND rs.estado = 'pendiente'
+         ORDER BY rs.creado DESC`,
         [req.usuarioId]
       ).then((r) => r.rows),
     ]);
@@ -5622,6 +5654,8 @@ app.get('/casa', async (req, res) => {
       umbralReconciliacion: UMBRAL_RECONCILIACION,
       comida: Number(req.query.comida) || null,
       nacio: Number(req.query.nacio) || null,
+      amigosAceptados,
+      solicitudesRegaloRecibidas,
       error: null,
     });
   } catch (err) {
@@ -5635,6 +5669,8 @@ app.get('/casa', async (req, res) => {
       temasPatioDisponibles: TEMAS_PATIO_DISPONIBLES, temasComprados: [], costoTemaPatio: COSTO_TEMA_PATIO, temaPatioActual: 'pasto',
       paresRivales: [], afinidadPares: {}, umbralReconciliacion: UMBRAL_RECONCILIACION, comida: null,
       nacio: null,
+      amigosAceptados: [],
+      solicitudesRegaloRecibidas: [],
       error: 'No se pudo leer la base de datos.',
     });
   }
@@ -6241,6 +6277,110 @@ app.post('/cruces-solicitudes/:id/responder', async (req, res) => {
   res.redirect('/casa');
 });
 
+// rama-regalar-animales: "intercambio/regalo directo entre amigos, sin
+// pasar por cría" -- pide la transferencia, nunca la ejecuta directo (es
+// la mascota de otra persona, necesita SU consentimiento, mismo criterio
+// que rama-cruzar-amigos con las solicitudes de cruce).
+app.post('/animales/:id/regalar', async (req, res) => {
+  const idAnimal = Number(req.params.id);
+  const destinatarioId = Number(req.body.destinatario_id);
+  if (!Number.isInteger(idAnimal) || !Number.isInteger(destinatarioId)) {
+    return res.status(400).send('Datos inválidos.');
+  }
+  try {
+    const { rows: animalRows } = await pool.query(
+      `SELECT id FROM animales WHERE id = $1 AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido'`,
+      [idAnimal, req.usuarioId]
+    );
+    if (!animalRows.length) return res.status(403).send('Ese animal no es tuyo.');
+    const { rows: amistadRows } = await pool.query(
+      `SELECT 1 FROM amistades WHERE estado = 'aceptada' AND
+       ((usuario_a_id = $1 AND usuario_b_id = $2) OR (usuario_a_id = $2 AND usuario_b_id = $1))`,
+      [req.usuarioId, destinatarioId]
+    );
+    if (!amistadRows.length) return res.status(403).send('Ese usuario no es tu amigo.');
+    await pool.query(
+      `INSERT INTO regalos_solicitudes (donante_id, destinatario_id, animal_id) VALUES ($1, $2, $3)`,
+      [req.usuarioId, destinatarioId, idAnimal]
+    );
+    enviarPushAUsuario(destinatarioId, {
+      title: 'Te regalaron un animal',
+      body: 'Un amigo te quiere regalar uno de sus animales -- revisa tu casa.',
+      data: { defaultUrl: '/casa' },
+    }).catch((err) => console.error('Error notificando regalo:', err.message));
+  } catch (err) {
+    console.error('Error creando regalo:', err.message);
+    return res.status(500).send('No se pudo enviar el regalo.');
+  }
+  res.redirect('/casa');
+});
+
+app.post('/regalos-solicitudes/:id/responder', async (req, res) => {
+  const id = Number(req.params.id);
+  const respuesta = req.body.respuesta;
+  if (!Number.isInteger(id) || !['aceptar', 'rechazar'].includes(respuesta)) {
+    return res.status(400).send('Datos inválidos.');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: solicitudRows } = await client.query(
+      `SELECT donante_id, animal_id FROM regalos_solicitudes
+       WHERE id = $1 AND destinatario_id = $2 AND estado = 'pendiente' FOR UPDATE`,
+      [id, req.usuarioId]
+    );
+    if (!solicitudRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).send('Ese regalo no existe o ya fue respondido.');
+    }
+    const solicitud = solicitudRows[0];
+    if (respuesta === 'rechazar') {
+      await client.query(`UPDATE regalos_solicitudes SET estado = 'rechazada', resuelto_en = now() WHERE id = $1`, [id]);
+      await client.query('COMMIT');
+      return res.redirect('/casa');
+    }
+    // Re-valida al aceptar -- mismo criterio que cruces_solicitudes: el
+    // animal pudo fallecer o el donante pudo ya no ser dueño (se lo
+    // regaló a otro amigo mientras tanto) desde que se pidió.
+    const { rows: animalRows } = await client.query(
+      `SELECT id, usuario_id FROM animales
+       WHERE id = $1 AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido' FOR UPDATE`,
+      [solicitud.animal_id, solicitud.donante_id]
+    );
+    if (!animalRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Ese animal ya no está disponible -- puede que tu amigo ya lo haya regalado a alguien más.');
+    }
+    const { rows: contadorRows } = await client.query(
+      'SELECT COUNT(*)::int AS c FROM animales WHERE usuario_id = $1 AND eliminado = false',
+      [req.usuarioId]
+    );
+    const perfil = await perfilJuegoDeUsuario(req.usuarioId);
+    if (contadorRows[0].c >= perfil.capacidadCasa) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('Tu casa está al límite de espacio -- libera un lugar antes de aceptar.');
+    }
+    // Transferencia de dueño real -- a diferencia de adoptar/cruzar, acá
+    // NO se crea un animal nuevo, se reasigna el existente. padre_id/
+    // madre_id, accesorio y el genotipo viajan con el animal tal cual.
+    await client.query('UPDATE animales SET usuario_id = $1 WHERE id = $2', [req.usuarioId, solicitud.animal_id]);
+    await client.query(`UPDATE regalos_solicitudes SET estado = 'aceptada', resuelto_en = now() WHERE id = $1`, [id]);
+    await client.query('COMMIT');
+    enviarPushAUsuario(solicitud.donante_id, {
+      title: 'Tu regalo fue aceptado',
+      body: 'Tu amigo aceptó el animal que le regalaste.',
+      data: { defaultUrl: '/casa' },
+    }).catch((err) => console.error('Error notificando aceptación de regalo:', err.message));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error respondiendo regalo:', err.message);
+    return res.status(500).send('No se pudo procesar la respuesta.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/casa');
+});
+
 // Revivir: 3 veces POR CUENTA de por vida (decisión confirmada
 // explícitamente con el usuario), no por animal. Deja al animal en
 // 'critico' (no 'sano' directo) -- revivir no es gratis ni perfecto.
@@ -6661,6 +6801,13 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
     // también se está borrando en la misma operación.
     await client.query(
       'DELETE FROM cruces_solicitudes WHERE solicitante_id = $1 OR destinatario_id = $1',
+      [usuarioId]
+    );
+    // rama-regalar-animales: mismo criterio que cruces_solicitudes arriba
+    // -- se borra la solicitud entera si cualquiera de los 2 lados es el
+    // usuario que se está borrando, antes de tocar `animales`.
+    await client.query(
+      'DELETE FROM regalos_solicitudes WHERE donante_id = $1 OR destinatario_id = $1',
       [usuarioId]
     );
     // rama-juego-fundacion: animales_enfermedades y animales_genes primero

@@ -5250,6 +5250,27 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-cosmeticos (26edd21) → main vía PR #100: sin
+  conflictos. CI verde en el primer intento (ambos jobs). Desplegado en
+  Render, `status: live` confirmado (no solo la URL respondiendo, per la
+  lección de la ronda anterior). Primer cosmético real del juego --
+  seguía la recomendación del análisis vs. Happy Pets de la ronda
+  anterior. 3 accesorios (sombrero, moño, bufanda), 40 monedas cada uno,
+  desbloqueo por cuenta + equipado por animal (uno a la vez). A
+  diferencia del sistema de "skin" de la planta (hueco real encontrado
+  esta misma ronda, sin arreglar todavía -- se guarda en la DB pero
+  ningún `include('partials/planta', ...)` en todo el código le pasa el
+  skin, así que pagar por él no cambia nada visual), acá el accesorio SÍ
+  se renderiza: badge circular sobre el avatar, visible en la Casa
+  propia y en la de un amigo. **Bug real encontrado y arreglado ANTES de
+  mergear** (no después, por primera vez con este bug class en concreto):
+  `usuario_accesorios.usuario_id` se declaró sin `ON DELETE CASCADE` --
+  se hubiera roto `POST /ajustes/eliminar-cuenta` para cualquier cuenta
+  con al menos un accesorio comprado. Corregido con el mismo patrón
+  self-healing de `animales.padre_id`/`madre_id`. Probado de punta a
+  punta contra Neon con Chrome real: compra descuenta la moneda correcta,
+  badge visible y legible (captura de zoom), equipar/desequipar
+  funciona, borrar una cuenta CON un accesorio comprado no crashea.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

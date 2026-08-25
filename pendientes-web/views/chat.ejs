@@ -85,6 +85,45 @@
         </ul>
       <% } %>
 
+      <% if (!error && recordatoriosRutinarios.length > 0) { %>
+        <section class="chat-recordatorios-rutinarios">
+          <% recordatoriosRutinarios.forEach((r) => { %>
+            <div class="recordatorio-rutinario-card">
+              <%- include('partials/icono', { nombre: 'campana' }) %>
+              <span class="recordatorio-rutinario-texto">
+                <strong><%= r.asignado_a === usuarioId ? 'Vos' : r.asignado_a_nombre %></strong> --
+                <%= r.texto %> -- todos los días a las <%= r.hora %>
+                <% if (r.creado_por !== r.asignado_a) { %>
+                  (asignado por <%= r.creado_por === usuarioId ? 'vos' : r.creado_por_nombre %>)
+                <% } %>
+              </span>
+              <form method="POST" action="/recordatorios-rutinarios/<%= r.id %>/desactivar">
+                <button type="submit" class="btn-link" title="Desactivar">&times;</button>
+              </form>
+            </div>
+          <% }) %>
+        </section>
+      <% } %>
+
+      <% if (!error) { %>
+        <details class="chat-compartir-meta">
+          <summary><%- include('partials/icono', { nombre: 'campana' }) %> Asignar un recordatorio diario</summary>
+          <form method="POST" action="/recordatorios-rutinarios">
+            <input type="hidden" name="amistad_id" value="<%= amistadId %>">
+            <label for="rr-texto">¿Qué recordar?</label>
+            <input type="text" name="texto" id="rr-texto" placeholder="Ej. Alimentar a la tortuga" required maxlength="200">
+            <label for="rr-hora">¿A qué hora, todos los días?</label>
+            <input type="time" name="hora" id="rr-hora" required>
+            <label for="rr-asignado">¿Para quién?</label>
+            <select name="asignado_a" id="rr-asignado" required>
+              <option value="<%= amigoId %>"><%= amigoNombre %></option>
+              <option value="<%= usuarioId %>">Vos mismo</option>
+            </select>
+            <button type="submit">Asignar recordatorio</button>
+          </form>
+        </details>
+      <% } %>
+
       <% if (!error) { %>
         <form method="POST" action="/mensajes" class="nuevo" id="form-mensaje" data-amistad-id="<%= amistadId %>">
           <input type="hidden" name="amistad_id" value="<%= amistadId %>">

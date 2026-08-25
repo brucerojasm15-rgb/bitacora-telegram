@@ -1652,6 +1652,39 @@ svg[viewBox="0 0 24 24"] {
   margin-bottom: 1rem;
 }
 
+/* rama-temas-patio: "pasto" es el default de arriba -- sin data-tema o
+   data-tema="pasto" no necesita regla propia. Los otros 3 sobreescriben
+   el `background`, nada más (mismo borde/tamaño/radio para los 4). */
+.patio[data-tema="playa"] {
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.12), rgba(251, 191, 36, 0.12));
+}
+
+.patio[data-tema="nieve"] {
+  background: linear-gradient(180deg, rgba(226, 232, 240, 0.18), rgba(148, 163, 184, 0.08));
+}
+
+.patio[data-tema="noche"] {
+  background:
+    radial-gradient(1px 1px at 20% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 60% 15%, #fff, transparent),
+    radial-gradient(1px 1px at 80% 45%, #fff, transparent),
+    radial-gradient(1px 1px at 35% 70%, #fff, transparent),
+    radial-gradient(1px 1px at 90% 80%, #fff, transparent),
+    linear-gradient(180deg, rgba(30, 27, 75, 0.5), rgba(15, 13, 40, 0.35));
+}
+
+.tienda-tema-muestra {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+
+.tienda-tema-muestra[data-tema="pasto"] { background: linear-gradient(180deg, #16A34A, #0B4A2E); }
+.tienda-tema-muestra[data-tema="playa"] { background: linear-gradient(180deg, #38BDF8, #FBBF24); }
+.tienda-tema-muestra[data-tema="nieve"] { background: linear-gradient(180deg, #E2E8F0, #94A3B8); }
+.tienda-tema-muestra[data-tema="noche"] { background: linear-gradient(180deg, #4C1D95, #0F0D28); }
+
 .patio-avatar {
   width: 44px;
   height: 44px;

@@ -1750,6 +1750,22 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE usuario_accesorios DROP CONSTRAINT IF EXISTS usuario_accesorios_usuario_id_fkey`);
   await pool.query(`ALTER TABLE usuario_accesorios ADD CONSTRAINT usuario_accesorios_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE`);
   await pool.query(`ALTER TABLE animales ADD COLUMN IF NOT EXISTS accesorio TEXT`);
+  // rama-temas-patio: "Casa personalizable visualmente" del análisis vs.
+  // Happy Pets -- mismo patrón exacto que usuario_accesorios (desbloqueo
+  // por cuenta, aplicado con ON DELETE CASCADE desde el arranque esta
+  // vez, no como fix posterior). `tema_patio` en `usuarios` (no en
+  // `animales` -- es de la Casa entera, no de un animal puntual) con
+  // DEFAULT 'pasto' -- ese tema es gratis/no requiere fila en
+  // usuario_temas_patio, mismo criterio que "sin accesorio = normal".
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS usuario_temas_patio (
+      usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      tema TEXT NOT NULL,
+      comprado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (usuario_id, tema)
+    )
+  `);
+  await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tema_patio TEXT NOT NULL DEFAULT 'pasto'`);
   // rama-rivalidades: Etapa 2 del patio animado, diseño ya confirmado con
   // el usuario y anotado en el Backlog el 2026-08-24. Nivel de afinidad
   // entre un par ESPECÍFICO de animales -- se sube socializándolos a
@@ -2183,6 +2199,12 @@ const ESPECIES_ANIMAL = ['gato', 'perro', 'conejo', 'ave'];
 // de la tienda ya existente (IA_COSTO_SKIN=30 .. IA_COSTO_TEMA_EXTRA=60).
 const ACCESORIOS_DISPONIBLES = ['sombrero', 'moño', 'bufanda'];
 const COSTO_ACCESORIO = 40;
+
+// rama-temas-patio: "pasto" es el default gratis (el fondo que ya existía
+// en .patio desde rama-patio-animado) -- nunca necesita comprarse ni fila
+// en usuario_temas_patio, mismo criterio que "sin accesorio = normal".
+const TEMAS_PATIO_DISPONIBLES = ['playa', 'nieve', 'noche'];
+const COSTO_TEMA_PATIO = 40;
 
 // Cada gen es un "locus": un animal tiene 2 alelos por locus (uno
 // heredado de cada padre, herencia diploide real). `rarezaBase` es el
@@ -5542,12 +5564,15 @@ function mensajePersonajeMain(perfil, animales) {
 
 app.get('/casa', async (req, res) => {
   try {
-    const [perfil, animales, arbolesGenealogicos, accesoriosComprados, solicitudesRecibidas] = await Promise.all([
+    const [perfil, animales, arbolesGenealogicos, accesoriosComprados, temasComprados, temaPatioActualRows, solicitudesRecibidas] = await Promise.all([
       perfilJuegoDeUsuario(req.usuarioId),
       animalesDeUsuarioConGenes(req.usuarioId),
       arbolGenealogicoDeFallecidos(req.usuarioId),
       pool.query('SELECT accesorio FROM usuario_accesorios WHERE usuario_id = $1', [req.usuarioId])
         .then((r) => r.rows.map((f) => f.accesorio)),
+      pool.query('SELECT tema FROM usuario_temas_patio WHERE usuario_id = $1', [req.usuarioId])
+        .then((r) => r.rows.map((f) => f.tema)),
+      pool.query('SELECT tema_patio FROM usuarios WHERE id = $1', [req.usuarioId]),
       pool.query(
         `SELECT cs.id, cs.animal_propio_id, cs.animal_ajeno_id, u.nombre_usuario AS solicitante_nombre,
                 ap.nombre AS nombre_animal_solicitante, ap.especie, aa.nombre AS nombre_mi_animal
@@ -5588,6 +5613,10 @@ app.get('/casa', async (req, res) => {
       accesoriosDisponibles: ACCESORIOS_DISPONIBLES,
       accesoriosComprados,
       costoAccesorio: COSTO_ACCESORIO,
+      temasPatioDisponibles: TEMAS_PATIO_DISPONIBLES,
+      temasComprados,
+      costoTemaPatio: COSTO_TEMA_PATIO,
+      temaPatioActual: temaPatioActualRows.rows[0] ? temaPatioActualRows.rows[0].tema_patio : 'pasto',
       paresRivales,
       afinidadPares,
       umbralReconciliacion: UMBRAL_RECONCILIACION,
@@ -5603,6 +5632,7 @@ app.get('/casa', async (req, res) => {
       saldoMoneda: 0, costoProximoEspacio: 0, edadAdultoDias: EDAD_ADULTO_DIAS,
       personajeMainNombre: PERSONAJE_MAIN_NOMBRE, personajeMain: null, arbolesGenealogicos: [],
       accesoriosDisponibles: ACCESORIOS_DISPONIBLES, accesoriosComprados: [], costoAccesorio: COSTO_ACCESORIO,
+      temasPatioDisponibles: TEMAS_PATIO_DISPONIBLES, temasComprados: [], costoTemaPatio: COSTO_TEMA_PATIO, temaPatioActual: 'pasto',
       paresRivales: [], afinidadPares: {}, umbralReconciliacion: UMBRAL_RECONCILIACION, comida: null,
       nacio: null,
       error: 'No se pudo leer la base de datos.',
@@ -5673,6 +5703,61 @@ app.post('/animales/:id/equipar-accesorio', async (req, res) => {
   res.redirect('/casa');
 });
 
+// rama-temas-patio: comprar un tema de patio -- mismo patrón transaccional
+// que /accesorios/comprar (gastarMoneda dentro de BEGIN/COMMIT, un solo
+// finally con client.release()).
+app.post('/temas-patio/comprar', async (req, res) => {
+  const tema = req.body.tema;
+  if (!TEMAS_PATIO_DISPONIBLES.includes(tema)) return res.status(400).send('Tema inválido.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT 1 FROM usuario_temas_patio WHERE usuario_id = $1 AND tema = $2',
+      [req.usuarioId, tema]
+    );
+    if (rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.redirect('/casa');
+    }
+    const ok = await gastarMoneda(client, req.usuarioId, COSTO_TEMA_PATIO, `Tema de patio: ${tema}`);
+    if (!ok) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('No te alcanza la moneda.');
+    }
+    await client.query('INSERT INTO usuario_temas_patio (usuario_id, tema) VALUES ($1, $2)', [req.usuarioId, tema]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error comprando tema de patio:', err.message);
+    return res.status(500).send('No se pudo completar la compra.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/casa');
+});
+
+// Equipar un tema de patio ya comprado (o volver a "pasto", el default
+// gratis) -- a diferencia de los accesorios, esto es de la Casa entera,
+// no de un animal puntual, así que no recibe :id.
+app.post('/temas-patio/equipar', async (req, res) => {
+  const tema = (req.body.tema || 'pasto').trim();
+  try {
+    if (tema !== 'pasto') {
+      if (!TEMAS_PATIO_DISPONIBLES.includes(tema)) return res.status(400).send('Tema inválido.');
+      const { rows } = await pool.query(
+        'SELECT 1 FROM usuario_temas_patio WHERE usuario_id = $1 AND tema = $2',
+        [req.usuarioId, tema]
+      );
+      if (!rows.length) return res.status(400).send('No compraste ese tema.');
+    }
+    await pool.query('UPDATE usuarios SET tema_patio = $1 WHERE id = $2', [tema, req.usuarioId]);
+  } catch (err) {
+    console.error('Error equipando tema de patio:', err.message);
+  }
+  res.redirect('/casa');
+});
+
 // rama-personaje-guia: solo se marca "vista" acá, disparado por un click
 // real del usuario en el botón "Entendido" -- NUNCA dentro de un
 // middleware que corre en cada request (lección ya documentada de
@@ -5705,13 +5790,13 @@ app.get('/casa/:usuarioId', async (req, res) => {
     );
     if (!amistadRows.length) {
       return res.status(403).render('casa-amigo', {
-        nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [],
+        nombreAmigo: null, temaPatioActual: 'pasto', animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [],
         paresRivales: [], afinidadPares: {}, umbralReconciliacion: UMBRAL_RECONCILIACION, usuarioIdVisitado,
         error: 'Ese usuario no es tu amigo.',
       });
     }
     const [{ rows: usuarioRows }, animales, misAnimales, arbolesGenealogicos] = await Promise.all([
-      pool.query('SELECT nombre_usuario FROM usuarios WHERE id = $1', [usuarioIdVisitado]),
+      pool.query('SELECT nombre_usuario, tema_patio FROM usuarios WHERE id = $1', [usuarioIdVisitado]),
       animalesDeUsuarioConGenes(usuarioIdVisitado),
       animalesDeUsuarioConGenes(req.usuarioId),
       arbolGenealogicoDeFallecidos(usuarioIdVisitado),
@@ -5730,6 +5815,7 @@ app.get('/casa/:usuarioId', async (req, res) => {
     const afinidadPares = await calcularAfinidadPares(misAnimales, animales, false);
     res.render('casa-amigo', {
       nombreAmigo: usuarioRows[0] ? usuarioRows[0].nombre_usuario : null,
+      temaPatioActual: usuarioRows[0] ? usuarioRows[0].tema_patio : 'pasto',
       animales,
       misAnimalesPorEspecie,
       arbolesGenealogicos,
@@ -5742,7 +5828,7 @@ app.get('/casa/:usuarioId', async (req, res) => {
   } catch (err) {
     console.error('Error consultando la casa de un amigo:', err.message);
     res.status(500).render('casa-amigo', {
-      nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [],
+      nombreAmigo: null, temaPatioActual: 'pasto', animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [],
       paresRivales: [], afinidadPares: {}, umbralReconciliacion: UMBRAL_RECONCILIACION, usuarioIdVisitado,
       error: 'No se pudo leer la base de datos.',
     });

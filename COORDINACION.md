@@ -5250,6 +5250,19 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-fix-skin-planta (96b9462) → main vía PR
+  #102: sin conflictos. CI verde. Desplegado en Render, `status: live`
+  confirmado. Arregla el hueco real encontrado en rama-cosmeticos: el
+  skin de la planta (`ia_skin`, 30 monedas) se guardaba pero ninguna de
+  las 6 vistas que incluyen `partials/planta.ejs` se lo pasaba al
+  render -- pagar por un skin nunca cambió nada visual desde que existe
+  esa tienda. Ahora `partials/planta.ejs` acepta `skin` opcional y
+  recolorea `--accent`/`--tono` inline para ese SVG puntual (barra
+  superior, `/captura`, `/ia`, y el login lock-screen vía localStorage
+  client-side, la única vista pública). Probado con Chrome real: skin
+  "zen" comprado, `--accent` confirmado en `#0EA5E9` en `/captura`, y
+  captura de pantalla del lock-screen mostrando la planta azul de
+  verdad, no el verde de siempre.
 - 2026-08-25 — merge de rama-rivalidades (ddd45ca) → main vía PR #101:
   sin conflictos. CI verde. Desplegado en Render, `status: live`
   confirmado. Cierra la Etapa 2 del patio (diseño ya confirmado el

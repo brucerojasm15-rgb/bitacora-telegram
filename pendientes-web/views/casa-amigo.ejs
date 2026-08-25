@@ -16,9 +16,9 @@
     <% } else { %>
       <% const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido'); %>
       <% if (animalesVivos.length > 0) { %>
-        <div class="patio">
+        <div class="patio" data-rivales='<%- JSON.stringify(paresRivales) %>'>
           <% animalesVivos.forEach((a) => { %>
-            <img class="patio-avatar" data-lento="<%= a.salud_estado !== 'sano' ? '1' : '0' %>" src="<%= a.imagen %>" alt="<%= a.nombre || a.especie %> caminando">
+            <img class="patio-avatar" data-id="<%= a.id %>" data-lento="<%= a.salud_estado !== 'sano' ? '1' : '0' %>" src="<%= a.imagen %>" alt="<%= a.nombre || a.especie %> caminando">
           <% }) %>
         </div>
       <% } %>
@@ -47,7 +47,11 @@
             <% }) %>
           </p>
 
-          <% const misCandidatos = (a.esAdulto && a.salud_estado !== 'fallecido') ? (misAnimalesPorEspecie[a.especie] || []) : []; %>
+          <%
+            const todosMisCandidatos = (a.esAdulto && a.salud_estado !== 'fallecido') ? (misAnimalesPorEspecie[a.especie] || []) : [];
+            const misCandidatos = todosMisCandidatos.filter((m) => afinidadPares[m.id + '-' + a.id] === undefined);
+            const misCandidatosRivales = todosMisCandidatos.filter((m) => afinidadPares[m.id + '-' + a.id] !== undefined && afinidadPares[m.id + '-' + a.id] < umbralReconciliacion);
+          %>
           <% if (misCandidatos.length > 0) { %>
             <form method="POST" class="meta-card-acciones form-cruce-amigo">
               <input type="hidden" name="animal_amigo_id" value="<%= a.id %>">
@@ -59,6 +63,14 @@
               <button type="submit">Pedir cruce</button>
             </form>
           <% } %>
+          <% misCandidatosRivales.forEach((m) => { %>
+            <form method="POST" action="/animales/<%= m.id %>/socializar" class="meta-card-acciones">
+              <input type="hidden" name="con_id" value="<%= a.id %>">
+              <button type="submit" class="btn-rival">
+                🐾 Tu <%= m.nombre || ('#' + m.id) %> es rival -- Socializar (<%= afinidadPares[m.id + '-' + a.id] %>/<%= umbralReconciliacion %>)
+              </button>
+            </form>
+          <% }) %>
         </section>
       <% }) %>
     <% } %>

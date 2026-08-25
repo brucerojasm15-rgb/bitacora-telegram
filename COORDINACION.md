@@ -5250,6 +5250,34 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-patio-paso (3cd5852) → main vía PR #107:
+  sin conflictos. CI verde. El usuario notó que los animales del patio
+  se deslizan sin ninguna mecánica de "caminar" (a diferencia de Happy
+  Pets). Se investigó primero un rig de patas independientes de verdad
+  (SVG por partes con genética real como color) — ver "Idea nueva
+  (2026-08-25)" más abajo para el diseño completo que se llegó a
+  proponer y probar visualmente — pero el usuario lo descartó por ser
+  "mucho trabajo para lo que necesitamos" una vez visto el alcance real
+  (tocaba TODO el arte del juego, no solo el patio). Esta rama es la
+  versión barata que sí se construyó: mismo arte pintado de siempre
+  (`perro-adulto.png` etc., ilustraciones de un animal sentado, sin
+  piezas separables), con un rebote+inclinación+squash-stretch CSS
+  corriendo todo el tiempo sobre `.patio-avatar` (~2 "pasos" por
+  segundo) — a 44px de tamaño no se nota la diferencia entre caminando
+  y parado, así que corre siempre en vez de que `patio.js` tenga que
+  coordinar encenderlo/apagarlo por tramo. Animales enfermos/críticos
+  usan el mismo rebote pero más lento (0.9s vs 0.5s), mismo criterio que
+  ya aplicaba a su velocidad de desplazamiento. Respeta
+  `prefers-reduced-motion`. **Fix real necesario en `patio.js`**: el
+  flip horizontal (mirar hacia donde camina) usaba `el.style.transform`
+  directo, que siempre gana sobre una animación CSS y apagaba el
+  rebote por completo — se cambió a una custom property (`--flip`) que
+  la animación lee en cada keyframe, así JS solo actualiza un número y
+  la animación no se corta nunca. Verificado con Chrome real
+  (puppeteer-core): capturas recortadas de un mismo avatar cada 83ms a
+  lo largo de un ciclo completo confirman el cambio real de
+  posición/ángulo entre cuadros, no solo en el código. `test:integracion`
+  4/4.
 - 2026-08-25 — merge de rama-eventos-temporales (2b40ce8) → main vía PR
   #106: sin conflictos. CI verde. Cierra el último punto pendiente del
   análisis vs. Happy Pets ("eventos temporales/estacionales") —
@@ -6178,10 +6206,18 @@ exclusivos/anticipados) sin comprometerse a esa suscripción todavía.
 
 ## Idea nueva (2026-08-25): onboarding cinemático guiado por Zen + "vidriera" de la visión del juego
 
-Propuesta por el usuario tras ver la prueba del rig de criaturas SVG (ver
-más abajo, sección de rig de criaturas). Todavía **NO construida** —
-capturada acá tal como se entendió, a confirmar/corregir antes de
-empezar. Dos piezas separadas:
+**Estado (actualizado 2026-08-25): en pausa.** Propuesta por el usuario
+tras ver una prueba visual (Artifact, no guardada en el repo) de un rig
+de criaturas SVG con patas animadas de verdad -- explorado a pedido del
+usuario después de notar que los animales del patio se deslizan sin
+"caminar" (ver `rama-patio-paso`, PR #107, arriba, para lo que sí se
+construyó en su lugar). El rig completo hubiera implicado rehacer TODO
+el arte del juego (Casa, captura, patio, pared genealógica) en un
+estilo plano nuevo, reemplazando las 16 ilustraciones pintadas actuales
+-- el usuario lo descartó explícitamente por ser "mucho trabajo para lo
+que necesitamos". Esta idea de onboarding + vidriera quedó **sin
+confirmar ni construir**, documentada tal como se entendió por si se
+retoma más adelante. Dos piezas separadas:
 
 **1. Momento de onboarding guiado por Zen.** Reutiliza el mecanismo YA
 existente de `public/tutorial.js` (`.tutorial-resaltado`, el glow que

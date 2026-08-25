@@ -5203,6 +5203,19 @@ eliminación de ese repo/bot sin quedar huérfano.
   mostraban "🔒 Bitácora", y `manifest.json` (name/short_name/
   description, lo que ve el usuario al instalar como PWA) más
   `apple-mobile-web-app-title` seguían diciendo "Pendientes".
+- 2026-08-24 — merge de rama-instalar-app (452efe1) → main vía PR #98: sin
+  conflictos. CI verde. Desplegado en Render. Pedido del usuario: "que
+  entrar/instalar la app se sienta más como una app real" -- aclarado
+  antes con una pregunta directa que significaba mejorar la instalación
+  como PWA, no ir a nativo (ya descartado esa misma tarde). Banner propio
+  que captura `beforeinstallprompt` (Chrome/Edge/Android) con botón real
+  de instalar; iOS Safari (nunca dispara ese evento) recibe instrucción
+  manual en su lugar. Íconos maskable nuevos (sin ellos, Android recorta
+  el logo raro con su máscara adaptativa). No molesta: nada si ya está
+  instalada, ni si el usuario lo cerró hace menos de 14 días. Probado con
+  Chrome real + `--bypass-app-banner-engagement-checks` (fuerza el evento
+  como un uso real prolongado) -- el banner apareció de verdad, cero
+  errores de consola.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

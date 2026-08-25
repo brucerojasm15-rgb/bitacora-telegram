@@ -31,6 +31,24 @@
         <% if (nacio) { %> — <span class="notificacion">¡Nació un animal nuevo!</span><% } %>
       </p>
 
+      <% if (eventoActivo) { %>
+        <% const yaTieneEvento = eventoActivo.tipo === 'accesorio' ? accesoriosComprados.includes(eventoActivo.item) : temasComprados.includes(eventoActivo.item); %>
+        <section class="ajustes-grupo evento-banner">
+          <h2><%= eventoActivo.emoji %> Evento: <%= eventoActivo.nombre %></h2>
+          <p class="ajustes-nota"><%= eventoActivo.descripcion %></p>
+          <% if (yaTieneEvento) { %>
+            <p class="ajustes-nota">Ya lo tienes ✅</p>
+          <% } else { %>
+            <form method="POST" action="<%= eventoActivo.tipo === 'accesorio' ? '/accesorios/comprar' : '/temas-patio/comprar' %>" class="meta-card-acciones">
+              <input type="hidden" name="<%= eventoActivo.tipo === 'accesorio' ? 'accesorio' : 'tema' %>" value="<%= eventoActivo.item %>">
+              <button type="submit">Comprar (<%= costoItemEvento[eventoActivo.tipo] %> <%- include('partials/icono', { nombre: 'moneda' }) %>)</button>
+            </form>
+          <% } %>
+        </section>
+      <% } else if (proximoEvento) { %>
+        <p class="ajustes-nota">Próximo evento: <%= proximoEvento.emoji %> <%= proximoEvento.nombre %> -- disponible desde el <%= proximoEvento.inicio %>.</p>
+      <% } %>
+
       <% const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido'); %>
       <% if (animalesVivos.length > 0) { %>
         <div class="patio" data-tema="<%= temaPatioActual %>" data-rivales='<%- JSON.stringify(paresRivales) %>' <%- comida ? 'data-comida="1"' : '' %>>

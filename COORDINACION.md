@@ -5250,6 +5250,38 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-rivalidades (ddd45ca) → main vía PR #101:
+  sin conflictos. CI verde. Desplegado en Render, `status: live`
+  confirmado. Cierra la Etapa 2 del patio (diseño ya confirmado el
+  2026-08-24). Rivalidad por especie fija (Gato↔Ave, Perro↔Conejo) +
+  por rasgo genético raro compartido (reusa `RASGOS_LEGENDARIOS`, misma
+  idea que "legendario"). **Hallazgo real de diseño**: la rivalidad por
+  especie es solo visual -- cruzar ya exigía misma especie desde
+  `rama-juego-fundacion`, así que 2 especies rivales nunca podrían
+  haberse cruzado de todas formas; la reconciliación real solo aplica a
+  la rivalidad genética (misma especie). Patio: rivales nunca se
+  emparejan para "jugar" y el deambular evita acercarse, salvo a la
+  hora de comer (`?comida=1` tras `POST /animales/:id/alimentar` fuerza
+  una reunión única). Reconciliación real pedida por el usuario ("que
+  se amisten de la manera original en la vida real"): tabla
+  `animales_afinidad` (par canónico, `ON DELETE CASCADE` colocada
+  DESPUÉS de `animales` en `ensureSchema` -- mismo bug class ya
+  encontrado 2 veces esta sesión, evitado de raíz esta vez),
+  `POST /animales/:id/socializar` sube el nivel de a 1 hasta un umbral
+  de 3, momento en el que `/cruzar` y aceptar una solicitud de cruce
+  con amigo dejan de rechazar el par. **Bug real encontrado y arreglado
+  ANTES de mergear**: `data-comida="1"` usaba `<%=` (escapa HTML) en vez
+  de `<%-`, así que el navegador hubiera recibido comillas HTML-
+  escapadas dentro del atributo en vez del valor real -- se probó el
+  HTML de verdad, no se asumió. Probado de punta a punta contra Neon: 2
+  gatos forzados genéticamente al mismo rasgo raro, cruzar rechazado,
+  3 socializaciones reconcilian el par, cruzar exitoso después (incluida
+  la cría heredando el rasgo, confirmada como rival de ambos padres en
+  el patio). Borrar una cuenta con afinidad activa no crashea, cascada
+  limpia. **Gap conocido, no cerrado en este PR**: el selector "Pedir
+  cruce con amigo" desde la Casa propia no muestra el estado de
+  rivalidad en la UI (el backend igual lo bloquea al aceptar) -- sí
+  está resuelto al visitar la casa del amigo directamente.
 - 2026-08-25 — merge de rama-cosmeticos (26edd21) → main vía PR #100: sin
   conflictos. CI verde en el primer intento (ambos jobs). Desplegado en
   Render, `status: live` confirmado (no solo la URL respondiendo, per la
@@ -6030,8 +6062,9 @@ exclusivos/anticipados) sin comprometerse a esa suscripción todavía.
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
 
 - [ ] Sin asignar — ejemplo de cómo agregar una tarea nueva aquí
-- [ ] **Etapa 2 del patio animado — rivalidad entre animales** (agregado
-  2026-08-24, sin asignar). Etapa 1 (deambular + jugar, sin rivalidad) ya
+- [x] **Etapa 2 del patio animado — rivalidad entre animales** (agregado
+  2026-08-24) — tomada por `rama-rivalidades`, PR #101, mergeada y
+  desplegada 2026-08-25. Etapa 1 (deambular + jugar, sin rivalidad) ya
   está en `rama-patio-animado`, PR #94. Diseño confirmado con el usuario
   para esta etapa:
   - **Rivalidad por especie fija**: Gato↔Ave, Perro↔Conejo. Las otras

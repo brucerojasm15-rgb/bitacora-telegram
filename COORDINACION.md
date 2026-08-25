@@ -5250,6 +5250,45 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-rediseno-casa (9692acb) → main vía PR #108:
+  sin conflictos. CI verde. Desplegado en Render, `status: live`
+  confirmado. El usuario dijo "no me convence mucho el diseño todavía"
+  sobre el look visual general de la app -- en vez de adivinar qué
+  cambiar, se tomaron capturas reales de producción (Captura/Casa/Chat/
+  Metas con Chrome real, puppeteer-core) y se diagnosticaron 4
+  problemas concretos: todo el mismo verde monocromático sobre
+  casi-negro sin jerarquía de color, cero calidez visual (Zen era un
+  círculo con ícono de brújula genérico, sin presencia de personaje),
+  todas las tarjetas con el mismo peso visual, y en general "se siente
+  una app de tareas con texto de juego encima, no un juego". Se armó un
+  mockup (Artifact) de la pantalla Casa con una dirección nueva,
+  aprobado por el usuario ANTES de tocar código real -- mismo criterio
+  que ya se usó con la mascota de la pantalla de carga. Cambios: Zen
+  ahora usa `partials/zen-mascota.ejs` (mismo personaje ya aprobado
+  para `docs/index.html`, con brillo) en vez del ícono genérico, en una
+  tarjeta con el tono cálido `--warning`/`--warning-bg` (ya existían en
+  la paleta, casi no se usaban) para diferenciarse del resto de
+  tarjetas verdes; Nivel/Espacio/Monedas pasó de una línea de texto
+  plano a 3 fichas (`.stats-tira`); "Tu patio" pasa a ser
+  `.seccion-primaria` (destacada), y Ampliar/Tienda/Personalizar pasan
+  a `.seccion-secundaria` con un "estante" horizontal compacto
+  (`.estante`/`.item-estante`) claramente menos protagónico; el estado
+  vacío del patio (sin animales) ahora muestra un placeholder amistoso
+  con link a "Adoptar" en vez de no renderizar nada, y se quitó el
+  mensaje duplicado que quedaba repetido más abajo en la página. **De
+  paso**, se aplicó la mejora de color/brillo de la mascota de
+  `docs/index.html` que se había mostrado en un Artifact de comparación
+  varias rondas atrás (el usuario reaccionó bien) pero nunca se había
+  aplicado de verdad -- loose end cerrado. 100% visual, sin cambios de
+  schema/rutas; `casa-amigo.ejs` no usa ninguna clase tocada (verificado
+  con grep antes de editar CSS compartido), no se vio afectada.
+  Probado con Chrome real en claro/oscuro, Casa vacía y con animal real
+  (patio con el rebote de caminata de PR #107 funcionando sobre el
+  fondo nuevo). Sin errores de consola. `test:integracion` 4/4. **Esta
+  fue la primera pantalla del rediseño** -- el resto de la app
+  (Captura/Chat/Metas/etc.) todavía tiene el look viejo, pendiente de
+  una ronda futura si el usuario confirma que le gusta esta dirección
+  en producción.
 - 2026-08-25 — merge de rama-patio-paso (3cd5852) → main vía PR #107:
   sin conflictos. CI verde. El usuario notó que los animales del patio
   se deslizan sin ninguna mecánica de "caminar" (a diferencia de Happy

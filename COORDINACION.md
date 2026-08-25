@@ -5250,6 +5250,33 @@ eliminación de ese repo/bot sin quedar huérfano.
   deploy en Render (`status: live`), no solo que la URL responda 200 --
   un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
   nuevo falló en silencio.
+- 2026-08-25 — merge de rama-minijuego-jugar (249ac0a) → main vía PR
+  #105: sin conflictos. CI verde. Cierra el punto 5 del análisis vs.
+  Happy Pets ("interacción activa del jugador con la mascota") -- hasta
+  ahora el patio era 100% ambiental, sin nada que el usuario hiciera
+  directamente CON un animal puntual más allá de Alimentar/Cruzar/
+  Nombrar/Revivir/Regalar. Mini-juego de reflejos 100% client-side
+  (`public/minijuego.js`, mismo criterio de "engine genérico que arma
+  su propio DOM" que `tutorial.js`): tocar la imagen del animal mientras
+  se reposiciona al azar durante 6 segundos. `POST /animales/:id/jugar`
+  paga una recompensa FIJA (3 monedas, mismo orden de magnitud que las
+  demás fuentes de moneda) -- deliberadamente ignora el puntaje que
+  manda el cliente, nunca se confía en un número de currency que viene
+  del navegador. Acotado a 1 vez por animal por día calendario Lima
+  (columna nueva `animales.ultimo_jugado`, sin FK/CASCADE porque no
+  referencia otra tabla) además del tope diario compartido que
+  `pagarMoneda()` ya aplica -- resuelve la tensión con el principio ya
+  establecido de "la moneda sale de actividad real, no de grindear el
+  juego mismo": jugar de verdad requiere atención real cada vez, y el
+  cupo diario por animal evita el spam trivial. Probado de punta a
+  punta contra Neon: primer juego del día paga y actualiza
+  `ultimo_jugado`, segundo intento el mismo día no paga (mensaje de
+  cooldown), `GET /casa` refleja el botón correcto según el cooldown,
+  animal inexistente/ajeno da 404, borrar la cuenta no crashea.
+  `test:integracion` 4/4. **Con este PR, todo el análisis vs. Happy
+  Pets queda cerrado excepto "eventos temporales"**, deliberadamente
+  sin tomar -- pendiente de que el usuario especifique qué tipo de
+  evento quiere antes de poder diseñarlo.
 - 2026-08-25 — merge de rama-regalar-animales (bb36251) → main vía PR
   #104: sin conflictos. CI verde. Desplegado en Render, `status: live`
   confirmado (commit `7d7f2dd`). Cierra el punto 4 del análisis vs. Happy
@@ -6088,10 +6115,9 @@ de mascotas tipo Happy Pets, para decidir con datos qué sigue.
 4. ~~**Intercambio/regalo directo entre amigos.**~~ ✅ Cerrado 2026-08-25
    (`rama-regalar-animales`, PR #104) — acotado a animales, regalo
    unidireccional con aceptación del destinatario.
-5. **Interacción activa del jugador con la mascota** (tocarla, jugar un
-   mini-juego con ella) — hoy el patio es ambiental/automático, el usuario
-   no interactúa directamente con el animal más allá de Alimentar/Cruzar/
-   Nombrar/Revivir/Regalar. **Siguiente candidato de esta ronda.**
+5. ~~**Interacción activa del jugador con la mascota.**~~ ✅ Cerrado
+   2026-08-25 (`rama-minijuego-jugar`, PR #105) — mini-juego de reflejos,
+   1 vez por animal por día.
 6. ~~**Casa visualmente personalizable.**~~ ✅ Cerrado 2026-08-25
    (`rama-temas-patio`, PR #103).
 7. **Sumidero de moneda a largo plazo.** Pasado cierto nivel/casa
@@ -6130,10 +6156,12 @@ Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`
   PR #100 + `rama-fix-skin-planta` PR #102) → rivalidad (`rama-
   rivalidades` PR #101, ver entrada de abajo) → casa personalizable
   (`rama-temas-patio` PR #103) → intercambio/regalo (`rama-regalar-
-  animales` PR #104). **Siguiente en la fila**: mini-juegos activos
-  (interacción directa del jugador con la mascota). **Eventos
-  temporales queda deliberadamente sin tomar** -- el usuario todavía no
-  especificó qué tipo de evento quiere, necesario antes de diseñarlo.
+  animales` PR #104) → mini-juegos activos (`rama-minijuego-jugar` PR
+  #105). **Con esto, el análisis vs. Happy Pets queda cerrado excepto
+  eventos temporales**, deliberadamente sin tomar -- el usuario
+  todavía no especificó qué tipo de evento quiere, necesario antes de
+  diseñarlo. Sumidero de moneda a largo plazo (punto 7) también queda
+  resuelto de facto por los cosméticos ya construidos.
 - [x] **Etapa 2 del patio animado — rivalidad entre animales** (agregado
   2026-08-24) — tomada por `rama-rivalidades`, PR #101, mergeada y
   desplegada 2026-08-25. Etapa 1 (deambular + jugar, sin rivalidad) ya

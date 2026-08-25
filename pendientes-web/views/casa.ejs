@@ -50,6 +50,30 @@
         </form>
       </section>
 
+      <section class="ajustes-grupo">
+        <h2>Tienda de accesorios</h2>
+        <p class="ajustes-nota">Se compran una vez por cuenta -- después los podés poner y sacar de cualquiera de tus animales cuando quieras.</p>
+        <div class="tienda-accesorios">
+          <% accesoriosDisponibles.forEach((acc) => { %>
+            <% const yaComprado = accesoriosComprados.includes(acc); %>
+            <div class="tienda-accesorio-item">
+              <div class="tienda-accesorio-icono"><%- include('partials/accesorio-icono', { nombre: acc }) %></div>
+              <span class="tienda-accesorio-nombre"><%= acc.charAt(0).toUpperCase() + acc.slice(1) %></span>
+              <% if (yaComprado) { %>
+                <span class="tienda-accesorio-comprado">Comprado</span>
+              <% } else { %>
+                <form method="POST" action="/accesorios/comprar">
+                  <input type="hidden" name="accesorio" value="<%= acc %>">
+                  <button type="submit" <%= saldoMoneda < costoAccesorio ? 'disabled' : '' %>>
+                    <%= costoAccesorio %> <%- include('partials/icono', { nombre: 'moneda' }) %>
+                  </button>
+                </form>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      </section>
+
       <% if (solicitudesRecibidas.length > 0) { %>
         <section class="ajustes-grupo">
           <h2>Solicitudes de cruce</h2>
@@ -95,7 +119,12 @@
         <% animales.forEach((a) => { %>
           <section class="meta-card <%= a.salud_estado !== 'sano' ? 'meta-inactiva' : '' %>">
             <div class="meta-card-header meta-card-header-animal">
-              <img class="animal-imagen" src="<%= a.imagen %>" alt="<%= a.especie %> en etapa <%= a.etapaVida %>" loading="lazy">
+              <div class="animal-imagen-envoltura">
+                <img class="animal-imagen" src="<%= a.imagen %>" alt="<%= a.especie %> en etapa <%= a.etapaVida %>" loading="lazy">
+                <% if (a.accesorio) { %>
+                  <span class="animal-accesorio-badge" title="<%= a.accesorio %>"><%- include('partials/accesorio-icono', { nombre: a.accesorio }) %></span>
+                <% } %>
+              </div>
               <div>
                 <h2><%= a.nombre || ('Sin nombre (' + a.especie + ')') %><% if (a.es_legendario) { %> ✨<% } %></h2>
                 <span class="meta-estado-badge"><%= a.salud_estado %></span>
@@ -116,6 +145,18 @@
               <input type="text" name="nombre" placeholder="Ponle un nombre" value="<%= a.nombre || '' %>" maxlength="30" style="width:auto;display:inline-block;">
               <button type="submit">Guardar nombre</button>
             </form>
+
+            <% if (accesoriosComprados.length > 0) { %>
+              <form method="POST" action="/animales/<%= a.id %>/equipar-accesorio" class="meta-card-acciones">
+                <select name="accesorio" aria-label="Accesorio">
+                  <option value="" <%= !a.accesorio ? 'selected' : '' %>>Ninguno</option>
+                  <% accesoriosComprados.forEach((acc) => { %>
+                    <option value="<%= acc %>" <%= a.accesorio === acc ? 'selected' : '' %>><%= acc.charAt(0).toUpperCase() + acc.slice(1) %></option>
+                  <% }) %>
+                </select>
+                <button type="submit">Poner</button>
+              </form>
+            <% } %>
 
             <% if (a.salud_estado === 'fallecido') { %>
               <form method="POST" action="/animales/<%= a.id %>/revivir" class="meta-card-acciones">

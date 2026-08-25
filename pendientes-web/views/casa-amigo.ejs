@@ -26,7 +26,12 @@
       <% animales.forEach((a) => { %>
         <section class="meta-card <%= a.salud_estado !== 'sano' ? 'meta-inactiva' : '' %>">
           <div class="meta-card-header meta-card-header-animal">
-            <img class="animal-imagen" src="<%= a.imagen %>" alt="<%= a.especie %> en etapa <%= a.etapaVida %>" loading="lazy">
+            <div class="animal-imagen-envoltura">
+              <img class="animal-imagen" src="<%= a.imagen %>" alt="<%= a.especie %> en etapa <%= a.etapaVida %>" loading="lazy">
+              <% if (a.accesorio) { %>
+                <span class="animal-accesorio-badge" title="<%= a.accesorio %>"><%- include('partials/accesorio-icono', { nombre: a.accesorio }) %></span>
+              <% } %>
+            </div>
             <div>
               <h2><%= a.nombre || ('Sin nombre (' + a.especie + ')') %><% if (a.es_legendario) { %> ✨<% } %></h2>
               <span class="meta-estado-badge"><%= a.salud_estado %></span>

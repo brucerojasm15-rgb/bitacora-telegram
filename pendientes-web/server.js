@@ -1726,6 +1726,29 @@ async function ensureSchema() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_animales_usuario ON animales (usuario_id)
   `);
+  // rama-cosmeticos: accesorios cosméticos para animales -- comprado
+  // (desbloqueado por cuenta, mismo criterio que IA_SKINS_DISPONIBLES)
+  // vs. equipado (por animal, uno a la vez, mismo criterio simple que el
+  // resto de la tienda). A diferencia de IA_COSTO_SKIN/ia_skin (que se
+  // guarda pero NUNCA se pasa a partials/planta.ejs -- hueco real
+  // encontrado hoy, sin arreglar todavía, ver COORDINACION.md), acá el
+  // accesorio SÍ se renderiza de verdad como overlay sobre el avatar.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS usuario_accesorios (
+      usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      accesorio TEXT NOT NULL,
+      comprado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (usuario_id, accesorio)
+    )
+  `);
+  // Self-healing igual que animales.padre_id/madre_id más arriba, por si
+  // esta tabla ya había corrido una vez sin el ON DELETE CASCADE (pasó de
+  // verdad durante el desarrollo de esta rama, antes de agregar la
+  // cláusula -- se encontró probando el borrado de cuenta con un
+  // accesorio comprado, no adivinado).
+  await pool.query(`ALTER TABLE usuario_accesorios DROP CONSTRAINT IF EXISTS usuario_accesorios_usuario_id_fkey`);
+  await pool.query(`ALTER TABLE usuario_accesorios ADD CONSTRAINT usuario_accesorios_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE`);
+  await pool.query(`ALTER TABLE animales ADD COLUMN IF NOT EXISTS accesorio TEXT`);
   // Genotipo: 2 alelos por locus por animal. `locus`/`alelo_1`/`alelo_2`
   // son texto libre validado contra el catálogo GENES en la ruta, no con
   // FK -- mismo criterio que `categoria` en `pendientes` (catálogo
@@ -2120,6 +2143,13 @@ const UMBRAL_ALERTA_LLAMADAS_IA_POR_DIA = 10000;
 // sale de la especie (a diferencia de Happy Pets, decisión explícita del
 // usuario) -- sale de la combinación de genes de GENES más abajo.
 const ESPECIES_ANIMAL = ['gato', 'perro', 'conejo', 'ave'];
+
+// rama-cosmeticos: catálogo fijo de accesorios (mismo criterio que el
+// resto de catálogos hardcodeados del juego -- GENES, RASGOS_LEGENDARIOS,
+// etc.). Un solo costo para los 3, mismo orden de magnitud que el resto
+// de la tienda ya existente (IA_COSTO_SKIN=30 .. IA_COSTO_TEMA_EXTRA=60).
+const ACCESORIOS_DISPONIBLES = ['sombrero', 'moño', 'bufanda'];
+const COSTO_ACCESORIO = 40;
 
 // Cada gen es un "locus": un animal tiene 2 alelos por locus (uno
 // heredado de cada padre, herencia diploide real). `rarezaBase` es el
@@ -5263,7 +5293,7 @@ async function insertarAnimal(client, { usuarioId, especie, nombre, padreId, mad
 async function animalesDeUsuarioConGenes(usuarioId) {
   const { rows } = await pool.query(
     `SELECT a.id, a.especie, a.nombre, a.es_legendario, a.salud_estado, a.nacido, a.ultima_alimentacion,
-            a.padre_id, a.madre_id,
+            a.padre_id, a.madre_id, a.accesorio,
             json_object_agg(g.locus, json_build_array(g.alelo_1, g.alelo_2)) AS genotipo
      FROM animales a
      LEFT JOIN animales_genes g ON g.animal_id = a.id
@@ -5385,10 +5415,12 @@ function mensajePersonajeMain(perfil, animales) {
 
 app.get('/casa', async (req, res) => {
   try {
-    const [perfil, animales, arbolesGenealogicos, solicitudesRecibidas] = await Promise.all([
+    const [perfil, animales, arbolesGenealogicos, accesoriosComprados, solicitudesRecibidas] = await Promise.all([
       perfilJuegoDeUsuario(req.usuarioId),
       animalesDeUsuarioConGenes(req.usuarioId),
       arbolGenealogicoDeFallecidos(req.usuarioId),
+      pool.query('SELECT accesorio FROM usuario_accesorios WHERE usuario_id = $1', [req.usuarioId])
+        .then((r) => r.rows.map((f) => f.accesorio)),
       pool.query(
         `SELECT cs.id, cs.animal_propio_id, cs.animal_ajeno_id, u.nombre_usuario AS solicitante_nombre,
                 ap.nombre AS nombre_animal_solicitante, ap.especie, aa.nombre AS nombre_mi_animal
@@ -5423,6 +5455,9 @@ app.get('/casa', async (req, res) => {
       personajeMainNombre: PERSONAJE_MAIN_NOMBRE,
       personajeMain: mensajePersonajeMain(perfil, animales),
       arbolesGenealogicos,
+      accesoriosDisponibles: ACCESORIOS_DISPONIBLES,
+      accesoriosComprados,
+      costoAccesorio: COSTO_ACCESORIO,
       nacio: Number(req.query.nacio) || null,
       error: null,
     });
@@ -5432,10 +5467,75 @@ app.get('/casa', async (req, res) => {
       especies: ESPECIES_ANIMAL, animales: [], candidatosPorEspecie: {}, solicitudesRecibidas: [],
       nivelJugador: 1, capacidadCasa: 0, espaciosLibres: 0,
       saldoMoneda: 0, costoProximoEspacio: 0, edadAdultoDias: EDAD_ADULTO_DIAS,
-      personajeMainNombre: PERSONAJE_MAIN_NOMBRE, personajeMain: null, arbolesGenealogicos: [], nacio: null,
+      personajeMainNombre: PERSONAJE_MAIN_NOMBRE, personajeMain: null, arbolesGenealogicos: [],
+      accesoriosDisponibles: ACCESORIOS_DISPONIBLES, accesoriosComprados: [], costoAccesorio: COSTO_ACCESORIO,
+      nacio: null,
       error: 'No se pudo leer la base de datos.',
     });
   }
+});
+
+// rama-cosmeticos: comprar un accesorio -- desbloqueo por cuenta (no por
+// animal), mismo criterio y mismo patrón transaccional que /ia/comprar
+// (gastarMoneda dentro de BEGIN/COMMIT, un solo `finally` con
+// client.release() -- rama-fix-doble-release ya documentó el bug real de
+// liberar el client 2 veces si se agrega un release explícito antes de
+// un return temprano).
+app.post('/accesorios/comprar', async (req, res) => {
+  const accesorio = req.body.accesorio;
+  if (!ACCESORIOS_DISPONIBLES.includes(accesorio)) return res.status(400).send('Accesorio inválido.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT 1 FROM usuario_accesorios WHERE usuario_id = $1 AND accesorio = $2',
+      [req.usuarioId, accesorio]
+    );
+    if (rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.redirect('/casa');
+    }
+    const ok = await gastarMoneda(client, req.usuarioId, COSTO_ACCESORIO, `Accesorio: ${accesorio}`);
+    if (!ok) {
+      await client.query('ROLLBACK');
+      return res.status(400).send('No te alcanza la moneda.');
+    }
+    await client.query('INSERT INTO usuario_accesorios (usuario_id, accesorio) VALUES ($1, $2)', [req.usuarioId, accesorio]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error comprando accesorio:', err.message);
+    return res.status(500).send('No se pudo completar la compra.');
+  } finally {
+    client.release();
+  }
+  res.redirect('/casa');
+});
+
+// Equipar/quitar un accesorio en un animal propio -- valida que el
+// accesorio esté realmente comprado (nunca confía en lo que mande el
+// cliente sin revalidar, mismo criterio que el resto de esta app).
+// accesorio='' (select "Ninguno") lo quita.
+app.post('/animales/:id/equipar-accesorio', async (req, res) => {
+  const id = Number(req.params.id);
+  const accesorio = (req.body.accesorio || '').trim();
+  try {
+    if (accesorio) {
+      if (!ACCESORIOS_DISPONIBLES.includes(accesorio)) return res.status(400).send('Accesorio inválido.');
+      const { rows } = await pool.query(
+        'SELECT 1 FROM usuario_accesorios WHERE usuario_id = $1 AND accesorio = $2',
+        [req.usuarioId, accesorio]
+      );
+      if (!rows.length) return res.status(400).send('No compraste ese accesorio.');
+    }
+    await pool.query(
+      'UPDATE animales SET accesorio = $1 WHERE id = $2 AND usuario_id = $3',
+      [accesorio || null, id, req.usuarioId]
+    );
+  } catch (err) {
+    console.error('Error equipando accesorio:', err.message);
+  }
+  res.redirect('/casa');
 });
 
 // rama-personaje-guia: solo se marca "vista" acá, disparado por un click

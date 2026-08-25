@@ -2741,3 +2741,42 @@ tr.fila-saliendo {
   cursor: pointer;
   padding: 0.25rem;
 }
+
+/* rama-metas-rutinarias */
+.chat-recordatorios-rutinarios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.recordatorio-rutinario-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm, 10px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.recordatorio-rutinario-card svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.recordatorio-rutinario-texto {
+  flex: 1;
+}
+
+.recordatorio-rutinario-card form {
+  margin: 0;
+}
+
+.recordatorio-rutinario-card .btn-link {
+  font-size: 1.1rem;
+  line-height: 1;
+}

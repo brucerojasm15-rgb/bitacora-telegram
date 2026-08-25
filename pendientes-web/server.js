@@ -1417,6 +1417,31 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'pendiente',
       ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT now()
   `);
+  // rama-metas-rutinarias: recordatorio que se repite todos los días a una
+  // hora fija, asignado por una persona a otra dentro de una amistad (ej.
+  // "papá le pide a hijo alimentar a la tortuga todos los días a las 8am").
+  // Tiene que ir DESPUÉS de `amistades` (mismo bug ya documentado en
+  // rama-pruebas-regresion: un `REFERENCES` a una tabla que todavía no
+  // existe en un Postgres vacío revienta ensureSchema() entero -- se
+  // encontró contra CI, no contra Neon, porque ahí `amistades` ya existía
+  // de antes; corregido moviéndolo acá). `amistad_id ON DELETE CASCADE`
+  // es a propósito -- `POST /ajustes/eliminar-cuenta` ya hace
+  // `DELETE FROM amistades WHERE id = ANY(...)` explícito para esa
+  // amistad, así que esta tabla se limpia sola sin tener que acordarse de
+  // agregar un DELETE más ahí.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recordatorios_rutinarios (
+      id SERIAL PRIMARY KEY,
+      texto TEXT NOT NULL,
+      hora TIME NOT NULL,
+      creado_por INT REFERENCES usuarios(id),
+      asignado_a INT REFERENCES usuarios(id),
+      amistad_id INT REFERENCES amistades(id) ON DELETE CASCADE,
+      activo BOOLEAN NOT NULL DEFAULT true,
+      creado TIMESTAMPTZ NOT NULL DEFAULT now(),
+      ultimo_aviso DATE
+    )
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS mensajes (
       id SERIAL PRIMARY KEY,
@@ -3321,7 +3346,7 @@ function payloadRecordatorio(texto) {
 
 function payloadRecordatorioDiario() {
   return {
-    title: 'Bitácora',
+    title: 'zentIA',
     body: 'No has registrado nada hecho hoy — ¿qué avanzaste?',
     actions: [
       { action: 'abrir', title: 'Abrir' },
@@ -3399,6 +3424,61 @@ cron.schedule('* * * * *', revisarYNotificarRecordatoriosPendientes, {
   timezone: 'America/Lima',
 });
 
+// rama-metas-rutinarias: notificación "personalizada y llamativa" pedida
+// explícitamente por el usuario -- personalizada = nombra a quien lo
+// asignó (no un genérico "Recordatorio"), llamativa = requireInteraction
+// (queda fija hasta que la persona la toque, no se pierde entre otras
+// notificaciones) + vibración (ver public/sw.js, que ahora sí reenvía
+// estos 2 campos al showNotification real -- antes se ignoraban).
+function payloadRecordatorioRutinario(texto, nombreCreador) {
+  return {
+    title: `${nombreCreador} te recuerda`,
+    body: texto,
+    requireInteraction: true,
+    vibrate: [200, 100, 200, 100, 200],
+    data: { defaultUrl: '/chat' },
+  };
+}
+
+// Mismo criterio de granularidad que revisarYNotificarRecordatoriosPendientes
+// (cada minuto) -- acá además hay que comparar solo HH:MM (no segundos) y
+// no re-notificar dos veces el mismo día calendario America/Lima
+// (`ultimo_aviso`), a diferencia del recordatorio de una sola vez de
+// arriba que se apaga con `avisado` para siempre.
+async function revisarYNotificarRecordatoriosRutinarios() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT rr.id, rr.texto, rr.asignado_a, u.nombre_usuario AS nombre_creador
+      FROM recordatorios_rutinarios rr
+      JOIN usuarios u ON u.id = rr.creado_por
+      WHERE rr.activo = TRUE
+        AND to_char(now() AT TIME ZONE 'America/Lima', 'HH24:MI') = to_char(rr.hora, 'HH24:MI')
+        AND (rr.ultimo_aviso IS NULL OR rr.ultimo_aviso < (now() AT TIME ZONE 'America/Lima')::date)
+    `);
+    for (const r of rows) {
+      try {
+        const { enviadas, total } = await enviarPushAUsuario(
+          r.asignado_a,
+          payloadRecordatorioRutinario(r.texto, r.nombre_creador)
+        );
+        console.log(`[cron] Recordatorio rutinario #${r.id}: notificado a ${enviadas}/${total} suscripcion(es) del usuario ${r.asignado_a}.`);
+      } catch (err) {
+        console.error(`[cron] Error notificando recordatorio rutinario #${r.id}:`, err.message);
+      }
+      await pool.query(
+        `UPDATE recordatorios_rutinarios SET ultimo_aviso = (now() AT TIME ZONE 'America/Lima')::date WHERE id = $1`,
+        [r.id]
+      );
+    }
+  } catch (err) {
+    console.error('[cron] Error en el job de recordatorios rutinarios:', err.message);
+  }
+}
+
+cron.schedule('* * * * *', revisarYNotificarRecordatoriosRutinarios, {
+  timezone: 'America/Lima',
+});
+
 // Restringida al usuario dueño del proyecto: no existe un concepto de
 // rol/admin en el esquema todavía, así que se compara directo contra el
 // nombre de usuario guardado en la sesión (mismo campo que ya setea
@@ -3410,7 +3490,7 @@ app.post('/notificar-prueba', async (req, res) => {
     return res.status(403).send('No autorizado.');
   }
   try {
-    const { enviadas, total } = await enviarPushATodos({ title: 'Bitácora', body: 'Hola desde tu bitácora' });
+    const { enviadas, total } = await enviarPushATodos({ title: 'zentIA', body: 'Hola desde tu bitácora' });
     res.send(`Notificaciones enviadas: ${enviadas}/${total}`);
   } catch (err) {
     console.error('Error enviando notificaciones:', err.message);
@@ -6239,7 +6319,7 @@ app.post('/ajustes/eliminar-cuenta', limitarIntentos('eliminar-cuenta'), async (
 app.get('/chat', async (req, res) => {
   const amistadId = Number(req.query.amistad_id);
   const buscar = (req.query.buscar || '').trim();
-  const vacio = { mensajes: [], amistadId: null, error: null, usuarioId: req.usuarioId, buscar, amigoId: null, misMetas: [], misMetasCompartidas: [] };
+  const vacio = { mensajes: [], amistadId: null, error: null, usuarioId: req.usuarioId, buscar, amigoId: null, amigoNombre: null, misMetas: [], misMetasCompartidas: [], recordatoriosRutinarios: [] };
   if (!Number.isInteger(amistadId)) {
     return res.render('chat', vacio);
   }
@@ -6252,12 +6332,16 @@ app.get('/chat', async (req, res) => {
     // pertenezco a la amistad) para el link a /chat/estadisticas y para
     // futuros usos -- una sola fila, ya se validó arriba que pertenezco.
     const { rows: filaAmistad } = await pool.query(
-      'SELECT usuario_a_id, usuario_b_id FROM amistades WHERE id = $1',
+      `SELECT a.usuario_a_id, a.usuario_b_id, ua.nombre_usuario AS nombre_a, ub.nombre_usuario AS nombre_b
+       FROM amistades a
+       JOIN usuarios ua ON ua.id = a.usuario_a_id
+       JOIN usuarios ub ON ub.id = a.usuario_b_id
+       WHERE a.id = $1`,
       [amistadId]
     );
-    const amigoId = filaAmistad.length
-      ? (filaAmistad[0].usuario_a_id === req.usuarioId ? filaAmistad[0].usuario_b_id : filaAmistad[0].usuario_a_id)
-      : null;
+    const esA = filaAmistad.length && filaAmistad[0].usuario_a_id === req.usuarioId;
+    const amigoId = filaAmistad.length ? (esA ? filaAmistad[0].usuario_b_id : filaAmistad[0].usuario_a_id) : null;
+    const amigoNombre = filaAmistad.length ? (esA ? filaAmistad[0].nombre_b : filaAmistad[0].nombre_a) : null;
 
     const params = [amistadId, req.usuarioId];
     // rama-fix-chat-visual: se suma el JOIN a usuarios para traer el nombre
@@ -6285,10 +6369,20 @@ app.get('/chat', async (req, res) => {
       consulta += ` AND m.texto ILIKE $${params.length}`;
     }
     consulta += ' ORDER BY m.fecha ASC';
-    const [{ rows }, { rows: misMetas }, misMetasCompartidas] = await Promise.all([
+    const [{ rows }, { rows: misMetas }, misMetasCompartidas, { rows: recordatoriosRutinarios }] = await Promise.all([
       pool.query(consulta, params),
       pool.query('SELECT id, titulo, estado FROM metas WHERE usuario_id = $1 ORDER BY creado DESC', [req.usuarioId]),
       metasCompartidasDeUsuario(req.usuarioId),
+      pool.query(
+        `SELECT rr.id, rr.texto, to_char(rr.hora, 'HH24:MI') AS hora, rr.creado_por, rr.asignado_a,
+                uc.nombre_usuario AS creado_por_nombre, ua.nombre_usuario AS asignado_a_nombre
+         FROM recordatorios_rutinarios rr
+         JOIN usuarios uc ON uc.id = rr.creado_por
+         JOIN usuarios ua ON ua.id = rr.asignado_a
+         WHERE rr.amistad_id = $1 AND rr.activo = TRUE
+         ORDER BY rr.hora ASC`,
+        [amistadId]
+      ),
     ]);
     // Se capturan los mensajes ANTES de marcarlos como leídos, para que la
     // vista todavía pueda mostrar cuáles llegaron sin leer en esta apertura
@@ -6298,10 +6392,66 @@ app.get('/chat', async (req, res) => {
       'UPDATE mensajes SET leido = true WHERE amistad_id = $1 AND autor_id != $2 AND leido = false',
       [amistadId, req.usuarioId]
     );
-    res.render('chat', { mensajes: rows, amistadId, error: null, usuarioId: req.usuarioId, buscar, amigoId, misMetas, misMetasCompartidas });
+    res.render('chat', { mensajes: rows, amistadId, error: null, usuarioId: req.usuarioId, buscar, amigoId, amigoNombre, misMetas, misMetasCompartidas, recordatoriosRutinarios });
   } catch (err) {
     console.error('Error consultando mensajes:', err.message);
     res.status(500).render('chat', { ...vacio, amistadId, error: 'No se pudo leer la base de datos.' });
+  }
+});
+
+// rama-metas-rutinarias: crear un recordatorio que se repite todos los
+// días a una hora fija, dentro del chat con un amigo -- pedido explícito
+// del usuario ("papá le asigna a hijo alimentar a la tortuga todos los
+// días a las 8"). `asignado_a` puede ser el amigo O uno mismo (ambos
+// casos tienen sentido real: "le pido a mi amigo" o "me recuerdo a mí
+// dentro de esta conversación") -- se valida que sea alguno de los 2
+// miembros reales de la amistad, nunca un id arbitrario del body.
+app.post('/recordatorios-rutinarios', async (req, res) => {
+  const amistadId = Number(req.body.amistad_id);
+  const asignadoA = Number(req.body.asignado_a);
+  const texto = (req.body.texto || '').trim();
+  const hora = (req.body.hora || '').trim();
+  if (!Number.isInteger(amistadId) || !texto || !/^\d{2}:\d{2}$/.test(hora)) {
+    return res.redirect(`/chat?amistad_id=${amistadId || ''}`);
+  }
+  try {
+    const { rows } = await pool.query(
+      "SELECT usuario_a_id, usuario_b_id FROM amistades WHERE id = $1 AND estado = 'aceptada' AND (usuario_a_id = $2 OR usuario_b_id = $2)",
+      [amistadId, req.usuarioId]
+    );
+    if (!rows.length) return res.status(403).send('No tienes acceso a esta conversación.');
+    const { usuario_a_id, usuario_b_id } = rows[0];
+    if (asignadoA !== usuario_a_id && asignadoA !== usuario_b_id) {
+      return res.status(400).send('Destinatario inválido.');
+    }
+    await pool.query(
+      `INSERT INTO recordatorios_rutinarios (texto, hora, creado_por, asignado_a, amistad_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [texto, hora, req.usuarioId, asignadoA, amistadId]
+    );
+  } catch (err) {
+    console.error('Error creando recordatorio rutinario:', err.message);
+  }
+  res.redirect(`/chat?amistad_id=${amistadId}`);
+});
+
+// Cualquiera de los 2 (quien lo creó o quien lo recibe) puede desactivarlo
+// -- decisión explícita: un recordatorio que ya no tiene sentido para
+// ninguna de las 2 personas no debería depender de que justo el creador
+// original lo apague.
+app.post('/recordatorios-rutinarios/:id/desactivar', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const { rows } = await pool.query(
+      'SELECT amistad_id FROM recordatorios_rutinarios WHERE id = $1 AND (creado_por = $2 OR asignado_a = $2)',
+      [id, req.usuarioId]
+    );
+    if (!rows.length) return res.status(403).send('No tienes acceso a este recordatorio.');
+    await pool.query('UPDATE recordatorios_rutinarios SET activo = FALSE WHERE id = $1', [id]);
+    return res.redirect(`/chat?amistad_id=${rows[0].amistad_id}`);
+  } catch (err) {
+    console.error('Error desactivando recordatorio rutinario:', err.message);
+    return res.redirect('/amigos');
   }
 });
 

@@ -85,7 +85,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let datos = { title: 'Bitácora', body: 'Tienes una notificación' };
+  let datos = { title: 'zentIA', body: 'Tienes una notificación' };
   if (event.data) {
     try {
       datos = event.data.json();
@@ -93,12 +93,18 @@ self.addEventListener('push', (event) => {
       datos.body = event.data.text();
     }
   }
+  // rama-metas-rutinarias: requireInteraction/vibrate llegaban en el
+  // payload desde hace rato pero se ignoraban acá -- ahora sí se
+  // reenvían si el servidor los manda (opt-in por payload, no todas las
+  // notificaciones necesitan ser "llamativas").
   event.waitUntil(
-    self.registration.showNotification(datos.title || 'Bitácora', {
+    self.registration.showNotification(datos.title || 'zentIA', {
       body: datos.body || '',
       icon: '/icons/icon-192.png',
       actions: datos.actions || [],
       data: datos.data || {},
+      requireInteraction: datos.requireInteraction || false,
+      vibrate: datos.vibrate || undefined,
     })
   );
 });

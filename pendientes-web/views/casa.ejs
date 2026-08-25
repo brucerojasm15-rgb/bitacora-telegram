@@ -33,9 +33,9 @@
 
       <% const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido'); %>
       <% if (animalesVivos.length > 0) { %>
-        <div class="patio">
+        <div class="patio" data-rivales='<%- JSON.stringify(paresRivales) %>' <%- comida ? 'data-comida="1"' : '' %>>
           <% animalesVivos.forEach((a) => { %>
-            <img class="patio-avatar" data-lento="<%= a.salud_estado !== 'sano' ? '1' : '0' %>" src="<%= a.imagen %>" alt="<%= a.nombre || a.especie %> caminando">
+            <img class="patio-avatar" data-id="<%= a.id %>" data-lento="<%= a.salud_estado !== 'sano' ? '1' : '0' %>" src="<%= a.imagen %>" alt="<%= a.nombre || a.especie %> caminando">
           <% }) %>
         </div>
       <% } %>
@@ -167,7 +167,11 @@
                 <button type="submit">Alimentar</button>
               </form>
               <% if (a.esAdulto) { %>
-                <% const parejas = animales.filter((otro) => otro.id !== a.id && otro.especie === a.especie && otro.salud_estado !== 'fallecido' && otro.esAdulto); %>
+                <%
+                  const todasParejas = animales.filter((otro) => otro.id !== a.id && otro.especie === a.especie && otro.salud_estado !== 'fallecido' && otro.esAdulto);
+                  const parejas = todasParejas.filter((p) => afinidadPares[a.id + '-' + p.id] === undefined);
+                  const parejasRivales = todasParejas.filter((p) => afinidadPares[a.id + '-' + p.id] !== undefined && afinidadPares[a.id + '-' + p.id] < umbralReconciliacion);
+                %>
                 <% if (parejas.length > 0) { %>
                   <form method="POST" action="/animales/<%= a.id %>/cruzar" class="meta-card-acciones">
                     <select name="pareja_id" aria-label="Cruzar con" required>
@@ -178,6 +182,14 @@
                     <button type="submit">Cruzar</button>
                   </form>
                 <% } %>
+                <% parejasRivales.forEach((p) => { %>
+                  <form method="POST" action="/animales/<%= a.id %>/socializar" class="meta-card-acciones">
+                    <input type="hidden" name="con_id" value="<%= p.id %>">
+                    <button type="submit" class="btn-rival">
+                      🐾 Rivales con <%= p.nombre || ('#' + p.id) %> -- Socializar (<%= afinidadPares[a.id + '-' + p.id] %>/<%= umbralReconciliacion %>)
+                    </button>
+                  </form>
+                <% }) %>
                 <% const candidatosAmigos = candidatosPorEspecie[a.especie] || []; %>
                 <% if (candidatosAmigos.length > 0) { %>
                   <form method="POST" action="/animales/<%= a.id %>/solicitar-cruce-amigo" class="meta-card-acciones">

@@ -2851,3 +2851,10 @@ tr.fila-saliendo {
   font-size: 1.1rem;
   line-height: 1;
 }
+
+/* rama-rivalidades */
+.btn-rival {
+  background: var(--danger-bg, var(--bg-elevated));
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}

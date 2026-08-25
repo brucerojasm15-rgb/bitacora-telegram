@@ -1749,6 +1749,24 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE usuario_accesorios DROP CONSTRAINT IF EXISTS usuario_accesorios_usuario_id_fkey`);
   await pool.query(`ALTER TABLE usuario_accesorios ADD CONSTRAINT usuario_accesorios_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE`);
   await pool.query(`ALTER TABLE animales ADD COLUMN IF NOT EXISTS accesorio TEXT`);
+  // rama-rivalidades: Etapa 2 del patio animado, diseño ya confirmado con
+  // el usuario y anotado en el Backlog el 2026-08-24. Nivel de afinidad
+  // entre un par ESPECÍFICO de animales -- se sube socializándolos a
+  // propósito (POST /animales/:id/socializar), y a partir de un umbral
+  // quedan "reconciliados" para siempre (sin decaimiento, mismo criterio
+  // simple que el resto de contadores del juego). El par se guarda
+  // canónico (menor id primero) para no tener que checar los 2 órdenes en
+  // cada consulta. `ON DELETE CASCADE` en ambos extremos -- va DESPUÉS de
+  // `animales` a propósito (bug real ya encontrado 2 veces esta sesión
+  // por crear una tabla antes de la que referencia).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS animales_afinidad (
+      animal_menor_id INT NOT NULL REFERENCES animales(id) ON DELETE CASCADE,
+      animal_mayor_id INT NOT NULL REFERENCES animales(id) ON DELETE CASCADE,
+      nivel INT NOT NULL DEFAULT 0,
+      PRIMARY KEY (animal_menor_id, animal_mayor_id)
+    )
+  `);
   // Genotipo: 2 alelos por locus por animal. `locus`/`alelo_1`/`alelo_2`
   // son texto libre validado contra el catálogo GENES en la ruta, no con
   // FK -- mismo criterio que `categoria` en `pendientes` (catálogo
@@ -2205,6 +2223,58 @@ const GENES = {
 // fija aparte (decisión explícita del usuario).
 const RASGOS_LEGENDARIOS = { color_base: ['iridiscente'], patron: ['estelar'], brillo: ['luminiscente'] };
 const UMBRAL_RASGOS_PARA_LEGENDARIO = 2;
+
+// rama-rivalidades: pares de especie fijos, confirmados con el usuario
+// (los más naturales/reales -- gato caza aves, perro persigue conejos).
+// gato<->perro y conejo<->ave quedan neutrales por especie (podrían serlo
+// igual por rasgo genético, ver sonRivales más abajo).
+const RIVALES_ESPECIE = { gato: 'ave', ave: 'gato', perro: 'conejo', conejo: 'perro' };
+
+// Umbral de "socializaciones" (POST /animales/:id/socializar) para que un
+// par de rivales quede reconciliado para siempre -- placeholder de
+// balance, mismo criterio que el resto del juego, elegido para que se
+// sienta como un esfuerzo real sin ser tedioso.
+const UMBRAL_RECONCILIACION = 3;
+
+// Rivalidad por especie fija O por compartir el MISMO rasgo raro en el
+// MISMO locus (reusa RASGOS_LEGENDARIOS -- misma idea que "legendario":
+// dos animales con el mismo brillo iridiscente compiten por ser "el
+// especial", no un catálogo de rivalidad aparte). `expresadosA`/
+// `expresadosB` son el resultado de alelosExpresadosDe()/
+// alelosExpresadosDeFilas() -- {locus: alelo}.
+function sonRivales(especieA, expresadosA, especieB, expresadosB) {
+  if (RIVALES_ESPECIE[especieA] === especieB) return true;
+  for (const [locus, alelosRaros] of Object.entries(RASGOS_LEGENDARIOS)) {
+    if (alelosRaros.includes(expresadosA[locus]) && alelosRaros.includes(expresadosB[locus])) return true;
+  }
+  return false;
+}
+
+// Mismo cálculo que alelosExpresadosDe() (ver más abajo, usa genotipo
+// como {locus: [a1,a2]}) pero para el shape {locus: {alelo_1, alelo_2}}
+// que devuelven las consultas de animales_genes en /cruzar y
+// /cruces-solicitudes/:id/responder -- evita duplicar la lógica de
+// dominancia, solo el shape de entrada difiere.
+function alelosExpresadosDeFilas(genesDelAnimal) {
+  const expresados = {};
+  for (const [locus, { alelo_1, alelo_2 }] of Object.entries(genesDelAnimal)) {
+    expresados[locus] = aleloExpresado(locus, alelo_1, alelo_2);
+  }
+  return expresados;
+}
+
+function parCanonico(idA, idB) {
+  return idA < idB ? [idA, idB] : [idB, idA];
+}
+
+async function nivelAfinidad(client, idA, idB) {
+  const [menor, mayor] = parCanonico(idA, idB);
+  const { rows } = await client.query(
+    'SELECT nivel FROM animales_afinidad WHERE animal_menor_id = $1 AND animal_mayor_id = $2',
+    [menor, mayor]
+  );
+  return rows.length ? rows[0].nivel : 0;
+}
 
 // Niveles de jugador -- 15 niveles, curva creciente a propósito para que
 // nivel 11 (donde en una ronda futura se activan los avisos automáticos
@@ -5311,6 +5381,48 @@ async function animalesDeUsuarioConGenes(usuarioId) {
   }));
 }
 
+// rama-rivalidades: pares rivales entre animales VIVOS para el patio
+// (deambular/jugar) -- a diferencia de calcularAfinidadPares() de abajo,
+// acá NO se filtra por adultez ni por misma especie (la rivalidad por
+// especie fija justamente cruza especies distintas, y un bebé también
+// puede "sentir" el patio, no solo los que ya pueden criar). Función pura,
+// sin acceso a DB -- solo necesita especie + alelosExpresados, que
+// animalesDeUsuarioConGenes ya calcula.
+function paresRivalesPatio(animalesVivos) {
+  const pares = [];
+  for (let i = 0; i < animalesVivos.length; i++) {
+    for (let j = i + 1; j < animalesVivos.length; j++) {
+      const a = animalesVivos[i], b = animalesVivos[j];
+      if (sonRivales(a.especie, a.alelosExpresados, b.especie, b.alelosExpresados)) pares.push([a.id, b.id]);
+    }
+  }
+  return pares;
+}
+
+// Rivalidad + nivel de afinidad actual, SOLO entre adultos de la MISMA
+// especie (los únicos pares que en la práctica les importaría cruzar) --
+// usado para la UI de "Socializar" en Casa (listaA === listaB, mis propios
+// animales) y en la Casa de un amigo (listaA = amigo, listaB = míos).
+// Devuelve un objeto plano {`${idA}-${idB}`: nivel} en los 2 órdenes, para
+// que la vista pueda buscar por cualquiera de los 2 ids sin importar el
+// orden en que los itera.
+async function calcularAfinidadPares(listaA, listaB, mismaLista) {
+  const resultado = {};
+  for (let i = 0; i < listaA.length; i++) {
+    const inicioJ = mismaLista ? i + 1 : 0;
+    for (let j = inicioJ; j < listaB.length; j++) {
+      const a = listaA[i], b = listaB[j];
+      if (mismaLista && a.id === b.id) continue;
+      if (!a.esAdulto || !b.esAdulto || a.especie !== b.especie) continue;
+      if (!sonRivales(a.especie, a.alelosExpresados, b.especie, b.alelosExpresados)) continue;
+      const nivel = await nivelAfinidad(pool, a.id, b.id);
+      resultado[`${a.id}-${b.id}`] = nivel;
+      resultado[`${b.id}-${a.id}`] = nivel;
+    }
+  }
+  return resultado;
+}
+
 // rama-etapas-genealogia: árbol genealógico simple (1 nivel de padres +
 // 1 nivel de hijos) para un animal fallecido puntual -- se muestra "en la
 // pared" de la Casa solo si el animal fallecido tuvo padres o crías reales
@@ -5441,6 +5553,9 @@ app.get('/casa', async (req, res) => {
     for (const especie of especiesAdultasPropias) {
       candidatosPorEspecie[especie] = await animalesAdultosDeAmigosPorEspecie(req.usuarioId, especie);
     }
+    const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido');
+    const paresRivales = paresRivalesPatio(animalesVivos);
+    const afinidadPares = await calcularAfinidadPares(animales, animales, true);
     res.render('casa', {
       especies: ESPECIES_ANIMAL,
       animales,
@@ -5458,6 +5573,10 @@ app.get('/casa', async (req, res) => {
       accesoriosDisponibles: ACCESORIOS_DISPONIBLES,
       accesoriosComprados,
       costoAccesorio: COSTO_ACCESORIO,
+      paresRivales,
+      afinidadPares,
+      umbralReconciliacion: UMBRAL_RECONCILIACION,
+      comida: Number(req.query.comida) || null,
       nacio: Number(req.query.nacio) || null,
       error: null,
     });
@@ -5469,6 +5588,7 @@ app.get('/casa', async (req, res) => {
       saldoMoneda: 0, costoProximoEspacio: 0, edadAdultoDias: EDAD_ADULTO_DIAS,
       personajeMainNombre: PERSONAJE_MAIN_NOMBRE, personajeMain: null, arbolesGenealogicos: [],
       accesoriosDisponibles: ACCESORIOS_DISPONIBLES, accesoriosComprados: [], costoAccesorio: COSTO_ACCESORIO,
+      paresRivales: [], afinidadPares: {}, umbralReconciliacion: UMBRAL_RECONCILIACION, comida: null,
       nacio: null,
       error: 'No se pudo leer la base de datos.',
     });
@@ -5570,7 +5690,8 @@ app.get('/casa/:usuarioId', async (req, res) => {
     );
     if (!amistadRows.length) {
       return res.status(403).render('casa-amigo', {
-        nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [], usuarioIdVisitado,
+        nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [],
+        paresRivales: [], afinidadPares: {}, umbralReconciliacion: UMBRAL_RECONCILIACION, usuarioIdVisitado,
         error: 'Ese usuario no es tu amigo.',
       });
     }
@@ -5589,18 +5710,25 @@ app.get('/casa/:usuarioId', async (req, res) => {
       if (!a.esAdulto) continue;
       (misAnimalesPorEspecie[a.especie] = misAnimalesPorEspecie[a.especie] || []).push({ id: a.id, nombre: a.nombre });
     }
+    const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido');
+    const paresRivales = paresRivalesPatio(animalesVivos);
+    const afinidadPares = await calcularAfinidadPares(misAnimales, animales, false);
     res.render('casa-amigo', {
       nombreAmigo: usuarioRows[0] ? usuarioRows[0].nombre_usuario : null,
       animales,
       misAnimalesPorEspecie,
       arbolesGenealogicos,
+      paresRivales,
+      afinidadPares,
+      umbralReconciliacion: UMBRAL_RECONCILIACION,
       usuarioIdVisitado,
       error: null,
     });
   } catch (err) {
     console.error('Error consultando la casa de un amigo:', err.message);
     res.status(500).render('casa-amigo', {
-      nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [], usuarioIdVisitado,
+      nombreAmigo: null, animales: [], misAnimalesPorEspecie: {}, arbolesGenealogicos: [],
+      paresRivales: [], afinidadPares: {}, umbralReconciliacion: UMBRAL_RECONCILIACION, usuarioIdVisitado,
       error: 'No se pudo leer la base de datos.',
     });
   }
@@ -5723,7 +5851,11 @@ app.post('/animales/:id/alimentar', async (req, res) => {
     console.error('Error alimentando animal:', err.message);
     return res.status(500).send('No se pudo alimentar.');
   }
-  res.redirect('/casa');
+  // rama-rivalidades: "se juntan igual a la hora de comer" (pedido
+  // explícito del usuario) -- ?comida=1 le avisa a public/patio.js que
+  // haga la reunión una vez al cargar, sin importar rivalidades, antes de
+  // volver al deambular normal.
+  res.redirect('/casa?comida=1');
 });
 
 // Cría real entre 2 animales del MISMO usuario (v1 -- cruzar con el animal
@@ -5760,6 +5892,26 @@ app.post('/animales/:id/cruzar', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).send(`Los dos animales deben ser adultos (${EDAD_ADULTO_DIAS} días o más) para cruzar.`);
     }
+    const { rows: genesRows } = await client.query(
+      'SELECT animal_id, locus, alelo_1, alelo_2 FROM animales_genes WHERE animal_id = ANY($1::int[])',
+      [[idPadre, idMadre]]
+    );
+    const genesPorAnimal = { [idPadre]: {}, [idMadre]: {} };
+    for (const g of genesRows) {
+      genesPorAnimal[g.animal_id][g.locus] = { alelo_1: g.alelo_1, alelo_2: g.alelo_2 };
+    }
+    // rama-rivalidades: rivales sin reconciliar no pueden cruzar -- pedido
+    // explícito del usuario ("tendría que amistarlos de la manera
+    // original en la vida real"). Se checa acá, DESPUÉS de confirmar
+    // especie/adultez (esos son errores más básicos, tiene sentido
+    // mostrarlos primero) pero ANTES de gastar el espacio de la casa.
+    if (sonRivales(padres[0].especie, alelosExpresadosDeFilas(genesPorAnimal[idPadre]), padres[1].especie, alelosExpresadosDeFilas(genesPorAnimal[idMadre]))) {
+      const nivel = await nivelAfinidad(client, idPadre, idMadre);
+      if (nivel < UMBRAL_RECONCILIACION) {
+        await client.query('ROLLBACK');
+        return res.status(400).send(`Estos animales son rivales -- socializalos ${UMBRAL_RECONCILIACION - nivel} vez(veces) más antes de poder cruzarlos.`);
+      }
+    }
     const { rows: contadorRows } = await client.query(
       'SELECT COUNT(*)::int AS c FROM animales WHERE usuario_id = $1 AND eliminado = false',
       [req.usuarioId]
@@ -5768,14 +5920,6 @@ app.post('/animales/:id/cruzar', async (req, res) => {
     if (contadorRows[0].c >= perfil.capacidadCasa) {
       await client.query('ROLLBACK');
       return res.status(400).send('Tu casa ya está al límite de espacio -- no hay lugar para la cría.');
-    }
-    const { rows: genesRows } = await client.query(
-      'SELECT animal_id, locus, alelo_1, alelo_2 FROM animales_genes WHERE animal_id = ANY($1::int[])',
-      [[idPadre, idMadre]]
-    );
-    const genesPorAnimal = { [idPadre]: {}, [idMadre]: {} };
-    for (const g of genesRows) {
-      genesPorAnimal[g.animal_id][g.locus] = { alelo_1: g.alelo_1, alelo_2: g.alelo_2 };
     }
     const genotipoCria = generarGenotipoDeCria(genesPorAnimal[idPadre], genesPorAnimal[idMadre]);
     const cria = await insertarAnimal(client, {
@@ -5791,6 +5935,51 @@ app.post('/animales/:id/cruzar', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// rama-rivalidades: "socializar" un par de animales -- la reconciliación
+// real pedida por el usuario ("que se amisten de la manera original en
+// la vida real, tal como se amistan animales para cruzarse"). Sube el
+// nivel de afinidad de ESE par específico en 1 (tope en el umbral, no
+// sigue subiendo después). idPropio tiene que ser mío; conId puede ser
+// mío o de un amigo aceptado -- mismo criterio de validación que
+// /solicitar-cruce-amigo, nunca confiar en el id ajeno sin revalidar
+// dueño real + amistad.
+app.post('/animales/:id/socializar', async (req, res) => {
+  const idPropio = Number(req.params.id);
+  const conId = Number(req.body.con_id);
+  if (!Number.isInteger(idPropio) || !Number.isInteger(conId) || idPropio === conId) {
+    return res.status(400).send('Datos inválidos.');
+  }
+  try {
+    const { rows: propioRows } = await pool.query(
+      `SELECT especie FROM animales WHERE id = $1 AND usuario_id = $2 AND eliminado = false AND salud_estado != 'fallecido'`,
+      [idPropio, req.usuarioId]
+    );
+    if (!propioRows.length) return res.status(403).send('Ese animal no es tuyo.');
+    const { rows: otroRows } = await pool.query(
+      `SELECT a.usuario_id, a.especie FROM animales a
+       WHERE a.id = $1 AND a.eliminado = false AND a.salud_estado != 'fallecido'
+         AND (a.usuario_id = $2 OR EXISTS (
+           SELECT 1 FROM amistades am WHERE am.estado = 'aceptada'
+             AND ((am.usuario_a_id = $2 AND am.usuario_b_id = a.usuario_id)
+               OR (am.usuario_b_id = $2 AND am.usuario_a_id = a.usuario_id))
+         ))`,
+      [conId, req.usuarioId]
+    );
+    if (!otroRows.length) return res.status(403).send('Ese animal no es tuyo ni de un amigo tuyo.');
+    if (otroRows[0].especie !== propioRows[0].especie) return res.status(400).send('Solo tiene sentido socializar animales de la misma especie.');
+    const [menor, mayor] = parCanonico(idPropio, conId);
+    await pool.query(
+      `INSERT INTO animales_afinidad (animal_menor_id, animal_mayor_id, nivel) VALUES ($1, $2, 1)
+       ON CONFLICT (animal_menor_id, animal_mayor_id)
+       DO UPDATE SET nivel = LEAST(animales_afinidad.nivel + 1, $3)`,
+      [menor, mayor, UMBRAL_RECONCILIACION]
+    );
+  } catch (err) {
+    console.error('Error socializando animales:', err.message);
+  }
+  res.redirect('/casa');
 });
 
 // rama-cruzar-amigos: pedido explícito del usuario -- cruzar animales
@@ -5894,6 +6083,26 @@ app.post('/cruces-solicitudes/:id/responder', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).send('Los animales ya no son de la misma especie.');
     }
+    const { rows: genesRows } = await client.query(
+      'SELECT animal_id, locus, alelo_1, alelo_2 FROM animales_genes WHERE animal_id = ANY($1::int[])',
+      [[solicitud.animal_propio_id, solicitud.animal_ajeno_id]]
+    );
+    const genesPorAnimal = { [solicitud.animal_propio_id]: {}, [solicitud.animal_ajeno_id]: {} };
+    for (const g of genesRows) {
+      genesPorAnimal[g.animal_id][g.locus] = { alelo_1: g.alelo_1, alelo_2: g.alelo_2 };
+    }
+    // rama-rivalidades: mismo chequeo que /animales/:id/cruzar -- re-
+    // validado acá también (la rivalidad/afinidad pudo no existir cuando
+    // se pidió el cruce, o el animal ajeno pudo cambiar de genotipo... en
+    // la práctica no cambia nunca, pero el criterio de esta ruta es
+    // re-validar TODO, no asumir nada).
+    if (sonRivales(animalesRows[0].especie, alelosExpresadosDeFilas(genesPorAnimal[solicitud.animal_propio_id]), animalesRows[1].especie, alelosExpresadosDeFilas(genesPorAnimal[solicitud.animal_ajeno_id]))) {
+      const nivel = await nivelAfinidad(client, solicitud.animal_propio_id, solicitud.animal_ajeno_id);
+      if (nivel < UMBRAL_RECONCILIACION) {
+        await client.query('ROLLBACK');
+        return res.status(400).send(`Estos animales son rivales -- hace falta socializarlos ${UMBRAL_RECONCILIACION - nivel} vez(veces) más antes de poder cruzarlos.`);
+      }
+    }
     const { rows: contadorRows } = await client.query(
       'SELECT COUNT(*)::int AS c FROM animales WHERE usuario_id = $1 AND eliminado = false',
       [solicitud.solicitante_id]
@@ -5902,14 +6111,6 @@ app.post('/cruces-solicitudes/:id/responder', async (req, res) => {
     if (contadorRows[0].c >= perfilSolicitante.capacidadCasa) {
       await client.query('ROLLBACK');
       return res.status(400).send('Tu amigo ya no tiene espacio en su casa para la cría -- avisale que libere espacio.');
-    }
-    const { rows: genesRows } = await client.query(
-      'SELECT animal_id, locus, alelo_1, alelo_2 FROM animales_genes WHERE animal_id = ANY($1::int[])',
-      [[solicitud.animal_propio_id, solicitud.animal_ajeno_id]]
-    );
-    const genesPorAnimal = { [solicitud.animal_propio_id]: {}, [solicitud.animal_ajeno_id]: {} };
-    for (const g of genesRows) {
-      genesPorAnimal[g.animal_id][g.locus] = { alelo_1: g.alelo_1, alelo_2: g.alelo_2 };
     }
     const genotipoCria = generarGenotipoDeCria(genesPorAnimal[solicitud.animal_propio_id], genesPorAnimal[solicitud.animal_ajeno_id]);
     // La cría queda con el usuario SOLICITANTE -- decisión explícita

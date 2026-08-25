@@ -215,6 +215,11 @@
               <form method="POST" action="/animales/<%= a.id %>/alimentar" class="meta-card-acciones">
                 <button type="submit">Alimentar</button>
               </form>
+              <% if (a.puedeJugarHoy) { %>
+                <button type="button" class="btn-jugar" data-jugar-id="<%= a.id %>" data-jugar-imagen="<%= a.imagen %>" data-jugar-nombre="<%= a.nombre || a.especie %>">Jugar</button>
+              <% } else { %>
+                <span class="meta-progreso-texto">Ya jugaron hoy</span>
+              <% } %>
               <% if (amigosAceptados.length > 0) { %>
                 <form method="POST" action="/animales/<%= a.id %>/regalar" class="meta-card-acciones">
                   <select name="destinatario_id" aria-label="Regalar a" required>
@@ -278,5 +283,6 @@
 
 <%- include('partials/scripts') %>
 <script src="/patio.js" defer></script>
+<script src="/minijuego.js" defer></script>
 </body>
 </html>

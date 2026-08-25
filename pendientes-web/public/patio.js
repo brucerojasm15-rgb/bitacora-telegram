@@ -63,7 +63,14 @@
 
     function moverA(el, destino, duracionMs) {
       const actual = posiciones.get(el) || destino;
-      el.style.transform = destino.x < actual.x ? 'scaleX(-1)' : 'scaleX(1)';
+      // rama-patio-paso: antes esto era `el.style.transform = 'scaleX(...)'`
+      // directo -- pero .patio-avatar ahora también anima `transform` por
+      // CSS (rebote/paso de caminata, ver .patio-paso más abajo), y un
+      // transform inline siempre gana sobre una animación CSS, apagando el
+      // rebote. Se resuelve con una custom property que la animación lee
+      // en cada keyframe (`scaleX(var(--flip, 1))`) -- JS solo cambia el
+      // número, la animación sigue corriendo sin interrupción.
+      el.style.setProperty('--flip', destino.x < actual.x ? -1 : 1);
       el.style.transition = `left ${duracionMs}ms ease-in-out, top ${duracionMs}ms ease-in-out`;
       el.style.left = destino.x + 'px';
       el.style.top = destino.y + 'px';

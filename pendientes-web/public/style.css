@@ -1704,6 +1704,30 @@ svg[viewBox="0 0 24 24"] {
   object-fit: cover;
   pointer-events: none;
   will-change: left, top, transform;
+  --flip: 1;
+  animation: patio-paso 0.5s ease-in-out infinite;
+}
+
+/* rama-patio-paso: la imagen sigue siendo una sola ilustración estática
+   (sin patas separadas -- ver COORDINACION.md, "rig de criaturas
+   SVG" quedó documentado como idea a futuro, no construido por ahora,
+   demasiado trabajo para lo que hace falta hoy). Esto es la versión
+   barata: un rebote+inclinación tipo "paso" mientras desliza de un
+   punto a otro, para que se sienta caminando en vez de flotando. Corre
+   SIEMPRE (no solo mientras se mueve) -- a este tamaño la diferencia
+   entre "caminando" y "parado" no se nota, y así no hace falta que
+   patio.js coordine encender/apagar la animación por cada tramo.
+   `[data-lento="1"]` (enfermos/críticos) usa el mismo rebote pero más
+   lento, mismo criterio que su desplazamiento ya es más lento. */
+.patio-avatar[data-lento="1"] {
+  animation-duration: 0.9s;
+}
+
+@keyframes patio-paso {
+  0%, 100% { transform: scaleX(var(--flip, 1)) translateY(0) rotate(0deg) scaleY(1); }
+  25% { transform: scaleX(var(--flip, 1)) translateY(-8px) rotate(calc(10deg * var(--flip, 1))) scaleY(0.92); }
+  50% { transform: scaleX(var(--flip, 1)) translateY(0) rotate(0deg) scaleY(1); }
+  75% { transform: scaleX(var(--flip, 1)) translateY(-3px) rotate(calc(-10deg * var(--flip, 1))) scaleY(0.96); }
 }
 
 .patio-jugando {
@@ -1713,6 +1737,13 @@ svg[viewBox="0 0 24 24"] {
 @keyframes patio-wiggle {
   from { transform: rotate(-8deg) scale(1.1); }
   to { transform: rotate(8deg) scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .patio-avatar {
+    animation: none !important;
+    transform: scaleX(var(--flip, 1)) !important;
+  }
 }
 
 @keyframes burbuja-entra {

@@ -2245,6 +2245,81 @@ const COSTO_ACCESORIO = 40;
 const TEMAS_PATIO_DISPONIBLES = ['playa', 'nieve', 'noche'];
 const COSTO_TEMA_PATIO = 40;
 
+// rama-eventos-temporales: cierra el último punto del análisis vs. Happy
+// Pets ("eventos temporales/estacionales") -- pedido explícito del
+// usuario: "los eventos que van a venir próximos a estas fechas", es
+// decir ligados a fechas reales del calendario, no un evento inventado
+// suelto. Catálogo hardcodeado (mismo criterio que el resto de catálogos
+// del juego) para que sumar el próximo evento sea agregar una entrada
+// acá, no tocar rutas/vistas. Cada evento reutiliza el sistema de
+// cosméticos que YA existe (accesorio o tema de patio) en vez de
+// inventar un tercer tipo de ítem -- solo agrega la restricción de
+// FECHA a la compra. `item` NO está en ACCESORIOS_DISPONIBLES/
+// TEMAS_PATIO_DISPONIBLES a propósito: esas listas son "siempre
+// comprables"; los ítems de evento solo son comprables durante su
+// ventana (ver esItemEventoComprableAhora), aunque quedan equipables
+// para siempre una vez comprados (igual que cualquier otro cosmético).
+// `fin` es inclusivo (se compara como string 'YYYY-MM-DD', mismo formato
+// que formatearDiaLima ya devuelve).
+const EVENTOS_TEMPORALES = [
+  {
+    id: 'primavera_2026',
+    nombre: 'Día de la Primavera',
+    emoji: '🌸',
+    inicio: '2026-09-23',
+    fin: '2026-09-30',
+    tipo: 'tema_patio',
+    item: 'primavera',
+    descripcion: 'Patio florido de primavera -- solo disponible del 23 al 30 de septiembre.',
+  },
+  {
+    id: 'halloween_2026',
+    nombre: 'Halloween',
+    emoji: '🎃',
+    inicio: '2026-10-25',
+    fin: '2026-11-01',
+    tipo: 'accesorio',
+    item: 'sombrero_bruja',
+    descripcion: 'Sombrero de bruja para tu mascota -- solo disponible del 25 de octubre al 1 de noviembre.',
+  },
+  {
+    id: 'navidad_2026',
+    nombre: 'Navidad',
+    emoji: '🎄',
+    inicio: '2026-12-15',
+    fin: '2026-12-26',
+    tipo: 'accesorio',
+    item: 'gorro_navideno',
+    descripcion: 'Gorro navideño para tu mascota -- solo disponible del 15 al 26 de diciembre.',
+  },
+];
+// Sin costo propio: cada evento reutiliza COSTO_ACCESORIO/COSTO_TEMA_PATIO
+// según su `tipo`, mismo precio que el resto de la tienda.
+
+function eventoActivoAhora() {
+  const hoy = formatearDiaLima(new Date());
+  return EVENTOS_TEMPORALES.find((ev) => hoy >= ev.inicio && hoy <= ev.fin) || null;
+}
+
+// Solo para el "próximo evento" mostrado como teaser cuando ninguno está
+// activo -- el más cercano por fecha de inicio, sin importar si ya pasó
+// su fin (un evento del catálogo con fecha ya vencida simplemente nunca
+// vuelve a aparecer como "próximo", ni como activo).
+function proximoEventoTemporal() {
+  const hoy = formatearDiaLima(new Date());
+  const futuros = EVENTOS_TEMPORALES.filter((ev) => ev.inicio > hoy).sort((a, b) => a.inicio.localeCompare(b.inicio));
+  return futuros[0] || null;
+}
+
+function esItemEventoComprableAhora(tipo, item) {
+  const activo = eventoActivoAhora();
+  return !!(activo && activo.tipo === tipo && activo.item === item);
+}
+
+function esItemEventoConocido(tipo, item) {
+  return EVENTOS_TEMPORALES.some((ev) => ev.tipo === tipo && ev.item === item);
+}
+
 // Cada gen es un "locus": un animal tiene 2 alelos por locus (uno
 // heredado de cada padre, herencia diploide real). `rarezaBase` es el
 // peso con el que un alelo se sortea para un animal SIN padres (adoptado,
@@ -5674,6 +5749,9 @@ app.get('/casa', async (req, res) => {
       nacio: Number(req.query.nacio) || null,
       amigosAceptados,
       solicitudesRegaloRecibidas,
+      eventoActivo: eventoActivoAhora(),
+      proximoEvento: proximoEventoTemporal(),
+      costoItemEvento: { accesorio: COSTO_ACCESORIO, tema_patio: COSTO_TEMA_PATIO },
       error: null,
     });
   } catch (err) {
@@ -5689,6 +5767,9 @@ app.get('/casa', async (req, res) => {
       nacio: null,
       amigosAceptados: [],
       solicitudesRegaloRecibidas: [],
+      eventoActivo: null,
+      proximoEvento: null,
+      costoItemEvento: { accesorio: COSTO_ACCESORIO, tema_patio: COSTO_TEMA_PATIO },
       error: 'No se pudo leer la base de datos.',
     });
   }
@@ -5702,7 +5783,17 @@ app.get('/casa', async (req, res) => {
 // un return temprano).
 app.post('/accesorios/comprar', async (req, res) => {
   const accesorio = req.body.accesorio;
-  if (!ACCESORIOS_DISPONIBLES.includes(accesorio)) return res.status(400).send('Accesorio inválido.');
+  const esEvento = esItemEventoConocido('accesorio', accesorio);
+  if (!ACCESORIOS_DISPONIBLES.includes(accesorio) && !esEvento) return res.status(400).send('Accesorio inválido.');
+  // rama-eventos-temporales: un accesorio de evento (ej. sombrero_bruja)
+  // solo es COMPRABLE durante la ventana de su evento -- no está en
+  // ACCESORIOS_DISPONIBLES a propósito, así que sin este chequeo extra
+  // ya habría sido rechazado arriba. Fuera de la ventana, sigue siendo
+  // válido para EQUIPAR (ver /animales/:id/equipar-accesorio) si ya se
+  // compró antes.
+  if (esEvento && !esItemEventoComprableAhora('accesorio', accesorio)) {
+    return res.status(400).send('Ese accesorio de evento no está disponible ahora.');
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -5740,7 +5831,9 @@ app.post('/animales/:id/equipar-accesorio', async (req, res) => {
   const accesorio = (req.body.accesorio || '').trim();
   try {
     if (accesorio) {
-      if (!ACCESORIOS_DISPONIBLES.includes(accesorio)) return res.status(400).send('Accesorio inválido.');
+      if (!ACCESORIOS_DISPONIBLES.includes(accesorio) && !esItemEventoConocido('accesorio', accesorio)) {
+        return res.status(400).send('Accesorio inválido.');
+      }
       const { rows } = await pool.query(
         'SELECT 1 FROM usuario_accesorios WHERE usuario_id = $1 AND accesorio = $2',
         [req.usuarioId, accesorio]
@@ -5762,7 +5855,11 @@ app.post('/animales/:id/equipar-accesorio', async (req, res) => {
 // finally con client.release()).
 app.post('/temas-patio/comprar', async (req, res) => {
   const tema = req.body.tema;
-  if (!TEMAS_PATIO_DISPONIBLES.includes(tema)) return res.status(400).send('Tema inválido.');
+  const esEvento = esItemEventoConocido('tema_patio', tema);
+  if (!TEMAS_PATIO_DISPONIBLES.includes(tema) && !esEvento) return res.status(400).send('Tema inválido.');
+  if (esEvento && !esItemEventoComprableAhora('tema_patio', tema)) {
+    return res.status(400).send('Ese tema de evento no está disponible ahora.');
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -5798,7 +5895,9 @@ app.post('/temas-patio/equipar', async (req, res) => {
   const tema = (req.body.tema || 'pasto').trim();
   try {
     if (tema !== 'pasto') {
-      if (!TEMAS_PATIO_DISPONIBLES.includes(tema)) return res.status(400).send('Tema inválido.');
+      if (!TEMAS_PATIO_DISPONIBLES.includes(tema) && !esItemEventoConocido('tema_patio', tema)) {
+        return res.status(400).send('Tema inválido.');
+      }
       const { rows } = await pool.query(
         'SELECT 1 FROM usuario_temas_patio WHERE usuario_id = $1 AND tema = $2',
         [req.usuarioId, tema]

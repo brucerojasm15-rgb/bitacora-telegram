@@ -16,7 +16,7 @@
     <% } else { %>
       <% const animalesVivos = animales.filter((a) => a.salud_estado !== 'fallecido'); %>
       <% if (animalesVivos.length > 0) { %>
-        <div class="patio" data-rivales='<%- JSON.stringify(paresRivales) %>'>
+        <div class="patio" data-tema="<%= temaPatioActual %>" data-rivales='<%- JSON.stringify(paresRivales) %>'>
           <% animalesVivos.forEach((a) => { %>
             <img class="patio-avatar" data-id="<%= a.id %>" data-lento="<%= a.salud_estado !== 'sano' ? '1' : '0' %>" src="<%= a.imagen %>" alt="<%= a.nombre || a.especie %> caminando">
           <% }) %>

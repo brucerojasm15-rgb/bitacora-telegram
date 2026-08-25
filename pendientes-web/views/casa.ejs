@@ -124,6 +124,26 @@
         </section>
       <% } %>
 
+      <% if (solicitudesRegaloRecibidas.length > 0) { %>
+        <section class="ajustes-grupo">
+          <h2>Solicitudes de regalo</h2>
+          <% solicitudesRegaloRecibidas.forEach((s) => { %>
+            <p class="ajustes-nota">
+              <strong><%= s.donante_nombre %></strong> te quiere regalar a
+              <%= s.nombre_animal || ('animal #' + s.animal_id) %> (<%= s.especie %>).
+            </p>
+            <form method="POST" action="/regalos-solicitudes/<%= s.id %>/responder" class="meta-card-acciones">
+              <input type="hidden" name="respuesta" value="aceptar">
+              <button type="submit">Aceptar</button>
+            </form>
+            <form method="POST" action="/regalos-solicitudes/<%= s.id %>/responder" class="meta-card-acciones">
+              <input type="hidden" name="respuesta" value="rechazar">
+              <button type="submit">Rechazar</button>
+            </form>
+          <% }) %>
+        </section>
+      <% } %>
+
       <% if (espaciosLibres > 0) { %>
         <section class="ajustes-grupo">
           <h2>Adoptar un animal</h2>
@@ -195,6 +215,16 @@
               <form method="POST" action="/animales/<%= a.id %>/alimentar" class="meta-card-acciones">
                 <button type="submit">Alimentar</button>
               </form>
+              <% if (amigosAceptados.length > 0) { %>
+                <form method="POST" action="/animales/<%= a.id %>/regalar" class="meta-card-acciones">
+                  <select name="destinatario_id" aria-label="Regalar a" required>
+                    <% amigosAceptados.forEach((am) => { %>
+                      <option value="<%= am.id %>"><%= am.nombre_usuario %></option>
+                    <% }) %>
+                  </select>
+                  <button type="submit">Regalar</button>
+                </form>
+              <% } %>
               <% if (a.esAdulto) { %>
                 <%
                   const todasParejas = animales.filter((otro) => otro.id !== a.id && otro.especie === a.especie && otro.salud_estado !== 'fallecido' && otro.esAdulto);

@@ -5216,6 +5216,40 @@ eliminación de ese repo/bot sin quedar huérfano.
   Chrome real + `--bypass-app-banner-engagement-checks` (fuerza el evento
   como un uso real prolongado) -- el banner apareció de verdad, cero
   errores de consola.
+- 2026-08-24 — merge de rama-metas-rutinarias (c4460d2) → main vía PR #99:
+  sin conflictos. CI verde (ambos jobs, en el segundo intento -- ver
+  abajo). Desplegado en Render. Pedido del usuario: recordatorios que se
+  repiten todos los días a una hora fija, asignados dentro del chat de un
+  amigo (ej. "mi papá me dice alimenta a la tortuga, todos los días a
+  esta hora"), con notificación push "personalizada y llamativa". Tabla
+  nueva `recordatorios_rutinarios` (texto, hora, creado_por, asignado_a,
+  amistad_id `ON DELETE CASCADE`, activo, ultimo_aviso) -- se limpia sola
+  al borrar una cuenta sin tocar `POST /ajustes/eliminar-cuenta`, mismo
+  criterio ya usado en el resto del juego. Cron cada minuto (mismo patrón
+  que el recordatorio de una sola vez ya existente), compara HH:MM en
+  America/Lima, no repite el mismo día calendario. "Personalizada": el
+  título nombra a quien lo asignó. "Llamativa": `requireInteraction` +
+  vibración -- ambos campos ya existían en el payload de otras
+  notificaciones pero `public/sw.js` los ignoraba, corregido para
+  reenviarlos de verdad. De paso, 2 defaults de notificación que todavía
+  decían "Bitácora".
+  **Bug real encontrado por CI, no por las pruebas locales contra
+  Neon**: la tabla nueva quedó creada en `ensureSchema()` ANTES de que
+  `amistades` existiera -- invisible contra Neon (esa tabla ya existía de
+  antes ahí) pero rompía el bootstrap completo contra un Postgres
+  realmente vacío (el contenedor efímero de `pruebas-integracion`),
+  tumbando hasta el registro de usuarios. Mismo bug class ya documentado
+  en rama-pruebas-regresion (2026-08-24 más temprano) -- corregido
+  reordenando, confirmado por CI en verde en el segundo intento.
+  **Aparte, infraestructura**: el primer intento de deploy de la ronda
+  anterior (rama-instalar-app, PR #98) quedó `update_failed` en Render
+  por un timeout de escaneo de puerto (~15 min, no relacionado al
+  código -- el server sí llegó a arrancar bien, solo tarde) -- el
+  siguiente deploy (con este merge encima) sí quedó `live` limpio.
+  Recordatorio para sesiones futuras: verificar el estado REAL del
+  deploy en Render (`status: live`), no solo que la URL responda 200 --
+  un 200 puede venir del deploy ANTERIOR todavía corriendo mientras el
+  nuevo falló en silencio.
 - 2026-08-22 — merge de rama-recapitulacion-diaria (d9829d5) → main vía PR
   #80: sin conflictos. CI verde. Commit de merge `71204a5`. Resuelve la
   tarea 11 (moneda determinística por actividad propia + reflexión

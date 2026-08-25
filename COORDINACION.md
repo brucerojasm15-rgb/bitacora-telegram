@@ -6274,6 +6274,130 @@ combinaciones especie×etapa si el usuario quiere acelerarlo.
 
 ---
 
+## Visión grande (2026-08-25): veterinario callejero + integración con vida real + narrador IA + cámara estilo Pokémon
+
+Volcado grande de ideas del usuario, explícitamente pedido guardar como
+"desarrollo futuro" — **nada de esto está construido ni empezado**.
+Organizado en piezas separadas para que una sesión futura pueda tomar
+una por una, con una nota honesta de factibilidad en cada una (ver
+"Lectura honesta" al final para la recomendación real de por dónde
+empezar).
+
+1. **Metas compartidas ligadas al juego de animales.** El juego mismo
+   debe "enseñar" a la gente cómo usarlas, apareciendo espontáneamente
+   por boca de Zen (el guía) en el momento oportuno — no un tutorial
+   aparte, sino Zen ofreciéndolo en contexto. Falta definir el gatillo
+   exacto (¿cuándo aparece Zen a ofrecerlo?) y qué mecánica del juego de
+   animales se conecta con qué meta compartida.
+
+2. **Minijuego "veterinario callejero".** Tu avatar sale a la calle a
+   buscar animales callejeros (adopción), encuentra algunos enfermos, y
+   aprendés a curarlos con tratamientos realistas — lo que haría un
+   veterinario de verdad, no fantasía. El avatar "combina razas y
+   experiencias" de los animales que encuentra (sin definir el mecanismo
+   exacto todavía).
+
+3. **Minijuego de poses/trucos reales.** Hacer "modelar" a tus animales
+   en poses o trucos vistosos, pero limitados a lo que un animal puede
+   hacer de verdad según su capacidad mental/física real (no trucos de
+   fantasía) — mismo espíritu de realismo que ya rige toda la genética y
+   salud del juego.
+
+4. **Venta entre jugadores.** Extiende `rama-regalar-animales` (PR
+   #104, ya construida): si tenés uno o varios animales por suerte,
+   podés invitar a otro jugador a curarlos juntos, y ahora ADEMÁS de
+   regalarlo gratis, podés decidir vendérselo (a cambio de moneda del
+   juego). Es una extensión relativamente chica sobre lo ya construido
+   — el sistema de solicitud/aceptación ya existe, solo faltaría un
+   campo de precio opcional en `regalos_solicitudes` y descontar/pagar
+   moneda al aceptar en vez de transferir gratis.
+
+5. **Más especies con más detalle** (ejemplo dado: tortuga), y mejorar
+   sus hábitats — conecta con `rama-temas-patio` (PR #103) ya
+   construida como base de personalización visual.
+
+6. **IA narradora del progreso como cuento.** El resumen de metas que
+   ya genera la IA (`rama-recapitulacion-diaria`, PR #80) pasa a
+   contarse en tono narrativo tipo cuento para un niño: "Bruce está
+   haciendo esto, está avanzando en esto..." — no es una mecánica
+   nueva, es un cambio de TONO/prompt sobre algo que ya existe y ya
+   corre todos los días.
+
+7. **IA detecta una mascota real y regala la virtual correspondiente.**
+   Si la IA identifica (por texto capturado en Ideas/pendientes) que el
+   usuario tiene una mascota real, le muestra un recuadro ofreciéndole
+   el animal virtual que le corresponde (ej. detectó un gato → te
+   regalo un gato virtual). Requiere una nueva capacidad de detección
+   sobre el texto ya capturado (reutilizando Groq) y una ruta de "regalo
+   automático" distinta a la de amigos.
+
+8. **Notificaciones individuales por animal (real o virtual).** Hoy los
+   recordatorios rutinarios son genéricos; la idea es que cada animal
+   tenga su propio hilo identificable por el logo de la app — "tu
+   tortuga necesita comer a tal hora" — con botones de posponer/hecho, y
+   que al marcar hecho aparezca una foto al costado del animal (del
+   juego, o una foto real que el usuario suba de su mascota real)
+   confirmando la acción.
+
+9. **Consecuencia real de apagar notificaciones de un animal puntual.**
+   Si el usuario apaga el aviso de un animal específico, por descuido
+   ese animal se podría enfermar/morir — mismo mecanismo de abandono ya
+   real que existe hoy (`salud_estado`), solo que ahora atado a una
+   decisión explícita de silenciar avisos, no solo a no alimentar.
+
+10. **"Comprable" en el juego: alimentador automático real.** Para
+    evitar la muerte por notificaciones apagadas, el usuario puede
+    comprar (con moneda del juego) un alimentador automático — y como
+    el juego busca ser muy detallado, ENSEÑA paso a paso qué piezas
+    comprar y un estimado de precio real en Perú, como guía real por si
+    el usuario quiere invertir y construir su propio alimentador físico
+    de verdad. Esto es contenido/investigación (precios reales de
+    componentes en Perú), no una mecánica de juego compleja en sí misma.
+
+11. **Ambición visual: cámara en tercera persona estilo Pokémon Rojo.**
+    Vista superior, la cámara se mueve mientras el avatar (diseño
+    propio, no copiado) avanza por un mapa — "casi el mismo mecanismo"
+    que los juegos clásicos de Pokémon en tercera persona.
+
+### Lectura honesta (recomendación, no decisión tomada)
+
+Estas 11 piezas tienen niveles de esfuerzo MUY distintos, y conviene no
+tratarlas como un solo proyecto:
+
+- **Compatible con la arquitectura actual, tamaño moderado** (se podría
+  construir en el mismo estilo que todo lo hecho hasta ahora — rutas
+  Express + EJS + Postgres, sin reescribir nada): puntos 4 (venta,
+  extiende algo ya construido), 5 (nueva especie), 6 (tono narrativo,
+  cambia un prompt), 8 y 9 (notificaciones por animal + consecuencia),
+  10 (guía de compra, es contenido/investigación más que código).
+- **Compatible pero con más incertidumbre de diseño** (falta decidir
+  mecánica exacta antes de poder estimar esfuerzo real): puntos 1, 2, 3
+  y 7 — minijuegos nuevos y detección por IA, cada uno pediría su propia
+  ronda de preguntas de diseño antes de construir, mismo criterio que
+  cada mecánica anterior de esta sesión.
+- **Incompatible con la arquitectura actual tal como está** (punto 11):
+  una cámara en tercera persona que se mueve por un mapa mientras el
+  avatar camina es un tipo de aplicación distinto — un motor de juego en
+  tiempo real del lado del cliente (Canvas/WebGL, mapa de tiles,
+  colisiones, cámara), no páginas EJS renderizadas por el servidor con
+  botones y formularios. No es "una feature más" para sumar a la
+  próxima rama — sería su propio proyecto grande, con su propia decisión
+  de tecnología, separado del resto del roadmap. Recomendación: si el
+  usuario quiere esto de verdad, vale la pena tratarlo como una
+  iniciativa aparte (posiblemente con su propia sesión/rama de
+  investigación técnica primero), no intentar encajarlo incrementalmente
+  junto con las demás piezas de esta lista.
+
+**Recomendación de por dónde empezar** (si el usuario decide retomar
+esta lista): los puntos "compatibles, tamaño moderado" primero (dan
+valor real rápido, no requieren resolver ambigüedad de diseño), después
+las piezas con incertidumbre de diseño una por una (con preguntas de
+scoping antes de construir, como se hizo con rivalidades/regalos/mini-
+juegos/eventos), y dejar la cámara estilo Pokémon como una decisión
+aparte y consciente, no una tarea más de la lista.
+
+---
+
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
 
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`

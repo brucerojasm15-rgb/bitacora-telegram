@@ -6542,31 +6542,51 @@ legible desde `javascript_tool` en esta herramienta (mundo aislado /
 (`element.hidden`, `.style`, `.textContent`) para verificar estado, nunca
 una variable JS de la página.
 
-**NO probado todavía — esto es lo que falta antes de poder mergear:**
-1. **Nada de esto se probó dentro de la app real** (con sesión real,
-   `barraSuperior` real, `/captura` con los 2 botones nuevos renderizados,
-   navegar de verdad a `/mundo`, tocar "Entrar a Casa" y confirmar que
-   aterriza en `/casa` andando). `npm run ci` (sintaxis/plantillas) SÍ
-   pasa limpio.
-2. **Bloqueador real**: no hay forma de levantar el server local contra
-   una base de datos válida en esta sesión — el `.env` del clon principal
-   sigue apuntando al Postgres viejo de Railway (`metro.proxy.rlwy.net`,
-   dado de baja en la migración del 2026-08-24, ver más arriba). Hace
-   falta la connection string **directa** (no `-pooler`) de Neon actual
-   para `DATABASE_URL` — pedírsela al usuario o sacarla del dashboard de
-   Render (Environment del servicio `bitacora-telegram`) antes de poder
-   probar end-to-end.
-3. Controles táctiles (arrastre) sin probar en absoluto, ni en desktop
-   simulando touch ni en un celular real.
-4. Sign-off visual del usuario: cero (ver
-   [[feedback_ui_visual_signoff]] -- no saltarse este paso solo porque el
-   motor Canvas ya se probó aislado).
+**Actualización 2026-08-25 (misma tarde) — probado de punta a punta
+dentro de la app real, ya no solo aislado.** El usuario consiguió la
+`DATABASE_URL` directa de Neon actual desde el dashboard de Render
+(Environment del servicio `bitacora-telegram`) y se puso tanto en el
+`.env` de este worktree como en el del clon principal (quedó corregido
+para cualquier sesión futura, ya no apunta al Railway muerto). Con el
+server local (`node server.js`) contra la base real:
+- Cuenta de prueba real creada por signup (usuario+PIN, sin necesitar
+  email), navegado con sesión real por `/captura` → confirmado que los
+  2 íconos laterales nuevos (Herramientas/Juego) renderizan con la barra
+  superior real (planta/racha/semillas) funcionando alrededor.
+- "Herramientas" abre `.menu-pantalla` ya filtrada a los 12 accesos
+  correctos (sin ítems del juego) — confirmado visualmente.
+- "Juego" navega a `/mundo`, que renderiza el mapa Canvas real dentro
+  del layout de la app (barra superior + el mapa, sin pisarse).
+  Movimiento con flechas disparado con `KeyboardEvent` real sobre la
+  página real (no el harness aislado) mueve el avatar y la cámara paneó
+  — confirma que no hay conflicto con el resto del JS de la app
+  (`scripts.ejs`, animaciones de la barra superior, etc.).
+- `/casa` (el destino real de "Entrar a Casa") se visitó por separado y
+  carga sin error para una cuenta nueva.
+- "Más del juego" (el `<details>` con Mi planta/Hablar con tu
+  planta/Mercado/Logros) expande y muestra los 4 links con sus íconos
+  correctamente.
+- Consola sin errores reales de la app (solo ruido de la propia
+  extensión del navegador, no de este código).
+- Cuenta de prueba borrada al terminar (`delete from usuarios where
+  nombre_usuario = 'testmundo25'`, cascada limpia el resto).
 
-**Para retomar**: el worktree con todo el código ya escrito sigue en
-`../worktrees/rama-mundo-caminable`. Próximos pasos en orden: conseguir
-`DATABASE_URL` real → `npm install` si hace falta → levantar
-`node server.js` local → probar de punta a punta con un navegador real
-(Claude in Chrome) → sign-off visual del usuario → recién ahí mergear.
+**Lo único que sigue sin probar:**
+1. **Controles táctiles (arrastre)** — ni en desktop simulando touch ni
+   en un celular real. El código existe (`touchstart`/`touchmove` en
+   `mundo.js`) pero nunca se ejercitó.
+2. **Sign-off visual del usuario** — cero todavía (ver
+   [[feedback_ui_visual_signoff]]). No mergear sin que el usuario lo vea
+   con sus propios ojos, aunque el motor ya esté probado de punta a
+   punta técnicamente.
+
+**Para retomar**: worktree en `../worktrees/rama-mundo-caminable`,
+`.env` ya con la `DATABASE_URL` real (Neon) puesta tanto ahí como en el
+clon principal. Próximos pasos: mostrarle al usuario `/captura` y
+`/mundo` corriendo (`node server.js` + Claude in Chrome, o que lo abra
+él mismo en su celular) → controles táctiles si hay chance de probarlos
+en un dispositivo real → sign-off → recién ahí mergear a `main` y
+desplegar a Render.
 
 ---
 

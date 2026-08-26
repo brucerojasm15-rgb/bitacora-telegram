@@ -6478,6 +6478,64 @@ aparte y consciente, no una tarea más de la lista.
 
 ---
 
+## Análisis de onboarding/crecimiento (2026-08-25) — comparación con Todoist
+
+El usuario identificó dos huecos por su cuenta (encuesta inicial, video
+introductorio en YouTube/otras plataformas) y pidió un análisis más
+amplio. Investigado en vivo (no de memoria): el canal de YouTube real de
+Todoist tiene **283 videos y 62.7k suscriptores** — el video "¿Qué es
+Todoist?" (1:55, 381k vistas) es solo la puerta de entrada; el grueso del
+canal es contenido de productividad en general (método J.O.T., time
+blocking, revisión semanal, Hemingway Bridge), no solo "cómo usar la
+app". Eso posiciona a Todoist como referente del tema, no solo como
+herramienta — un video suelto de demo apunta mucho más bajo que esto.
+
+**Sobre las dos ideas del usuario:**
+1. **Encuesta inicial** — zentIA ya tiene algo mejor que una encuesta
+   estática: el tutorial multi-capítulo (`/tutorial`, capítulo básico
+   obligatorio + Organización/Social opcionales, `rama-tutorial-
+   multicapitulo` PR #71) hace que el usuario *haga* algo real en vez de
+   responder preguntas. Lo que falta es el paso ANTES de eso: nadie
+   pregunta "¿para qué venís — organizarte solo, competir con amigos, o
+   por el juego de mascotas?", respuesta que podría decidir qué capítulo
+   opcional se ofrece primero. Gap real pero angosto (personalizar el
+   onboarding que ya existe, no construir uno nuevo).
+2. **Video en YouTube** — correcto que no existe nada, pero tiene sentido
+   esperar: mientras zentIA siga siendo un círculo chico de amigos, un
+   video público no tiene mucho a dónde apuntar. Recién importa cuando se
+   abra Plaza/registro público de verdad (decisión ya tomada, ver
+   "Visión grande" arriba — sección "Decisión confirmada... TODA la app
+   se convierte en el mundo caminable" menciona el desbloqueo de
+   crecimiento, tareas N/P de la Fundación técnica).
+
+**Dos gaps adicionales, identificados en esta sesión, que pesan más que
+las dos anteriores:**
+3. **No hay "puerta de entrada" que explique qué es la app.** El único
+   link público hoy (`brucerojasm15-rgb.github.io/bitacora-telegram`) es
+   la pantalla de carga animada para el cold-start de Render (pedida
+   explícitamente como "divertida e interactiva" durante la migración a
+   Render) — no dice qué es zentIA, no muestra capturas, no tiene ninguna
+   prueba social. Mandarle ese link a un desconocido no le explica nada
+   antes de loguearse. Más urgente que el video: sin una página que
+   explique la propuesta, un video no tiene adónde convertir a la gente
+   que lo mira.
+4. **Cero presencia en tiendas de apps.** El bug abierto de descarga del
+   APK (ver más arriba en este archivo) significa que no hay ninguna
+   ficha en Play Store con reseñas/calificaciones — Todoist muestra
+   "337 mil valoraciones" como prueba social en su propia landing.
+   zentIA no tiene ningún equivalente de confianza visible para un
+   desconocido.
+
+**Orden recomendado si se decide crecer más allá del círculo actual**:
+página pública simple que explique la app (3) → encuesta cortita de
+intención al entrar por primera vez (1) → recién ahí un video, apuntando
+a esa página (2) → APK/tienda como iniciativa aparte más larga (4, ya
+documentada como pendiente). **Nada de esto está construido todavía** —
+el usuario no eligió por cuál arrancar, preguntar antes de tomar
+cualquiera de estas cuatro.
+
+---
+
 ## Backlog de tareas (agregar aquí antes de asignar a una rama nueva)
 
 Formato: `- [ ] Descripción corta — asignada a: (rama, o "sin asignar")`

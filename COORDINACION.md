@@ -86,6 +86,76 @@
 
 ## Estado de ramas
 
+### rama-captura-offline
+- Estado: commit hecho, `npm run ci` verde, probada contra la DB real de
+  Neon (servidor local) donde se pudo -- ver nota de alcance de pruebas
+  abajo. Lista para push/merge (reglas de push/merge relajadas para este
+  repo, ver arriba).
+- Tarea: el usuario reportó "no puedo trabajar si la app se puede usar
+  únicamente con internet" -- pidió que funcione offline como un bloc de
+  notas, avisando cuando una función necesite internet. Alcance acotado
+  con el usuario (2 preguntas de scoping antes de construir): SOLO
+  Captura rápida funciona sin conexión (crear pendiente/idea/
+  recordatorio); el resto de la app sigue necesitando señal como hasta
+  ahora. Sincronización automática al recuperar señal (no manual).
+- Archivos tocados: `public/offline-captura.js` (nuevo -- motor de cola
+  local en localStorage + sincronización), `views/captura.ejs` (el
+  submit del form ahora chequea `navigator.onLine`: si no hay red,
+  encola local y sigue en la misma pantalla en vez de navegar; si hay
+  red, comportamiento 100% igual que antes), `views/partials/scripts.ejs`
+  (agrega `<script src="/offline-captura.js" defer>` a TODAS las páginas,
+  no solo /captura, para que la sincronización dispare sola sin importar
+  dónde esté el usuario cuando vuelve la señal), `public/sw.js` (bump a
+  v4: agrega los `.js` que ya se cargaban en toda página logueada pero
+  nunca estaban en `STATIC_ASSETS` -- antes el service worker no los
+  interceptaba, así que sin red fallaban en silencio; nuevo cache
+  separado `pendientes-captura-v1` que guarda la última versión con red
+  de `/captura`, servida como fallback si la navegación falla sin red),
+  `public/offline.html` (arregla branding viejo "Bitácora" → "zentIA",
+  agrega link a Captura rápida).
+- Decisión de diseño importante: cuando se sincroniza una captura hecha
+  offline, se manda siempre `cancelar_asignacion=1` -- el servidor NUNCA
+  puede mostrar la pantalla de "¿asignar esto a @fulano?" durante una
+  sincronización en segundo plano (no hay usuario interactivo delante),
+  así que se salta esa detección a propósito y se guarda siempre como
+  tarea propia. Si mencionás a un amigo en una captura hecha sin
+  conexión, se guarda igual pero SIN asignar -- asignala a mano después
+  si hace falta. Verificado leyendo el código de `POST /captura`: ese
+  branch (`cancelar_asignacion === '1'`) ya existía de antes (es el mismo
+  que usa el botón "Guardar como tarea propia" de la pantalla de
+  confirmación), no es lógica nueva del lado del servidor -- **este PR no
+  toca `server.js` en absoluto**, todo el cambio es cliente + service
+  worker.
+- **Alcance real de las pruebas esta sesión (léase con cuidado antes de
+  asumir que esto está 100% verificado)**: la extensión de Chrome no
+  conectó esta sesión (mismo problema ya documentado en
+  `rama-login-lockscreen`, PR #91) -- no se pudo probar en un navegador
+  real. Lo que SÍ se verificó: `npm run ci` verde (los 2 `.ejs` tocados
+  compilan), `node -c` en los 2 `.js` planos (sintaxis válida), servidor
+  local contra Neon real levantado, `GET /captura` autenticado renderiza
+  el markup nuevo, `/offline-captura.js`/`/sw.js`/`/offline.html` se
+  sirven con 200, y los 3 tipos de captura (pendiente/idea/recordatorio)
+  guardados con el EXACTO payload que manda el motor de sincronización
+  (incluido `cancelar_asignacion=1`) confirmados en la DB real (pendiente
+  quedó con `asignado_a: null` como se esperaba). Cuenta de prueba
+  desechable eliminada después vía la ruta real. **Lo que NO se pudo
+  probar de verdad**: el flujo offline real en un navegador -- que el
+  form efectivamente detecte `navigator.onLine === false` y encole en
+  localStorage en vez de navegar, que el aviso en pantalla aparezca/
+  actualice bien, que la sincronización dispare sola al volver la señal,
+  y sobre todo que el service worker sirva `/captura` desde caché cuando
+  de verdad no hay red (esto es exactamente la clase de bug que este
+  proyecto ya encontró 3 veces -- rama-nav-rediseno, rama-inicio-planta,
+  rama-fix-sw-cache -- todas relacionadas con caché/service worker
+  comportándose distinto de lo esperado en un dispositivo real). **Pedido
+  explícito para quien lea esto**: antes de confiar en que esto funciona
+  de verdad, probarlo en un celular real en modo avión -- abrir /captura
+  con señal primero (para que quede cacheada), después activar modo
+  avión, escribir algo y guardarlo, confirmar que aparece el aviso de
+  "guardado sin conexión", desactivar modo avión, y confirmar que
+  desaparece solo y el pendiente/idea/recordatorio aparece en la lista
+  normal.
+
 ### rama-chat
 - Estado: commit hecho, lista para merge
 - Archivos tocados: server.js (tabla mensajes, tabla amistades, helper usuarioPerteneceAmistad, rutas GET /chat y POST /mensajes), views/chat.ejs (nuevo)

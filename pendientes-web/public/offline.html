@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sin conexión — Bitácora</title>
+  <title>Sin conexión — zentIA</title>
   <link rel="stylesheet" href="/style.css">
   <meta name="theme-color" content="#2D5A3D">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -26,6 +26,11 @@
       </svg>
       <h1>Sin conexión</h1>
       <p>No hay internet en este momento. Cuando vuelva la señal, volvé a intentar.</p>
+      <!-- rama-captura-offline: esta página solo aparece para navegaciones
+           que el service worker no sabe servir sin red -- si ya visitaste
+           /captura antes con conexión, ESA sí carga offline (queda
+           cacheada), así que vale la pena ofrecer el atajo acá. -->
+      <p><a href="/captura">Ir a Captura rápida</a> -- si ya la abriste antes, funciona sin conexión.</p>
       <button type="button" onclick="location.reload()">Reintentar</button>
     </div>
   </main>

@@ -29,6 +29,11 @@
     <% if (typeof guardado !== 'undefined' && guardado) { %>
       <p class="notificacion">Guardado.</p>
     <% } %>
+    <!-- rama-captura-offline: aviso de capturas guardadas sin conexión,
+         todavía sin subir. Arranca vacío/oculto -- el script de más abajo
+         lo llena si ya hay algo en la cola local (ej. el usuario cerró la
+         app offline y la volvió a abrir). -->
+    <p class="notificacion" id="aviso-captura-offline" hidden></p>
     <% if (typeof avisoAsignacion !== 'undefined' && avisoAsignacion) { %>
       <p class="aviso-asignacion"><%= avisoAsignacion %></p>
     <% } %>
@@ -133,6 +138,29 @@
     // revela el campo de fecha) -- mostrar el spinner ahí sería
     // engañoso. Se llama a `mostrarCargaBoton` a mano, solo en el envío
     // de verdad (después de esa guarda).
+    // rama-captura-offline: aviso de "guardado sin conexión, X pendientes
+    // de subir" -- una sola función para mostrarlo/actualizarlo/ocultarlo,
+    // reusada tanto al capturar algo nuevo offline como al abrir la página
+    // con una cola ya existente de una sesión offline anterior.
+    const avisoOffline = document.getElementById('aviso-captura-offline');
+    function actualizarAvisoOffline(pendientes) {
+      if (!avisoOffline) return;
+      if (!pendientes) {
+        avisoOffline.hidden = true;
+        return;
+      }
+      avisoOffline.hidden = false;
+      avisoOffline.textContent = pendientes === 1
+        ? 'Guardado sin conexión. Se subirá cuando tengas señal.'
+        : `Guardado sin conexión. Se subirán ${pendientes} capturas cuando tengas señal.`;
+    }
+    // El motor de sincronización (public/offline-captura.js) llama a esto
+    // cada vez que sube un item de la cola, para que el aviso baje de
+    // número (o desaparezca) en vivo si el usuario sigue en esta página
+    // justo cuando vuelve la señal.
+    window.__actualizarBadgeCapturaOffline = actualizarAvisoOffline;
+    if (window.capturaOffline) actualizarAvisoOffline(window.capturaOffline.contarPendientes());
+
     if (form) {
       form.addEventListener('submit', (e) => {
         const tipo = e.submitter && e.submitter.dataset.tipo;
@@ -144,8 +172,27 @@
         }
         e.preventDefault();
         tipoOculto.value = tipo;
-        if (window.mostrarCargaBoton) window.mostrarCargaBoton(e.submitter);
         reproducirSonido('enviar');
+
+        // rama-captura-offline: sin señal, una navegación real ni siquiera
+        // llegaría al servidor -- se guarda local y se sigue en la misma
+        // pantalla, lista para la próxima captura (el uso real: varias
+        // capturas seguidas mientras no hay señal, ej. en la calle).
+        if (!navigator.onLine && window.capturaOffline) {
+          const pendientes = window.capturaOffline.encolarCaptura({
+            texto: textareaCaptura.value,
+            tipo,
+            cuando: tipo === 'recordatorio' ? inputCuando.value : null,
+          });
+          actualizarAvisoOffline(pendientes);
+          form.reset();
+          campoCuando.hidden = true;
+          autoResizeCaptura();
+          textareaCaptura.focus();
+          return;
+        }
+
+        if (window.mostrarCargaBoton) window.mostrarCargaBoton(e.submitter);
         setTimeout(() => form.submit(), 180);
       });
     }

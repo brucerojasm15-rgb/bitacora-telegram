@@ -21,14 +21,33 @@
 // handler) para que esto no se repita en el futuro con cualquier cambio
 // de CSS -- y se bumpea el nombre acá para forzar un `install` limpio
 // una vez en los dispositivos que ya tenían la v2 cacheada.
-const CACHE_NAME = 'pendientes-static-v3';
+// rama-captura-offline: v4 -- agrega los .js que ya se cargaban en toda
+// página logueada (antes NO estaban en STATIC_ASSETS, así que el service
+// worker nunca los interceptaba: sin red fallaban en silencio y esos
+// scripts simplemente no corrían) más el nuevo /offline-captura.js, cuyo
+// motor de cola/sincronización tiene que poder cargar SIN red para que
+// Captura rápida funcione offline en primer lugar.
+const CACHE_NAME = 'pendientes-static-v4';
+// Caché aparte (no se borra ni se re-crea en cada bump de CACHE_NAME) para
+// la última versión con red de /captura -- ver el bloque de navegaciones
+// más abajo. Separado de CACHE_NAME porque su contenido es HTML dinámico
+// por usuario, no un asset estático versionado con el resto del código.
+const CACHE_CAPTURA = 'pendientes-captura-v1';
 const OFFLINE_URL = '/offline.html';
+// Único path de navegación que este service worker sabe servir sin red --
+// alcance confirmado con el usuario (rama-captura-offline): solo Captura
+// rápida, el resto de la app sigue necesitando conexión como siempre.
+const RUTA_CAPTURA = '/captura';
 const STATIC_ASSETS = [
   '/style.css',
   '/manifest.json',
   '/favicon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/sonidos.js',
+  '/tutorial.js',
+  '/instalar.js',
+  '/offline-captura.js',
   OFFLINE_URL,
 ];
 
@@ -42,7 +61,9 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+      Promise.all(
+        keys.filter((key) => key !== CACHE_NAME && key !== CACHE_CAPTURA).map((key) => caches.delete(key))
+      )
     )
   );
   self.clients.claim();
@@ -52,12 +73,38 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   // Navegaciones (cargar una página, no un asset): siempre a la red primero
-  // -- dependen de sesión/DB, nunca servir una versión vieja cacheada. Si la
-  // red falla del todo (sin internet), mostrar la página offline en vez del
-  // error genérico del navegador.
+  // -- dependen de sesión/DB, nunca servir una versión vieja cacheada porque
+  // sí. Si la red falla del todo (sin internet):
+  // - /captura: se sirve la última versión que sí cargó con red (aunque la
+  //   barra superior/racha queden desactualizadas hasta la próxima carga
+  //   con señal) -- el formulario de captura sigue funcionando igual,
+  //   guarda local vía offline-captura.js. Si nunca se visitó /captura con
+  //   red en este dispositivo, no hay nada cacheado todavía y cae al
+  //   mismo offline.html genérico de siempre.
+  // - cualquier otra página: offline.html genérico, sin cambios (esas
+  //   páginas siguen necesitando conexión, alcance confirmado con el
+  //   usuario).
   if (event.request.mode === 'navigate') {
+    const esCaptura = url.pathname === RUTA_CAPTURA;
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(OFFLINE_URL))
+      fetch(event.request)
+        .then((respuesta) => {
+          // `respuesta.redirected` cubre el caso de sesión vencida (el
+          // middleware global de auth redirige un GET no autenticado a
+          // /login) -- nunca cachear esa página de login bajo la clave de
+          // /captura, o un usuario deslogueado offline vería el form de
+          // captura como si siguiera con sesión.
+          if (esCaptura && respuesta.ok && !respuesta.redirected) {
+            const copia = respuesta.clone();
+            caches.open(CACHE_CAPTURA).then((cache) => cache.put(RUTA_CAPTURA, copia));
+          }
+          return respuesta;
+        })
+        .catch(() =>
+          esCaptura
+            ? caches.match(RUTA_CAPTURA).then((cacheada) => cacheada || caches.match(OFFLINE_URL))
+            : caches.match(OFFLINE_URL)
+        )
     );
     return;
   }

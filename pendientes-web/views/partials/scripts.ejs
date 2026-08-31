@@ -262,6 +262,11 @@
     })();
   </script>
   <script src="/instalar.js" defer></script>
+  <!-- rama-captura-offline: se carga en TODAS las páginas (no solo
+       /captura) para que la sincronización dispare sola en cuanto vuelve
+       la señal, sin importar en qué página de la app esté el usuario en
+       ese momento -- ver public/offline-captura.js. -->
+  <script src="/offline-captura.js" defer></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

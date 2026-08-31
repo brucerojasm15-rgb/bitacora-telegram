@@ -5870,6 +5870,25 @@ eliminación de ese repo/bot sin quedar huérfano.
   DB real (capturas mobile/desktop, flujo de asignación por texto verificado dentro
   del layout nuevo). CI en verde. Diff mostrado y aprobado por el usuario antes de
   pushear. Commit de merge 45405b5.
+- 2026-08-31 — merge de rama-captura-offline (46481ca) → main vía PR #109: sin
+  conflictos. CI verde (`verificar` + `pruebas-integracion`). Commit de merge
+  `94ead98`. Respuesta al pedido del usuario "no puedo trabajar si la app se
+  puede usar únicamente con internet" — alcance acotado con 2 preguntas de
+  scoping: solo Captura rápida funciona sin conexión (guarda local, sincroniza
+  sola al volver la señal); el resto de la app sigue necesitando internet. No
+  toca `server.js` (reusa `cancelar_asignacion=1` ya existente). Ver la
+  sección `rama-captura-offline` en "Estado de ramas" para el detalle
+  completo. **Importante, no repetir el error de rama-login-lockscreen (PR
+  #91)**: la extensión de Chrome no conectó esta sesión, así que el flujo
+  offline real (localStorage + service worker sirviendo `/captura` sin red)
+  NO se probó en un navegador/celular real, solo verificación de servidor
+  (CI, DB real con el payload exacto de sincronización). Pendiente: prueba
+  real en modo avión por el usuario o una sesión con Chrome disponible antes
+  de asumir que esto funciona sin fallas — y confirmar el deploy en Render
+  como `live` (no se pudo verificar el estado real del deploy esta sesión,
+  sin API key de Render a mano; solo se confirmó que la URL responde 200,
+  que por la lección ya documentada en este archivo NO es prueba suficiente
+  de que el deploy nuevo esté sirviendo).
 
 ## Receta: reconstruir una rama sobre main actualizado (PR quedó CONFLICTING)
 

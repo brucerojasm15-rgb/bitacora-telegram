@@ -111,11 +111,15 @@
     // sin textarea) — de ahí la guarda `if (textareaCaptura)`, que
     // rama-nav-mobile original no necesitaba porque no conocía ese flujo.
     const textareaCaptura = document.getElementById('captura-texto');
+    // rama-captura-offline: declarada afuera del `if` (antes vivía adentro)
+    // porque el submit handler de más abajo también la necesita para
+    // resetear la altura del textarea tras guardar una captura offline --
+    // sigue guardada por `if (textareaCaptura)` en el resto de sus usos.
+    function autoResizeCaptura() {
+      textareaCaptura.style.height = 'auto';
+      textareaCaptura.style.height = textareaCaptura.scrollHeight + 'px';
+    }
     if (textareaCaptura) {
-      const autoResizeCaptura = () => {
-        textareaCaptura.style.height = 'auto';
-        textareaCaptura.style.height = textareaCaptura.scrollHeight + 'px';
-      };
       autoResizeCaptura();
       textareaCaptura.addEventListener('input', autoResizeCaptura);
     }

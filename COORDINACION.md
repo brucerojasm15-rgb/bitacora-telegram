@@ -156,6 +156,45 @@
   desaparece solo y el pendiente/idea/recordatorio aparece en la lista
   normal.
 
+**Actualización (mismo día, `rama-fix-captura-offline-scope`)**: la
+extensión de Chrome SÍ conectó más tarde en la sesión (el usuario abrió
+Brave) -- se pudo hacer la prueba real pendiente de arriba. **Encontró un
+bug real de verdad**: `ReferenceError: autoResizeCaptura is not defined`
+al capturar offline -- la función vivía adentro del bloque
+`if (textareaCaptura) { const autoResizeCaptura = ... }` y el nuevo
+branch offline (afuera de ese bloque) la llamaba igual. El primer submit
+offline "funcionaba" de casualidad (el error tira DESPUÉS de que
+`encolarCaptura`/`actualizarAvisoOffline`/`form.reset()` ya corrieron),
+pero cualquier submit siguiente en la misma carga de página quedaba roto
+en silencio (el listener no volvía a ejecutar correctamente). Arreglado
+sacando `autoResizeCaptura` del `if` a una function declaration en el
+scope de afuera. Reprobado end-to-end con Chrome real (Brave) contra un
+servidor local apuntando a la Neon real, cuenta de prueba
+`ztestofflinebr` (eliminada después vía `/ajustes/eliminar-cuenta`):
+- 3 capturas offline seguidas (pendiente/idea/recordatorio) simulando
+  `navigator.onLine = false` -- las 3 se encolaron bien, sin crash, aviso
+  actualizó el contador correctamente ("se subirán 3 capturas").
+- Sincronización real: `navigator.onLine = true` + `sincronizar()` ->
+  cola vacía, aviso se ocultó solo, y las 3 filas aparecieron en la DB
+  real (`pendientes`/`ideas`/`recordatorios`) con el contenido correcto.
+- **La prueba que más importaba** (el service worker sirviendo `/captura`
+  sin red real, no simulada): se mató el proceso del servidor local (así
+  el origen queda genuinamente inalcanzable, no solo `navigator.onLine`
+  pisado) y se recargó `/captura` -- cargó completa desde el caché
+  (`pendientes-captura-v1`), con sesión, saludo y formulario funcionando,
+  `performance.getEntriesByType('navigation')[0].type === 'navigate'`
+  (navegación real, no bfcache) y `fetch('/captura')` confirmado
+  fallando de verdad contra el servidor apagado.
+- Sin errores de consola en ningún paso tras el fix.
+- Lección para dejar escrita: el mismo bug (variable declarada adentro
+  de un `if` que un código agregado después, afuera de ese `if`, termina
+  necesitando) ya había pasado antes en este archivo de formas distintas
+  -- vale la pena, al agregar lógica nueva a un script existente, revisar
+  qué scope tienen las funciones/variables que se van a reusar ANTES de
+  asumir que están disponibles, no solo confiar en que `npm run ci`
+  (verificación de sintaxis EJS, no de errores en tiempo de ejecución del
+  JS del cliente) lo hubiera detectado -- no lo detecta.
+
 ### rama-chat
 - Estado: commit hecho, lista para merge
 - Archivos tocados: server.js (tabla mensajes, tabla amistades, helper usuarioPerteneceAmistad, rutas GET /chat y POST /mensajes), views/chat.ejs (nuevo)

@@ -165,20 +165,36 @@
     window.location.href = DESTINO;
   }
 
+  // rama-fix-cortina-render: antes esto hacía un ping con <img src="/favicon.ico">
+  // y trataba onload Y onerror como "ya está lista" -- /favicon.ico nunca
+  // existió en la app real (redirige a /login), así que onerror se disparaba
+  // siempre, tanto con Render dormido como despierto, y la cortina redirigía
+  // casi de inmediato sin esperar de verdad. Ahora pide GET /salud (JSON,
+  // con CORS habilitado solo para este origen) -- Render sirve su propio
+  // placeholder para cualquier ruta mientras el contenedor arranca, pero ese
+  // placeholder nunca puede responder con este JSON ni con el header CORS
+  // correcto, así que un fetch exitoso acá SÍ confirma que la app real ya
+  // está respondiendo, no solo que "algo" respondió.
   function intentar() {
     if (listo) return;
-    var img = new Image();
     var terminado = false;
     var vencer = setTimeout(function () {
       if (!terminado) { terminado = true; programarSiguiente(); }
     }, 5000);
-    img.onload = img.onerror = function () {
-      if (terminado) return;
-      terminado = true;
-      clearTimeout(vencer);
-      irAlDestino();
-    };
-    img.src = DESTINO + '/favicon.ico?t=' + Date.now();
+    fetch(DESTINO + '/salud?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function (datos) {
+        if (terminado || !datos || datos.ok !== true) return Promise.reject();
+        terminado = true;
+        clearTimeout(vencer);
+        irAlDestino();
+      })
+      .catch(function () {
+        if (terminado) return;
+        terminado = true;
+        clearTimeout(vencer);
+        programarSiguiente();
+      });
   }
 
   function programarSiguiente() {

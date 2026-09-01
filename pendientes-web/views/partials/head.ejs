@@ -21,10 +21,23 @@
        cortina (ver docs/manifest.json) -- este archivo manifest.json
        sigue existiendo y cacheado por el service worker solo para no
        romper instalaciones viejas que ya apuntaban acá. -->
+  <!-- 2026-09-01: esa protección de arriba solo cubre el flujo de
+       Android/Chrome (banner automático basado en el manifest). En iOS,
+       "Agregar a inicio" desde Safari NO mira manifest.json para nada --
+       usa lo que haya en LA PÁGINA ACTUAL. Si alguien llega acá directo
+       (el link "Entrar directo" de la cortina cuando se cansa de
+       esperar, un bookmark viejo, un resultado de buscador) y agrega a
+       inicio desde acá, `apple-mobile-web-app-capable` hacía que ese
+       acceso abriera en pantalla completa como si fuera la app real --
+       la misma cortina que se saltea la Android. Se saca ese meta (y los
+       otros dos que dependen de él) de las páginas de Render a propósito
+       -- la cortina en docs/index.html ya declara los suyos propios, ese
+       sigue siendo el único lugar pensado para instalar. Sin este meta,
+       agregar una página de Render a inicio desde acá crea un simple
+       marcador de Safari (con la barra de direcciones visible), no un
+       ícono de app -- no hay forma de bloquear el bookmark en sí (eso lo
+       decide el navegador), pero al menos no imita ser la app real. -->
   <meta name="theme-color" content="#0B4A2E">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="zentIA">

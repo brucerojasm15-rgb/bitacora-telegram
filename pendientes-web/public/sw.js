@@ -27,7 +27,11 @@
 // scripts simplemente no corrían) más el nuevo /offline-captura.js, cuyo
 // motor de cola/sincronización tiene que poder cargar SIN red para que
 // Captura rápida funcione offline en primer lugar.
-const CACHE_NAME = 'pendientes-static-v4';
+// rama-cortina-instalable: v5 -- saca /instalar.js de la lista (el banner
+// de "Instalar zentIA" se movió a la cortina de GitHub Pages, ver
+// COORDINACION.md) y fuerza un install limpio para no dejar esa entrada
+// vieja huérfana en el caché.
+const CACHE_NAME = 'pendientes-static-v5';
 // Caché aparte (no se borra ni se re-crea en cada bump de CACHE_NAME) para
 // la última versión con red de /captura -- ver el bloque de navegaciones
 // más abajo. Separado de CACHE_NAME porque su contenido es HTML dinámico
@@ -46,7 +50,6 @@ const STATIC_ASSETS = [
   '/icons/icon-512.png',
   '/sonidos.js',
   '/tutorial.js',
-  '/instalar.js',
   '/offline-captura.js',
   OFFLINE_URL,
 ];

@@ -115,25 +115,6 @@ app.use(
   })
 );
 
-// rama-fix-cortina-render: chequeo de "ya está despierta de verdad", usado
-// por la cortina de docs/index.html (GitHub Pages) mientras Render duerme
-// el servicio free. Antes esa cortina hacía ping a /favicon.ico como
-// <img> y trataba TANTO onload COMO onerror como "ya está lista" -- pero
-// /favicon.ico nunca existió en esta app (redirige a /login), así que
-// onerror se disparaba siempre, tanto con Render todavía dormido (sirve
-// su propia pantalla de "waking up") como con la app ya despierta -- la
-// cortina redirigía casi al toque sin esperar de verdad, y el usuario
-// terminaba viendo la pantalla de Render en vez de la nuestra. Ruta
-// pública (antes del middleware de auth), con CORS habilitado solo para
-// el origen de GitHub Pages -- Render sirve SU placeholder para
-// cualquier path mientras arranca, pero nunca agrega este header, así
-// que un fetch real desde la cortina puede distinguir "responde la app"
-// de "responde el placeholder de Render".
-app.get('/salud', (req, res) => {
-  res.set('Access-Control-Allow-Origin', 'https://brucerojasm15-rgb.github.io');
-  res.json({ ok: true });
-});
-
 /* ============================================================
    PASO 1 (ACCESS_KEY por query string) — DESACTIVADO, Paso 3 lo
    reemplaza por sesiones con login real. Se deja comentado (no

@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>zentIA -- despertando</title>
+<!-- rama-cortina-instalable: manifest + SW propios de esta página, para
+     que "Instalar zentIA" cree un ícono que abre ACÁ (la cortina) y no
+     directo en Render -- antes el único manifest instalable era el de la
+     app en Render, así que cualquier instalación se saltaba esta cortina
+     por completo y mostraba la pantalla de arranque de Render. -->
+<link rel="manifest" href="/bitacora-telegram/manifest.json">
+<meta name="theme-color" content="#101418">
+<link rel="icon" type="image/svg+xml" href="/bitacora-telegram/favicon.svg">
+<link rel="apple-touch-icon" href="/bitacora-telegram/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="zentIA">
 <style>
   :root {
     color-scheme: light dark;
@@ -101,6 +113,18 @@
     color: #6d7885;
   }
   .enlace-directo a { color: #9fb0bf; }
+  .boton-instalar-cortina {
+    display: block;
+    margin: 18px auto 0;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--acento), var(--acento2));
+    color: #0b1410;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -165,36 +189,48 @@
     window.location.href = DESTINO;
   }
 
-  // rama-fix-cortina-render: antes esto hacía un ping con <img src="/favicon.ico">
-  // y trataba onload Y onerror como "ya está lista" -- /favicon.ico nunca
-  // existió en la app real (redirige a /login), así que onerror se disparaba
-  // siempre, tanto con Render dormido como despierto, y la cortina redirigía
-  // casi de inmediato sin esperar de verdad. Ahora pide GET /salud (JSON,
-  // con CORS habilitado solo para este origen) -- Render sirve su propio
-  // placeholder para cualquier ruta mientras el contenedor arranca, pero ese
-  // placeholder nunca puede responder con este JSON ni con el header CORS
-  // correcto, así que un fetch exitoso acá SÍ confirma que la app real ya
-  // está respondiendo, no solo que "algo" respondió.
+  // rama-fix-cortina-render: el bug original -- ping con
+  // <img src="/favicon.ico"> tratando onload Y onerror como "ya está
+  // lista". /favicon.ico nunca existió en la app real (redirige a
+  // /login), así que onerror se disparaba siempre, tanto con Render
+  // dormido como despierto, y la cortina redirigía casi de inmediato sin
+  // esperar de verdad.
+  //
+  // rama-cortina-instalable: se probó primero un fetch() real contra un
+  // endpoint /salud dedicado (con CORS) -- funcionaba perfecto por curl,
+  // pero probado de verdad en un navegador real (Brave) devolvía 503 o
+  // directamente "Failed to fetch" de forma intermitente, mientras un
+  // <img> pedido al mismo tiempo cargaba sin problema. La explicación más
+  // probable: Cloudflare (delante de Render, confirmado en los headers)
+  // trata un fetch()/XHR cross-origin distinto de una carga de
+  // sub-recurso como <img> -- probado 5 veces seguidas, <img> nunca
+  // falló mientras fetch() fallaba la mayoría de las veces. Se vuelve al
+  // patrón <img>, pero corrigiendo el bug real: apunta a /favicon.svg
+  // (que SÍ existe de verdad en la app -- confirmado con curl, 200
+  // image/svg+xml) en vez de /favicon.ico, y ahora onload/onerror
+  // significan lo que deberían: onload = la app respondió con una
+  // imagen real = lista; onerror = todavía no (Render sirve su propio
+  // placeholder HTML, que nunca carga como imagen válida) = reintentar.
   function intentar() {
     if (listo) return;
+    var img = new Image();
     var terminado = false;
     var vencer = setTimeout(function () {
       if (!terminado) { terminado = true; programarSiguiente(); }
     }, 5000);
-    fetch(DESTINO + '/salud?t=' + Date.now(), { cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function (datos) {
-        if (terminado || !datos || datos.ok !== true) return Promise.reject();
-        terminado = true;
-        clearTimeout(vencer);
-        irAlDestino();
-      })
-      .catch(function () {
-        if (terminado) return;
-        terminado = true;
-        clearTimeout(vencer);
-        programarSiguiente();
-      });
+    img.onload = function () {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(vencer);
+      irAlDestino();
+    };
+    img.onerror = function () {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(vencer);
+      programarSiguiente();
+    };
+    img.src = DESTINO + '/favicon.svg?t=' + Date.now();
   }
 
   function programarSiguiente() {
@@ -204,6 +240,27 @@
 
   setInterval(actualizarProgreso, 500);
   intentar();
+
+  // rama-cortina-instalable: registra el SW propio de esta página (ver
+  // docs/sw.js) para que sea instalable, y ofrece el prompt nativo si el
+  // navegador lo dispara -- mismo patrón que public/instalar.js de la app
+  // real, pero acá en vez de allá, para que lo que se instale sea ESTA
+  // página (la cortina) y no la app de Render directo.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/bitacora-telegram/sw.js').catch(function () {});
+  }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    var boton = document.createElement('button');
+    boton.type = 'button';
+    boton.textContent = 'Instalar zentIA';
+    boton.className = 'boton-instalar-cortina';
+    boton.addEventListener('click', function () {
+      e.prompt();
+      boton.remove();
+    });
+    document.querySelector('.tarjeta').appendChild(boton);
+  });
 </script>
 </body>
 </html>

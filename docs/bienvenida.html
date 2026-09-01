@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>zentIA -- bitácora personal con IA compañera</title>
+<meta name="description" content="Pendientes, ideas y recordatorios con una IA compañera, además de un juego de mascotas para no perder la costumbre. Funciona sin conexión.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  :root {
+    color-scheme: light dark;
+    --fondo: #101418;
+    --fondo2: #161c23;
+    --tarjeta: #1a2028;
+    --borde: #232b35;
+    --texto: #eef2f6;
+    --texto-tenue: #9aa7b3;
+    --acento: #2fe39a;
+    --acento2: #f4c86b;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 50% 0%, var(--fondo2), var(--fondo) 60%);
+    color: var(--texto);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  a { color: inherit; }
+  .envoltura {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* --- Hero --- */
+  .hero {
+    padding: 64px 0 48px;
+    text-align: center;
+  }
+  .mascota-envoltura {
+    width: 96px;
+    height: 96px;
+    margin: 0 auto 20px;
+    position: relative;
+  }
+  .mascota-brillo {
+    position: absolute;
+    inset: -18px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(47, 227, 154, 0.35), transparent 70%);
+    filter: blur(6px);
+  }
+  .mascota { position: relative; width: 100%; height: 100%; }
+  .mascota svg { width: 100%; height: 100%; display: block; }
+  .hero h1 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    margin: 0 0 12px;
+    font-weight: 700;
+  }
+  .hero p.tagline {
+    color: var(--texto-tenue);
+    font-size: 1.1rem;
+    max-width: 520px;
+    margin: 0 auto 32px;
+  }
+  .botones-hero {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .boton {
+    display: inline-block;
+    padding: 13px 26px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 0.98rem;
+    border: 1px solid transparent;
+  }
+  .boton-primario {
+    background: linear-gradient(90deg, var(--acento), var(--acento2));
+    color: #0b1410;
+  }
+  .boton-secundario {
+    background: transparent;
+    border-color: var(--borde);
+    color: var(--texto);
+  }
+
+  /* --- Secciones genéricas --- */
+  section { padding: 40px 0; }
+  h2 {
+    font-size: 1.5rem;
+    text-align: center;
+    margin: 0 0 8px;
+  }
+  .subtitulo-seccion {
+    text-align: center;
+    color: var(--texto-tenue);
+    max-width: 520px;
+    margin: 0 auto 32px;
+  }
+
+  /* --- Qué es --- */
+  .que-es p {
+    max-width: 640px;
+    margin: 0 auto;
+    text-align: center;
+    font-size: 1.05rem;
+    color: #cfd8e0;
+  }
+
+  /* --- Funciones --- */
+  .funciones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .funcion {
+    background: var(--tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 16px;
+    padding: 22px;
+  }
+  .funcion .icono { font-size: 1.6rem; margin-bottom: 10px; display: block; }
+  .funcion h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .funcion p { margin: 0; color: var(--texto-tenue); font-size: 0.92rem; }
+
+  /* --- Capturas --- */
+  .capturas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+  .captura {
+    background: var(--tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .captura img { display: block; width: 100%; height: auto; }
+  .captura figcaption {
+    padding: 14px 18px;
+    color: var(--texto-tenue);
+    font-size: 0.9rem;
+  }
+  figure { margin: 0; }
+
+  /* --- CTA final --- */
+  .cta-final {
+    text-align: center;
+    padding: 56px 0 72px;
+  }
+  .cta-final h2 { margin-bottom: 20px; }
+
+  footer {
+    text-align: center;
+    padding: 28px 0 40px;
+    color: #5c6773;
+    font-size: 0.82rem;
+  }
+  footer a { color: #7f8b96; }
+</style>
+</head>
+<body>
+
+  <div class="envoltura hero">
+    <div class="mascota-envoltura">
+      <div class="mascota-brillo" aria-hidden="true"></div>
+      <div class="mascota" aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <ellipse cx="78" cy="70" rx="14" ry="6" fill="#2fe39a"/>
+          <ellipse cx="50" cy="58" rx="34" ry="26" fill="#2fe39a"/>
+          <circle cx="34" cy="34" r="12" fill="#2fe39a"/>
+          <circle cx="66" cy="34" r="12" fill="#2fe39a"/>
+          <ellipse cx="40" cy="48" rx="14" ry="9" fill="#a7f3d4" opacity="0.55"/>
+          <circle cx="42" cy="60" r="5" fill="#f4c86b" opacity="0.85"/>
+          <circle cx="58" cy="60" r="5" fill="#f4c86b" opacity="0.85"/>
+          <circle cx="34" cy="34" r="6" fill="#0b3d2a"/>
+          <circle cx="66" cy="34" r="6" fill="#0b3d2a"/>
+          <circle cx="42" cy="56" r="4" fill="#0b3d2a"/>
+          <circle cx="58" cy="56" r="4" fill="#0b3d2a"/>
+          <path d="M46 66 Q50 70 54 66" stroke="#0b3d2a" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <h1>zentIA</h1>
+    <p class="tagline">Tu bitácora personal con una IA compañera -- capturá pendientes, ideas y recordatorios en segundos, sin perder la costumbre.</p>
+    <div class="botones-hero">
+      <a class="boton boton-primario" href="index.html?ir=/registro">Crear cuenta</a>
+      <a class="boton boton-secundario" href="index.html">Ya tengo cuenta</a>
+    </div>
+  </div>
+
+  <section class="envoltura que-es">
+    <h2>¿Qué es zentIA?</h2>
+    <p>Una app para anotar lo que se te ocurra -- una tarea, una idea, algo para recordar -- en el momento, sin fricción. Una IA compañera te ayuda a organizarlo, y un sistema de rachas y una mascota virtual te dan una razón para volver todos los días, no solo cuando "hay que ser productivo".</p>
+  </section>
+
+  <section class="envoltura">
+    <h2>Todo en un solo lugar</h2>
+    <p class="subtitulo-seccion">Pensado para usarse de verdad, no solo para instalarse y olvidarse.</p>
+    <div class="funciones">
+      <div class="funcion">
+        <span class="icono">⚡</span>
+        <h3>Captura rápida</h3>
+        <p>Escribís lo que sea y elegís si es un pendiente, una idea o un recordatorio. Funciona incluso sin conexión -- se guarda solo y se sube cuando vuelve la señal.</p>
+      </div>
+      <div class="funcion">
+        <span class="icono">💡</span>
+        <h3>Ideas organizadas con IA</h3>
+        <p>Un pensamiento largo se separa solo en ideas puntuales y etiquetadas, sin que tengas que ordenarlo vos mismo.</p>
+      </div>
+      <div class="funcion">
+        <span class="icono">🔥</span>
+        <h3>Metas y rachas</h3>
+        <p>Seguimiento de objetivos personales y una racha diaria que podés comparar con amigos, para sostener el hábito.</p>
+      </div>
+      <div class="funcion">
+        <span class="icono">💬</span>
+        <h3>Amigos y chat</h3>
+        <p>Asigná tareas a otra persona, compartí metas y charlá directo desde la app.</p>
+      </div>
+      <div class="funcion">
+        <span class="icono">🐸</span>
+        <h3>Un juego de mascotas de verdad</h3>
+        <p>Adoptá, cruzá y cuidá animales con genética real -- si los descuidás, se enferman de verdad, igual que una mascota real.</p>
+      </div>
+      <div class="funcion">
+        <span class="icono">📲</span>
+        <h3>Se instala como una app</h3>
+        <p>Sin tiendas de aplicaciones -- se agrega a la pantalla de inicio directo desde el navegador, en un toque.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="envoltura">
+    <h2>Así se ve</h2>
+    <div class="capturas">
+      <figure class="captura">
+        <img src="capturas/captura-rapida.jpg" alt="Pantalla de Captura rápida de zentIA, con un textarea para escribir y tres botones: Pendiente, Idea y Recordatorio" loading="lazy">
+        <figcaption>Captura rápida -- escribís, elegís qué es, listo.</figcaption>
+      </figure>
+      <figure class="captura">
+        <img src="capturas/casa.jpg" alt="Pantalla de Casa de zentIA, mostrando a Zen (el personaje guía) y las estadísticas de nivel, espacio y monedas del juego de mascotas" loading="lazy">
+        <figcaption>Casa -- el juego de mascotas, con Zen como guía.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="envoltura cta-final">
+    <h2>¿Empezamos?</h2>
+    <div class="botones-hero">
+      <a class="boton boton-primario" href="index.html?ir=/registro">Crear cuenta gratis</a>
+      <a class="boton boton-secundario" href="index.html">Ya tengo cuenta</a>
+    </div>
+  </section>
+
+  <footer>
+    zentIA -- <a href="https://bitacora-telegram.onrender.com/terminos">Términos y privacidad</a>
+  </footer>
+
+</body>
+</html>

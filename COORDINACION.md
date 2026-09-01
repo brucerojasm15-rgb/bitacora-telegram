@@ -291,6 +291,56 @@ instalación de punta a punta (tocar el botón, confirmar en el diálogo
 nativo del navegador, abrir el ícono resultante) -- pedirle al usuario
 que lo pruebe en su celular real la próxima vez que tenga oportunidad.
 
+### rama-landing-publica
+- Estado: commit hecho, no mergeada todavía.
+- Tarea: siguiente paso del pedido "hagámoslo una app profesional" --
+  gap #3 ya identificado en el análisis de onboarding/crecimiento del
+  2026-08-25 ("no hay puerta de entrada que explique qué es la app"). El
+  usuario eligió explícitamente la opción gratis (GitHub Pages, sin
+  costo) entre 3 alternativas ofrecidas (eliminar el cold-start de Render
+  ~$7/mes, dominio propio ~$10-20/año, landing pública gratis).
+- Qué se hizo: nueva página `docs/bienvenida.html` (no reemplaza
+  `docs/index.html`, que sigue siendo la cortina de entrada rápida para
+  quien ya usa la app / el ícono instalado -- se agregó una URL nueva a
+  propósito para no romper el atajo que el usuario ya tiene guardado en
+  su celular). Contenido: hero con la mascota + tagline, qué es zentIA,
+  grilla de 6 funciones (captura offline, ideas con IA, metas/rachas,
+  amigos/chat, juego de mascotas, instalable), 2 capturas de pantalla
+  REALES de la app (no mockups) tomadas con Chrome real contra
+  producción, y 2 llamados a la acción ("Crear cuenta" / "Ya tengo
+  cuenta"). Mismo lenguaje visual que `docs/index.html` (mismos colores,
+  mascota, tipografía) para que se sienta parte del mismo sitio.
+- Capturas de pantalla: se creó una cuenta de prueba desechable
+  (`ztestdemopublic`, borrada después vía `/ajustes/eliminar-cuenta`), se
+  cargaron 5 items de ejemplo reales (pendientes/idea/recordatorio con
+  texto genérico tipo "cliente") vía `POST /captura`, se tomaron capturas
+  reales de `/captura` y `/casa` con Chrome (Brave) recortadas para no
+  mostrar el nombre de usuario, y se convirtieron a JPG optimizado con
+  PIL (de ~170-260KB PNG a 31KB/49KB) antes de commitear --
+  `docs/capturas/captura-rapida.jpg` y `docs/capturas/casa.jpg`.
+- `docs/index.html` (la cortina) se extendió para aceptar `?ir=/registro`
+  o `?ir=/login` (lista blanca fija, nunca arma la URL con lo que venga
+  en la query sin validar -- evita un open-redirect) -- así el botón
+  "Crear cuenta" de la landing pasa primero por la cortina (esperando a
+  Render de verdad) y aterriza en `/registro`, no en la raíz.
+- Probado con Chrome real (Brave) contra un mirror local de `docs/`
+  (mismo truco de `rama-cortina-instalable`, sirve la carpeta bajo
+  `/bitacora-telegram/` para reproducir el path real de GitHub Pages):
+  layout completo revisado scrolleando toda la página (hero, funciones,
+  capturas, CTA final, footer con link a términos), sin scroll horizontal
+  (`document.body.scrollWidth` ≈ `window.innerWidth`), botón "Crear
+  cuenta" clickeado de punta a punta -- pasó por la cortina real
+  (esperó, sin mostrar la pantalla de Render) y aterrizó en
+  `https://bitacora-telegram.onrender.com/registro` de verdad. Sin
+  errores de consola. **No probado**: mobile real (solo se vio en el
+  viewport de este navegador, ~1050px) -- pedirle al usuario que la abra
+  en su celular antes de compartir el link con un cliente de verdad.
+- Pendiente, no se tocó en esta rama: la URL de la landing
+  (`.../bitacora-telegram/bienvenida.html`) todavía no se comparte en
+  ningún lado (ni en el manifest, ni en `/registro`, ni en ningún otro
+  lugar de la app) -- es el usuario quien decide cuándo y a quién
+  mandarle este link.
+
 ### rama-chat
 - Estado: commit hecho, lista para merge
 - Archivos tocados: server.js (tabla mensajes, tabla amistades, helper usuarioPerteneceAmistad, rutas GET /chat y POST /mensajes), views/chat.ejs (nuevo)

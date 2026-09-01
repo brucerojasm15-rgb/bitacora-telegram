@@ -156,7 +156,19 @@
   </div>
 
 <script>
+  // rama-landing-publica: la landing (index de más arriba en el sitio,
+  // ver /index.html en la raíz del repo docs/) puede pedir un destino
+  // puntual (ej. "Crear cuenta" -> /registro) via ?ir=. Lista blanca fija
+  // -- nunca se arma la URL con lo que venga en la query sin chequear
+  // contra esta lista, para no abrir un open-redirect.
+  var RUTAS_PERMITIDAS = ['/registro', '/login'];
+  var rutaPedida = new URLSearchParams(window.location.search).get('ir');
+  var RUTA_FINAL = RUTAS_PERMITIDAS.indexOf(rutaPedida) !== -1 ? rutaPedida : '';
   var DESTINO = 'https://bitacora-telegram.onrender.com';
+  // El link manual "Entrar directo" también respeta el ?ir= -- si alguien
+  // vino de la landing pidiendo /registro y se cansa de esperar, no tiene
+  // sentido mandarlo al login en vez de a donde realmente quería ir.
+  document.getElementById('enlace-manual').href = DESTINO + RUTA_FINAL;
   var mensajes = [
     'Dándole de comer...',
     'Estirando las patas...',
@@ -186,7 +198,7 @@
     listo = true;
     elBarra.style.width = '100%';
     elMensaje.textContent = '¡Listo! Entrando...';
-    window.location.href = DESTINO;
+    window.location.href = DESTINO + RUTA_FINAL;
   }
 
   // rama-fix-cortina-render: el bug original -- ping con

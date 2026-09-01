@@ -241,6 +241,56 @@ servidor local apuntando a la Neon real, cuenta de prueba
   worker (para que lo que se instale sea la cortina, no la app directo) --
   cambio más grande, no incluido acá.
 
+**Actualización importante (mismo día, `rama-cortina-instalable`): el
+fetch() de arriba resultó NO ser confiable de verdad -- corregido.**
+Con el navegador real conectado (Brave) se probó el flujo completo por
+primera vez: `curl` a `/salud` funcionaba perfecto siempre, pero el mismo
+`fetch()` **desde el navegador** devolvía 503 o directamente
+`TypeError: Failed to fetch` de forma intermitente -- confirmado con
+`read_network_requests`, no era un error de lectura, eran respuestas 503
+reales llegando al navegador mientras `curl` conseguía 200 en el mismo
+instante. Se probó la hipótesis de que Cloudflare (delante de Render,
+confirmado en los headers -- `Server: cloudflare`) trata distinto un
+`fetch()`/XHR cross-origin de una carga de sub-recurso como `<img>`:
+5 cargas de `<img src="/favicon.svg">` seguidas, en el mismo momento en
+que el `fetch()` fallaba, cargaron las 5 sin problema. **Se volvió al
+patrón `<img>` original**, pero corrigiendo el bug real esta vez: apunta
+a `/favicon.svg` (que sí existe de verdad, confirmado con curl -- 200
+`image/svg+xml`) en vez de `/favicon.ico` (nunca existió), y ahora
+`onload` = lista de verdad / `onerror` = todavía no, en vez de tratar
+ambos como éxito. Se sacó la ruta `GET /salud` de `server.js` (ya no la
+usa nadie). **Confirmado end-to-end en un navegador real**: la cortina
+sirviéndose desde un mirror local de `docs/` (para reproducir el path
+`/bitacora-telegram/` real de GitHub Pages) esperó correctamente mientras
+Render seguía respondiendo 503, y redirigió sola en cuanto Render
+realmente quedó arriba -- aterrizó en la app real, autenticada, sin
+pantalla de Render de por medio, en ~6s una vez lista. **Lección para
+cualquier chequeo futuro de "¿ya está lista la app?" contra este dominio
+específico**: usar `<img>`/carga de sub-recurso, NO `fetch()`/XHR --
+Cloudflare parece bloquear/dar 503 a fetch() cross-origin de forma
+intermitente aunque el origen esté sano de verdad (confirmado con curl
+en paralelo, siempre 200).
+
+**En la misma rama, además, se resolvió la nota pendiente de arriba** (el
+ícono instalable apuntaba siempre a Render): `docs/index.html` ahora
+tiene su propio `manifest.json` + `sw.js` (mínimo, solo para cumplir los
+requisitos de instalabilidad) -- el botón "Instalar zentIA" vive ahora
+en la cortina, no en la app. Del lado de Render se sacó
+`<link rel="manifest">` de `partials/head.ejs` (con comentario explicando
+por qué) y se borró `public/instalar.js` (ya no lo carga ninguna vista) --
+`manifest.json` de la app sigue existiendo/cacheado por el service worker
+solo para no romper instalaciones viejas que ya apuntaban ahí. Motivo:
+"ya estoy trabajando con clientes" -- el usuario pidió explícitamente que
+la app deje de sentirse como un proyecto casero, empezando por que
+instalarla no muestre nunca la pantalla de infraestructura de un tercero.
+Probado con Chrome real (Brave) contra un mirror local de `docs/`:
+`beforeinstallprompt` se disparó, el botón "Instalar zentIA" apareció,
+el manifest y los 4 íconos + favicon.svg resolvieron 200, el service
+worker registró con el scope correcto. **No probado**: el flujo de
+instalación de punta a punta (tocar el botón, confirmar en el diálogo
+nativo del navegador, abrir el ícono resultante) -- pedirle al usuario
+que lo pruebe en su celular real la próxima vez que tenga oportunidad.
+
 ### rama-chat
 - Estado: commit hecho, lista para merge
 - Archivos tocados: server.js (tabla mensajes, tabla amistades, helper usuarioPerteneceAmistad, rutas GET /chat y POST /mensajes), views/chat.ejs (nuevo)

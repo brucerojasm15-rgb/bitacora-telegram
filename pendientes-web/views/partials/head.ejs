@@ -13,7 +13,14 @@
   <title><%= titulo %></title>
   <link rel="stylesheet" href="/style.css">
 
-  <link rel="manifest" href="/manifest.json">
+  <!-- rama-cortina-instalable: SIN <link rel="manifest"> a propósito --
+       antes cualquier "Instalar zentIA" desde acá (Render) creaba un
+       ícono que abre este dominio directo, saltándose por completo la
+       cortina de GitHub Pages (docs/index.html) que espera a que Render
+       termine de despertar. Ahora la única página instalable es la
+       cortina (ver docs/manifest.json) -- este archivo manifest.json
+       sigue existiendo y cacheado por el service worker solo para no
+       romper instalaciones viejas que ya apuntaban acá. -->
   <meta name="theme-color" content="#0B4A2E">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" href="/icons/icon-192.png">

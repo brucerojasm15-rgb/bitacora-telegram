@@ -261,7 +261,10 @@
         .catch(() => {});
     })();
   </script>
-  <script src="/instalar.js" defer></script>
+  <!-- rama-cortina-instalable: instalar.js (el banner de "Instalar
+       zentIA") se quitó de acá -- ahora esa oferta vive solo en la
+       cortina de GitHub Pages (docs/index.html), para que instalar la
+       app siempre pase primero por ahí. Ver partials/head.ejs. -->
   <!-- rama-captura-offline: se carga en TODAS las páginas (no solo
        /captura) para que la sincronización dispare sola en cuanto vuelve
        la señal, sin importar en qué página de la app esté el usuario en

@@ -5193,6 +5193,32 @@ eliminación de ese repo/bot sin quedar huérfano.
 
 (agregar una línea por cada merge realizado, con fecha, rama y resultado)
 
+- 2026-09-01 — merge de rama-fix-ios-add-home (9975815) → main vía PR
+  #114: sin conflictos. CI verde (`verificar` y `pruebas-integracion`).
+  Commit de merge `ecbe96a`. Cierra un hueco real que el usuario seguía
+  viendo después del fix de PR #112 (cortina + `/salud`): ese fix solo
+  cubre el flujo de Android/Chrome, que arma el banner de "Instalar"
+  mirando `manifest.json` -- en iOS, "Agregar a inicio" desde Safari no
+  mira el manifest para nada, usa lo que haya en la página ACTUAL. Si
+  alguien llegaba directo a Render (el link "Entrar directo" de la
+  cortina cuando se cansa de esperar, un bookmark viejo, un resultado de
+  buscador) y agregaba a inicio desde ahí, `apple-mobile-web-app-capable`
+  seguía haciendo que ese acceso abriera en pantalla completa como si
+  fuera la app real -- la misma cortina que ya se evitaba en Android
+  seguía saltándose en iOS. Se sacaron `apple-mobile-web-app-capable`/
+  `status-bar-style`/`title` de `views/partials/head.ejs` (queda
+  `apple-touch-icon`, sigue sirviendo para un bookmark común); la
+  cortina en `docs/index.html` ya declara los suyos propios, sigue
+  siendo el único lugar pensado para instalar de verdad. Probado con
+  `npm run ci` verde + servidor local contra la DB real, confirmado en
+  el navegador que los tres meta desaparecieron del `<head>` sin
+  errores de consola. **Nota importante para el usuario**: si el
+  problema que reportó viene de un ícono YA instalado en el celular
+  (de antes de este fix o del de PR #112), este cambio no lo corrige
+  solo -- un ícono ya creado en la pantalla de inicio no vuelve a leer
+  la página. Hay que borrarlo y volver a instalarlo desde el link de
+  GitHub Pages (`https://brucerojasm15-rgb.github.io/bitacora-telegram/`)
+  para que quede apuntando a la cortina nueva.
 - 2026-08-22 — merge de rama-logros (2b35f11) → main vía PR #81: sin
   conflictos. CI verde. Commit de merge `ac6aa4d`. Primera mecánica
   nueva del "juego" (de las 4 candidatas de la tarea O) — 9 insignias

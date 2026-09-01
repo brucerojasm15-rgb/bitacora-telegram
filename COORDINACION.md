@@ -195,6 +195,52 @@ servidor local apuntando a la Neon real, cuenta de prueba
   (verificación de sintaxis EJS, no de errores en tiempo de ejecución del
   JS del cliente) lo hubiera detectado -- no lo detecta.
 
+### rama-fix-cortina-render
+- Estado: commit hecho, CI pendiente de verificar, no mergeada todavía.
+- Tarea: el usuario mandó una captura de su celular real -- carga primero
+  el logo/animación de zentIA (la "cortina" de `docs/index.html` en
+  GitHub Pages, construida en la migración a Render el 2026-08-24) pero
+  DESPUÉS igual aparece la pantalla propia de Render ("SERVICE WAKING
+  UP..."). La cortina existía y cargaba, pero no estaba cumpliendo su
+  propósito.
+- **Causa real, confirmada leyendo el código**: `docs/index.html` hacía
+  ping con `new Image().src = DESTINO + '/favicon.ico'` y trataba TANTO
+  `onload` COMO `onerror` como "ya está lista, redirigir". Pero
+  `/favicon.ico` **nunca existió** en esta app (confirmado con curl:
+  devuelve 302 a `/login`, nunca fue una imagen) -- así que `onerror` se
+  disparaba SIEMPRE, tanto con Render todavía dormido (que sirve su
+  propio placeholder HTML para cualquier ruta) como con la app 100%
+  despierta. En la práctica la cortina nunca esperaba de verdad: redirigía
+  casi al toque del primer intento, aterrizando al usuario en la pantalla
+  de Render en vez de la nuestra.
+- Fix: nueva ruta pública `GET /salud` en `server.js` (antes del
+  middleware de auth, junto al middleware de sesión) que devuelve
+  `{"ok":true}` con `Access-Control-Allow-Origin` puesto SOLO para
+  `https://brucerojasm15-rgb.github.io` -- el placeholder de Render nunca
+  puede replicar ese JSON + ese header exacto, así que un `fetch()` real
+  desde la cortina (reemplazando el ping de `<img>`) sí distingue "la app
+  real respondió" de "Render sigue respondiendo con su propia pantalla".
+  `docs/index.html` actualizado para usar ese `fetch` en vez de la imagen,
+  reintentando cada 2.5s igual que antes si falla.
+- Probado: `npm run ci` verde, `node -c` en `server.js` y en el script
+  extraído de `docs/index.html`, servidor local levantado y `/salud`
+  confirmado devolviendo `{"ok":true}` + el header CORS correcto con
+  `Origin: https://brucerojasm15-rgb.github.io`, y también sin ningún
+  header `Origin` (caso same-origin/curl directo). **No probado todavía**:
+  el escenario real de arranque en frío de Render (no se puede forzar a
+  demanda -- requiere ~15 min de la app inactiva) -- pedirle confirmación
+  al usuario la próxima vez que la app se duerma sola y él entre por el
+  link de GitHub Pages.
+- Nota aparte, NO resuelta en esta rama (el usuario no pidió esto todavía,
+  documentado para más adelante si decide priorizarlo): el ícono
+  instalable de la PWA (botón "Instalar" / "agregar a inicio") queda
+  pegado siempre al dominio de Render directamente, porque el manifest de
+  la app vive ahí, no en GitHub Pages -- un ícono instalado así sigue
+  bypaseando esta cortina por completo. Si se quiere resolver de raíz,
+  haría falta que `docs/index.html` tenga su propio manifest+service
+  worker (para que lo que se instale sea la cortina, no la app directo) --
+  cambio más grande, no incluido acá.
+
 ### rama-chat
 - Estado: commit hecho, lista para merge
 - Archivos tocados: server.js (tabla mensajes, tabla amistades, helper usuarioPerteneceAmistad, rutas GET /chat y POST /mensajes), views/chat.ejs (nuevo)

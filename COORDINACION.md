@@ -7754,6 +7754,66 @@ actualmente en curso (Fase 1):**
   silencio. — asignada a: sin asignar — Depende de: decisión de negocio
   del usuario sobre cuándo empezar a crecer más allá del círculo actual.
 
+- [ ] **Q. Ubicación en vivo entre amigos (opt-in por amigo), con soporte
+  de segundo plano real.** Pedido explícito del usuario (2026-09-01): quiere
+  ver en un mapa dónde están amigos específicos que le dieron permiso
+  (estilo Find My Friends/Life360), y confirmó que necesita que siga
+  funcionando **con la app cerrada**, no solo mientras está abierta. Esto es
+  imposible con una PWA (ninguna, ni la actual ni ninguna futura corre JS en
+  segundo plano de forma confiable en iOS) — la única forma real es que
+  zentIA sume también un **shell nativo** vía **Capacitor**, que envuelve la
+  web actual tal cual existe (sin reescribir nada de las plantillas EJS) y
+  le agrega un módulo nativo de ubicación en segundo plano.
+
+  **Plan completo ya diseñado** (sesión de planificación 2026-09-01, sin
+  construir todavía): ver plan file local
+  `C:\Users\lenovo\.claude\plans\dazzling-bouncing-treasure.md` si sigue
+  existiendo, y si no, este resumen alcanza para retomarlo:
+  - **Fase 1 (backend, sin costo, se puede empezar ya)**: tabla
+    `ubicacion_permisos` (opt-in por par de amigos, referenciando
+    `amistades.id`/`amistades.estado='aceptada'`, mismo criterio que ya usa
+    `amigosAceptadosDe()` en `server.js:4450`), tabla `ubicaciones` (última
+    posición por usuario, un solo row por UPSERT, no historial), tabla
+    `dispositivos_ubicacion` (token de larga duración por instalación
+    nativa — el equivalente de `push_subscriptions`, `server.js:1323`,
+    mismo patrón de limpieza en `POST /ajustes/eliminar-cuenta`).
+    Endpoints: `POST /api/ubicacion` (autenticado por token de dispositivo,
+    no cookie — lo llama el código nativo en segundo plano), `GET
+    /api/amigos/ubicaciones` (autenticado por sesión normal, para pintar el
+    mapa), `POST/DELETE /api/amigos/:id/permiso-ubicacion`. Actualizar
+    `views/terminos.ejs` — hoy dice explícitamente que push NO comparte
+    ubicación real, con esta feature deja de ser cierto para quien la activa.
+  - **Fase 2 (shell Capacitor + primer plano)**: envolver la web actual
+    (`server.url` apuntando a producción) + `@capacitor/geolocation`
+    (oficial, gratis) para el caso simple con la app abierta + UI de
+    toggle por amigo + mapa con Leaflet/OpenStreetMap (gratis, sin API key).
+  - **Fase 3 (segundo plano real, Android, gratis)**: decisión de
+    plataforma confirmada con el usuario — **arrancar solo con Android,
+    100% gratis**, sin saber todavía si algún amigo tiene iPhone. En vez
+    del plugin comercial de Transistorsoft (~US$349/app), escribir un
+    **foreground service nativo propio en Kotlin** (notificación
+    persistente + `FusedLocationProviderClient`, mismo patrón que Strava/
+    Uber) — es API pública de Android, sin licencia.
+  - **Fase 4 (build/distribución Android)**: APK compilado local o vía
+    Codemagic (gratis hasta 500 min/mes) y distribuido por descarga directa,
+    igual que ya hace Frondo — sin pasar por Google Play (evita el pago
+    único de US$25).
+  - **iOS queda diseñado pero pospuesto**: el backend es agnóstico de
+    plataforma, así que sumar iOS después no rompe nada de lo construido
+    para Android. Cuando haya un amigo real con iPhone que lo justifique:
+    pagar Apple Developer (US$99/año — el único costo prácticamente
+    inevitable, la firma gratuita vence cada 7 días y necesita una Mac),
+    agregar la plataforma `ios` al proyecto Capacitor ya existente, escribir
+    el equivalente en Swift (`CLLocationManager` con actualización en
+    segundo plano — también API pública gratuita, tampoco necesita el
+    plugin pago del lado de iOS).
+
+  **Costo para arrancar: US$0** (Fases 1-4 completas sin gastar nada). El
+  único gasto real (Apple, US$99/año) queda diferido a cuando haga falta
+  iOS de verdad. — asignada a: sin asignar — el usuario pausó esto a
+  propósito el 2026-09-01 para priorizar Frondo (primer cliente real
+  pagando), retomar cuando lo pida.
+
 ## Cómo agregar un trabajador nuevo (para el usuario)
 
 1. Escribe la tarea nueva en "Backlog de tareas" arriba (o pídele a cualquier sesión
